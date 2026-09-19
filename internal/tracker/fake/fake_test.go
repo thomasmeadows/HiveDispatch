@@ -52,7 +52,7 @@ func TestClaimLostToRace(t *testing.T) {
 	f := seeded()
 	f.BeforeReadBack = func(key string) {
 		// Simulate worker-b writing between our write and our read-back.
-		f.overwriteClaim(key, "worker-b", now.Add(time.Second))
+		f.OverwriteClaim(key, "worker-b", now.Add(time.Second))
 	}
 	won, err := f.Claim(context.Background(), "HIVE-1", "worker-a", now)
 	if err != nil {

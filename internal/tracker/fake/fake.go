@@ -26,6 +26,7 @@ type Tracker struct {
 	comments    map[string][]string
 	transitions map[string][]tracker.State
 	nextID      int
+	polls       int
 }
 
 var _ tracker.Tracker = (*Tracker)(nil)
@@ -65,8 +66,8 @@ func (f *Tracker) Transitions(key string) []tracker.State {
 	return append([]tracker.State(nil), f.transitions[key]...)
 }
 
-// overwriteClaim sets a claim unconditionally; used by race tests.
-func (f *Tracker) overwriteClaim(key, agentID string, at time.Time) {
+// OverwriteClaim sets a claim unconditionally, simulating another worker.
+func (f *Tracker) OverwriteClaim(key, agentID string, at time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if t, ok := f.tickets[key]; ok {
@@ -85,10 +86,18 @@ func copyTicket(t *tracker.Ticket) tracker.Ticket {
 	return c
 }
 
+// PollCount returns how many times Poll was called.
+func (f *Tracker) PollCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.polls
+}
+
 // Poll returns tickets in the ready state.
 func (f *Tracker) Poll(_ context.Context) ([]tracker.Ticket, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.polls++
 	var out []tracker.Ticket
 	for _, t := range f.tickets {
 		if t.Status == string(tracker.StateReady) {
