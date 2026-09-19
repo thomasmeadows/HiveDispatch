@@ -26,6 +26,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
 	c.Jira.Token = os.Getenv("HIVE_JIRA_TOKEN")
+	c.GitHub.Token = os.Getenv("HIVE_GITHUB_TOKEN")
 	c.Workroot = expandHome(c.Workroot)
 	if c.Workroot == "" {
 		c.Workroot = filepath.Join(homeDir(), ".local", "share", "hivedispatch")

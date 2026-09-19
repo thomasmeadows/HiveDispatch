@@ -30,6 +30,7 @@ func TestNoArgsPrintsUsage(t *testing.T) {
 
 func TestCheckValidConfig(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
 	p := filepath.Join(t.TempDir(), "c.yaml")
 	if err := os.WriteFile(p, []byte(`
 agent_id: w

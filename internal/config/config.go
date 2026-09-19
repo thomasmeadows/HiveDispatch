@@ -26,7 +26,9 @@ type Config struct {
 	MaxAttempts       int           `yaml:"max_attempts"`
 	PollJitter        time.Duration `yaml:"poll_jitter"`
 	RunWindows        RunWindows    `yaml:"run_windows"`
+	StateStore        string        `yaml:"state_store"` // "branch" (default) or "local"
 	Jira              JiraConfig    `yaml:"jira"`
+	GitHub            GitHubConfig  `yaml:"github"`
 	Repos             []RepoConfig  `yaml:"repos"`
 }
 
@@ -53,6 +55,13 @@ type JiraStatuses struct {
 	NeedsInfo  string `yaml:"needs_info"`
 	InReview   string `yaml:"in_review"`
 	NeedsHuman string `yaml:"needs_human"`
+}
+
+// GitHubConfig is used only for the pull-request API; git itself uses the
+// user's own credentials.
+type GitHubConfig struct {
+	APIURL string `yaml:"api_url"` // default https://api.github.com
+	Token  string `yaml:"-"`       // from HIVE_GITHUB_TOKEN
 }
 
 // RepoConfig is one repository the worker may dispatch work into.
@@ -109,6 +118,8 @@ func (c *Config) applyDefaults() {
 	def(&s.NeedsInfo, "Needs Info")
 	def(&s.InReview, "In Review")
 	def(&s.NeedsHuman, "Needs Human")
+	def(&c.GitHub.APIURL, "https://api.github.com")
+	def(&c.StateStore, "branch")
 	for i := range c.Repos {
 		def(&c.Repos[i].DefaultBranch, "main")
 	}
@@ -135,6 +146,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Jira.Token == "" {
 		problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required")
+	}
+	if c.GitHub.Token == "" {
+		problems = append(problems, "HIVE_GITHUB_TOKEN environment variable is required")
+	}
+	if c.StateStore != "" && c.StateStore != "branch" && c.StateStore != "local" {
+		problems = append(problems, fmt.Sprintf("state_store: want branch or local, got %q", c.StateStore))
 	}
 	if len(c.Repos) == 0 {
 		problems = append(problems, "repos must list at least one repository")

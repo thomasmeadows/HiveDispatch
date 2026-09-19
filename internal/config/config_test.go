@@ -35,6 +35,7 @@ func writeTemp(t *testing.T, body string) string {
 
 func TestLoadAppliesDefaultsAndEnvToken(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
 	t.Setenv("HOME", "/home/tester")
 	cfg, err := Load(writeTemp(t, validYAML))
 	if err != nil {
@@ -65,6 +66,7 @@ func TestLoadAppliesDefaultsAndEnvToken(t *testing.T) {
 
 func TestLoadParsesDurations(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
 	body := validYAML + "poll_interval: 90s\nclaim_timeout: 3h\n"
 	cfg, err := Load(writeTemp(t, body))
 	if err != nil {
@@ -98,6 +100,7 @@ func TestValidateReportsEveryMissingField(t *testing.T) {
 
 func TestValidateRejectsClaimTimeoutShorterThanHeartbeat(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
 	body := validYAML + "heartbeat_interval: 5m\nclaim_timeout: 1m\n"
 	_, err := Load(writeTemp(t, body))
 	if err == nil || !strings.Contains(err.Error(), "claim_timeout") {
@@ -107,6 +110,7 @@ func TestValidateRejectsClaimTimeoutShorterThanHeartbeat(t *testing.T) {
 
 func TestValidateSkipsFieldsDuringInit(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
 	t.Setenv("HIVE_INIT", "1")
 	body := strings.ReplaceAll(validYAML, "    agent_id: customfield_10042\n    claimed_at: customfield_10043\n", "")
 	if _, err := Load(writeTemp(t, body)); err != nil {
@@ -123,6 +127,7 @@ func TestLoadMissingFile(t *testing.T) {
 
 func TestLoadRunDefaultsAndWindows(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
 	body := validYAML + `
 run_windows:
   timezone: America/New_York
@@ -145,9 +150,31 @@ run_windows:
 
 func TestValidateRejectsBadWindow(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
 	body := validYAML + "run_windows:\n  timezone: Mars/Olympus\n  windows:\n    - {start: \"25:00\", end: \"06:00\"}\n"
 	_, err := Load(writeTemp(t, body))
 	if err == nil || !strings.Contains(err.Error(), "timezone") || !strings.Contains(err.Error(), "start") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLoadGitHubAndStateDefaults(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	cfg, err := Load(writeTemp(t, validYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GitHub.APIURL != "https://api.github.com" || cfg.GitHub.Token != "gh" || cfg.StateStore != "branch" {
+		t.Errorf("cfg = %+v", cfg)
+	}
+}
+
+func TestLoadRejectsMissingGitHubTokenAndBadStateStore(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "")
+	_, err := Load(writeTemp(t, validYAML+"state_store: cloud\n"))
+	if err == nil || !strings.Contains(err.Error(), "HIVE_GITHUB_TOKEN") || !strings.Contains(err.Error(), "state_store") {
 		t.Fatalf("err = %v", err)
 	}
 }
