@@ -4,7 +4,17 @@ Ticket-driven orchestration for autonomous coding agents.
 
 HiveDispatch turns tickets into pull requests. It polls an issue tracker, triages each ticket, claims it, branches, runs a coding-agent CLI (Claude Code first) in an isolated worktree, commits, opens a PR, and reports back on the ticket — so steering development work needs nothing but a ticket and a comment thread, including from a phone.
 
-**Status: pre-alpha.** Phases 0–4 of the MVP are done. `hivedispatch run` takes a Jira ticket to a GitHub PR with real code from Claude Code. Phase 5 adds model-backed triage and the needs-info loop.
+**Status: alpha.** The MVP loop is complete: a Jira ticket is triaged by Claude Code (dispatch / ask / reject), claimed, implemented by Claude Code in an isolated worktree, pushed, and opened as a GitHub PR — with questions posted back to the ticket and the run resumed when a human answers.
+
+## How a ticket flows
+
+1. **Poll** — the worker runs your trigger JQL (e.g. `status = Ready AND labels = hive`).
+2. **Claim** — it writes its agent id to the ticket and reads it back; two workers racing resolve to one winner.
+3. **Triage** — Claude Code, read-only, inspects the repo and decides: dispatch with notes, ask one question, or reject.
+4. **Branch** — a git worktree on `hive/<KEY>`, resumed if it already exists.
+5. **Run** — Claude Code implements the ticket under the repo's `.hivedispatch.yaml` policy, with a step budget and a wall-clock timeout.
+6. **Commit and push** — the agent commits as it goes; the worker safety-commits anything left and pushes.
+7. **PR and report** — a pull request is opened (or found), and the ticket gets a comment and a status change. Every stop, including budget and timeout, leaves the ticket in a state a human understands.
 
 ## What it is not
 

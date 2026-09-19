@@ -105,3 +105,15 @@ Decided: with `--json-schema`, Claude Code returns both `structured_output` (obj
 ## 2026-09-19 — Edited paths are relativised against the init cwd as well as the workspace
 
 Decided: the stream parser relativises `Edit`/`Write` paths against both the workspace it was given and the `cwd` the CLI reported in its `init` event. Why: the two normally agree, but recorded transcripts and symlinked work roots do not, and `ChangedFiles` should be repo-relative either way.
+
+## 2026-09-19 — Worktree is prepared before triage
+
+Decided: the dispatcher prepares the ticket worktree first and hands its path to the triager. Rejected: triaging against the `--no-checkout` base clone (nothing to read) or a separate read-only checkout (a second copy per repo). Why: a worktree is cheap, the triager needs real files to inspect, and on dispatch the same worktree is used for the run.
+
+## 2026-09-19 — Triage notes, not a triage-written prompt
+
+Decided: the triager returns `notes` that are appended to the standard executor prompt, rather than authoring the whole prompt. Why: the standard prompt carries the invariants (commit as you go, no merging, HIVE_NEEDS_INPUT protocol); letting the triage model rewrite it would let a bad triage decision remove a guardrail.
+
+## 2026-09-19 — One shared CLI runner
+
+Decided: `internal/claudecli` owns process supervision and stream parsing for both executor and triager. Why: the step budget, timeout, process-group kill and log capture are the same problem in both places; the second user is what proved the extraction.

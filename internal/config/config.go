@@ -29,6 +29,7 @@ type Config struct {
 	StateStore        string        `yaml:"state_store"` // "branch" (default) or "local"
 	Executor          string        `yaml:"executor"`    // "claude" (default) or "fake"
 	Claude            ClaudeConfig  `yaml:"claude"`
+	Triage            TriageConfig  `yaml:"triage"`
 	Jira              JiraConfig    `yaml:"jira"`
 	GitHub            GitHubConfig  `yaml:"github"`
 	Repos             []RepoConfig  `yaml:"repos"`
@@ -64,6 +65,14 @@ type JiraStatuses struct {
 type ClaudeConfig struct {
 	Binary string `yaml:"binary"` // default "claude"
 	Model  string `yaml:"model"`  // default model when the repo sets none
+}
+
+// TriageConfig selects and bounds the triage step.
+type TriageConfig struct {
+	Kind       string        `yaml:"kind"`        // "claude" (default) or "passthrough"
+	StepBudget int           `yaml:"step_budget"` // default 40
+	Timeout    time.Duration `yaml:"timeout"`     // default 5m
+	Model      string        `yaml:"model"`
 }
 
 // GitHubConfig is used only for the pull-request API; git itself uses the
@@ -131,6 +140,13 @@ func (c *Config) applyDefaults() {
 	def(&c.StateStore, "branch")
 	def(&c.Executor, "claude")
 	def(&c.Claude.Binary, "claude")
+	def(&c.Triage.Kind, "claude")
+	if c.Triage.StepBudget == 0 {
+		c.Triage.StepBudget = 40
+	}
+	if c.Triage.Timeout == 0 {
+		c.Triage.Timeout = 5 * time.Minute
+	}
 	for i := range c.Repos {
 		def(&c.Repos[i].DefaultBranch, "main")
 	}
@@ -163,6 +179,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Executor != "" && c.Executor != "claude" && c.Executor != "fake" {
 		problems = append(problems, fmt.Sprintf("executor: want claude or fake, got %q", c.Executor))
+	}
+	if c.Triage.Kind != "" && c.Triage.Kind != "claude" && c.Triage.Kind != "passthrough" {
+		problems = append(problems, fmt.Sprintf("triage.kind: want claude or passthrough, got %q", c.Triage.Kind))
 	}
 	if c.StateStore != "" && c.StateStore != "branch" && c.StateStore != "local" {
 		problems = append(problems, fmt.Sprintf("state_store: want branch or local, got %q", c.StateStore))

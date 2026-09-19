@@ -115,3 +115,15 @@ guidance: |
 `dontAsk` fails closed: anything not in `allowed_tools` is denied and the agent must work around it or ask. `bypassPermissions` is for sandboxed runs only.
 
 The run log for each attempt is saved to the state branch under `logs/<KEY>/<timestamp>.log`.
+
+### Triage
+
+Triage runs the same CLI read-only (`--restricted`, Read/Grep/Glob, plan mode) in the ticket worktree with its own bounds:
+
+```yaml
+triage:
+  kind: claude          # or passthrough: dispatch every ticket without a model call
+  step_budget: 40       # tool calls
+  timeout: 5m
+  model: sonnet         # optional
+```

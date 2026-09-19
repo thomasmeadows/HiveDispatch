@@ -216,6 +216,9 @@ func TestDispatchCompletedWithPR(t *testing.T) {
 	if len(calls) != 1 || calls[0].Prompt != "do the thing" || calls[0].StepBudget != 50 || calls[0].Workspace == "" {
 		t.Errorf("task = %+v", calls)
 	}
+	if tri := h.tri.Calls(); len(tri) != 1 || tri[0].RepoPath == "" {
+		t.Errorf("triage must receive the workspace path: %+v", tri)
+	}
 	h.assertReleased(t)
 }
 

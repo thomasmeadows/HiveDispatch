@@ -27,6 +27,8 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
 	"github.com/thomasmeadows/hivedispatch/internal/state/router"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
+	"github.com/thomasmeadows/hivedispatch/internal/triage"
+	triclaude "github.com/thomasmeadows/hivedispatch/internal/triage/claudecode"
 	"github.com/thomasmeadows/hivedispatch/internal/triage/passthrough"
 )
 
@@ -39,8 +41,8 @@ commands:
   version                     print the version
   check [-config P] [-jira]   validate the worker config; -jira verifies against the live site
   init  -jira [-config P]     create the claim custom fields in Jira and print their IDs
-  run   [-config P] [-once] [-executor claude|fake] [-placeholder]
-                              poll and dispatch; -executor overrides the config
+  run   [-config P] [-once] [-executor claude|fake] [-triage claude|passthrough] [-placeholder]
+                              poll and dispatch; -executor and -triage override the config
                               (-placeholder makes the fake executor write a file so
                               the branch/PR path is exercised)
 `
@@ -152,6 +154,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	once := fs.Bool("once", false, "poll once and exit")
 	executorFlag := fs.String("executor", "", "override config executor: claude or fake")
+	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -214,10 +217,24 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unknown executor %q\n", name)
 		return 2
 	}
+	triKind := cfg.Triage.Kind
+	if *triageFlag != "" {
+		triKind = *triageFlag
+	}
+	var tri triage.Triager
+	switch triKind {
+	case "passthrough":
+		tri = passthrough.Triager{}
+	case "claude":
+		tri = triclaude.New(triclaude.Config{Binary: cfg.Claude.Binary, Model: cfg.Triage.Model, StepBudget: cfg.Triage.StepBudget, Timeout: cfg.Triage.Timeout})
+	default:
+		fmt.Fprintf(stderr, "unknown triage %q\n", triKind)
+		return 2
+	}
 	d := &dispatch.Dispatcher{
 		Cfg:        dispatch.ConfigFrom(cfg),
 		Tracker:    tr,
-		Triager:    passthrough.Triager{},
+		Triager:    tri,
 		Executor:   ex,
 		Workspaces: ws,
 		Host:       host,

@@ -193,3 +193,18 @@ func TestLoadExecutorDefaults(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestLoadTriageDefaults(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	cfg, err := Load(writeTemp(t, validYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Triage.Kind != "claude" || cfg.Triage.StepBudget != 40 || cfg.Triage.Timeout != 5*time.Minute {
+		t.Errorf("triage = %+v", cfg.Triage)
+	}
+	if _, err := Load(writeTemp(t, validYAML+"triage: {kind: coinflip}\n")); err == nil || !strings.Contains(err.Error(), "triage.kind") {
+		t.Errorf("err = %v", err)
+	}
+}

@@ -53,6 +53,15 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 	defer cancel()
 	go d.heartbeat(runCtx, t.Key, cancel)
 
+	// The worktree comes first: triage needs a checkout to inspect, and a
+	// dispatched run works in the same one.
+	ws, err := d.Workspaces.Prepare(ctx, repo, t.Key)
+	if err != nil {
+		run.Attempts++
+		res := executor.Result{Status: executor.StatusFailed, StopCause: executor.CauseError, Summary: "workspace: " + err.Error()}
+		return d.finishFailed(ctx, t, run, res, false), nil
+	}
+
 	// Resume after a human reply, or triage afresh.
 	var taskPrompt string
 	if d.canResume(t, run) {
@@ -60,7 +69,7 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 		d.event(ctx, run, "resume", "")
 	} else {
 		dec, err := d.Triager.Decide(ctx, triage.Input{
-			Ticket: t, Repo: repo, Branch: run.Branch,
+			Ticket: t, Repo: repo, Branch: run.Branch, RepoPath: ws.Path,
 			Attempts: run.Attempts, LastStopCause: run.StopCause,
 		})
 		if err != nil {
@@ -88,7 +97,7 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 	}
 
 	d.transition(ctx, t.Key, tracker.StateInProgress)
-	return d.execute(runCtx, t, repo, run, taskPrompt)
+	return d.execute(runCtx, t, repo, run, ws, taskPrompt)
 }
 
 // canResume reports whether the last run asked a question that a human has
@@ -107,13 +116,7 @@ func (d *Dispatcher) canResume(t tracker.Ticket, run *state.Run) bool {
 
 // execute runs the executor and reports the result. ctx is the run context:
 // cancelled on shutdown or on losing the claim.
-func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, run *state.Run, taskPrompt string) (Outcome, error) {
-	ws, err := d.Workspaces.Prepare(ctx, repo, t.Key)
-	if err != nil {
-		res := executor.Result{Status: executor.StatusFailed, StopCause: executor.CauseError, Summary: "workspace: " + err.Error()}
-		run.Attempts++
-		return d.finishFailed(ctx, t, run, res, false), nil
-	}
+func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, run *state.Run, ws gitops.Workspace, taskPrompt string) (Outcome, error) {
 	run.Attempts++
 	d.setPhase(ctx, run, state.PhaseWorking)
 
