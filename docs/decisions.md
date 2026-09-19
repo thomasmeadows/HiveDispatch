@@ -69,3 +69,19 @@ Decided: the first Ctrl-C stops polling and lets the run in flight finish; the s
 ## 2026-09-19 — Dispatcher returns OutcomeFailed with an error on PR failure
 
 Decided: if the branch pushed but the PR could not be opened, the ticket returns to Ready with a comment and the call returns an error. Why: the branch exists, so the next attempt finds or opens the PR without redoing the work; Ready is the only state the poller will pick up again.
+
+## 2026-09-19 — Base clone is --no-checkout; one worktree per ticket
+
+Decided: each repo gets one `--no-checkout` base clone and one worktree per ticket at a stable path. Rejected: a fresh clone per ticket (slow, no session resume), a single working clone with branch switching (one ticket at a time, and Claude Code's session store is keyed by path). Why: worktrees share objects, keep the per-ticket path stable for `--resume`, and let several tickets sit on disk at once.
+
+## 2026-09-19 — One state branch per governed repo, routed by Jira project
+
+Decided: `hive/state` lives in each repo HiveDispatch works in; a router picks the store by ticket prefix. Rejected: one central state repo. Why: the spec keeps state with the code it describes, and per-repo state means a repo's history and its run log travel together. The cost is one push per state write; acceptable at MVP scale.
+
+## 2026-09-19 — Safety commits use a HiveDispatch identity, set via environment
+
+Decided: the dispatcher's own commits (`hive: checkpoint`, `hive: WIP (...)`, state writes) are authored as `HiveDispatch <hivedispatch@localhost>`, set through `GIT_AUTHOR_*`/`GIT_COMMITTER_*` on the subprocess. Rejected: `-c user.name=...`. Why: reviewers can tell orchestrator housekeeping from agent work in `git log`; and environment variables win over `-c`, so a user who exports `GIT_AUTHOR_NAME` would otherwise silently override the identity.
+
+## 2026-09-19 — State-branch conflict check is on the files we push
+
+Decided: when a push is rejected, the store fetches and compares the incoming diff against the files it is about to push; any overlap is `ErrClaimInvariant`, otherwise it rebases. Discovered in testing: this catches a second worker's *first* write to a file another worker already created, not only later overwrites — earlier than the spec's wording implied, which is the safer side.

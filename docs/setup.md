@@ -1,6 +1,6 @@
-# Jira setup
+# Setup
 
-HiveDispatch needs three things from a Jira Cloud site: an API token, two custom fields for the claim protocol, and five workflow statuses.
+HiveDispatch needs: a Jira Cloud site (API token, two custom fields for the claim protocol, five workflow statuses), a GitHub token for opening pull requests, and git credentials that can clone and push the repositories it works in.
 
 ## 1. API token
 
@@ -62,8 +62,33 @@ repos:
     jira_project: HIVE
 ```
 
+## 5. GitHub
+
+Create a fine-grained personal access token with **Pull requests: read and write** and **Contents: read** on the repositories HiveDispatch works in, and export it:
+
+```sh
+export HIVE_GITHUB_TOKEN=...
+```
+
+The token is used only for the pull-request API. Cloning and pushing use your own git credentials (ssh keys or a credential helper), so make sure `git clone <repo url>` works non-interactively as the user running the worker.
+
+## 6. Work directory layout
+
+```
+<workroot>/repos/<owner>__<repo>/repo      base clone (no checkout)
+<workroot>/repos/<owner>__<repo>/<KEY>     worktree for one ticket, branch hive/<KEY>
+<workroot>/repos/<owner>__<repo>/.state    worktree of the hive/state branch
+```
+
+Set `state_store: local` to keep run state in `<workroot>/state/` instead of the `hive/state` branch (useful for trials; not shared between workers).
+
+## 7. Security
+
+The worker runs with your git credentials and can push any branch your credentials allow. Scope the deploy key or token to branch creation and PR opening where your host supports it, never to the default branch, and run the worker under a dedicated account when you can.
+
 ## Verify
 
 ```sh
 hivedispatch check -jira
+hivedispatch run -once -placeholder   # takes one Ready ticket to a PR with a placeholder commit
 ```

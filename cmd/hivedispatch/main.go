@@ -11,15 +11,19 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
-	hostfake "github.com/thomasmeadows/hivedispatch/internal/githost/fake"
-	gitfake "github.com/thomasmeadows/hivedispatch/internal/gitops/fake"
+	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
+	gitws "github.com/thomasmeadows/hivedispatch/internal/gitops/git"
 	"github.com/thomasmeadows/hivedispatch/internal/schedule"
+	"github.com/thomasmeadows/hivedispatch/internal/state"
+	"github.com/thomasmeadows/hivedispatch/internal/state/gitbranch"
 	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
+	"github.com/thomasmeadows/hivedispatch/internal/state/router"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
 	"github.com/thomasmeadows/hivedispatch/internal/triage/passthrough"
 )
@@ -33,7 +37,9 @@ commands:
   version                     print the version
   check [-config P] [-jira]   validate the worker config; -jira verifies against the live site
   init  -jira [-config P]     create the claim custom fields in Jira and print their IDs
-  run   [-config P] [-once]   poll and dispatch (fake executor until Phase 4)
+  run   [-config P] [-once] [-placeholder]
+                              poll and dispatch (fake executor until Phase 4; -placeholder
+                              makes it write a file so the branch/PR path is exercised)
 `
 
 func main() {
@@ -93,7 +99,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "missing custom field: %s (run `hivedispatch init -jira`)\n", f)
 	}
 	for _, s := range rep.MissingStatuses {
-		fmt.Fprintf(stderr, "missing workflow status: %q (see docs/jira-setup.md)\n", s)
+		fmt.Fprintf(stderr, "missing workflow status: %q (see docs/setup.md)\n", s)
 	}
 	if !rep.OK() {
 		return 1
@@ -142,6 +148,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	once := fs.Bool("once", false, "poll once and exit")
+	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -161,14 +168,42 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	ctx := context.Background()
+	ws := gitws.New(filepath.Join(cfg.Workroot, "repos"))
+	stores := map[string]state.RunStore{}
+	for _, repo := range cfg.Repos {
+		base, err := ws.EnsureBase(ctx, repo)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		var st state.RunStore
+		if cfg.StateStore == "local" {
+			st = localdir.New(filepath.Join(cfg.Workroot, "state", strings.ReplaceAll(repo.Name, "/", "__")))
+		} else {
+			st, err = gitbranch.Open(ctx, base, filepath.Join(ws.RepoDir(repo), ".state"))
+			if err != nil {
+				fmt.Fprintln(stderr, "state branch:", err)
+				return 1
+			}
+		}
+		stores[strings.ToUpper(repo.JiraProject)] = st
+	}
+	host, err := github.New(cfg.GitHub)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	ex := exfake.New()
+	ex.Placeholder = *placeholder
 	d := &dispatch.Dispatcher{
 		Cfg:        dispatch.ConfigFrom(cfg),
 		Tracker:    tr,
 		Triager:    passthrough.Triager{},
-		Executor:   exfake.New(), // Phase 4 replaces this with the Claude Code adapter
-		Workspaces: gitfake.New(filepath.Join(cfg.Workroot, "workspaces")),
-		Host:       hostfake.New(),
-		Store:      localdir.New(filepath.Join(cfg.Workroot, "state")),
+		Executor:   ex, // Phase 4 replaces this with the Claude Code adapter
+		Workspaces: ws,
+		Host:       host,
+		Store:      &router.Store{Stores: stores},
 		Schedule:   sched,
 		Log:        logger,
 	}

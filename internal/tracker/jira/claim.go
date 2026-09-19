@@ -67,7 +67,7 @@ func (c *Client) setClaimFields(ctx context.Context, key string, agentID, at any
 	var apiErr *APIError
 	if errors.As(err, &apiErr) && apiErr.Status == http.StatusBadRequest &&
 		strings.Contains(err.Error(), "not on the appropriate screen") {
-		return fmt.Errorf("%w\n  hint: the claim custom fields must be on the issue's edit screen — see docs/jira-setup.md", err)
+		return fmt.Errorf("%w\n  hint: the claim custom fields must be on the issue's edit screen — see docs/setup.md", err)
 	}
 	return err
 }

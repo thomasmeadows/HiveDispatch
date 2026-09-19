@@ -96,7 +96,7 @@ func TestClaimScreenErrorHasHint(t *testing.T) {
 	s := &claimServer{screen: true}
 	c := newTestClient(t, s.mux())
 	_, err := c.Claim(context.Background(), "HIVE-1", "worker-a", claimAt)
-	if err == nil || !strings.Contains(err.Error(), "jira-setup.md") {
+	if err == nil || !strings.Contains(err.Error(), "setup.md") {
 		t.Fatalf("err = %v, want setup hint", err)
 	}
 }

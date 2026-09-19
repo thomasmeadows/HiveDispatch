@@ -5,6 +5,9 @@ package fake
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
@@ -19,6 +22,8 @@ type Executor struct {
 	Block   map[string]bool
 	Err     map[string]error
 	Default executor.Result
+	// Placeholder writes a file into the workspace so the git path is exercised.
+	Placeholder bool
 
 	mu    sync.Mutex
 	calls []executor.Task
@@ -66,6 +71,14 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 			cause = executor.CauseTimeout
 		}
 		return executor.Result{Status: executor.StatusFailed, StopCause: cause, Summary: "interrupted"}, nil
+	}
+	if e.Placeholder && t.Workspace != "" {
+		name := "HIVEDISPATCH_PLACEHOLDER.md"
+		body := fmt.Sprintf("# %s\n\nPlaceholder written by the fake executor.\n", t.TicketKey)
+		if err := os.WriteFile(filepath.Join(t.Workspace, name), []byte(body), 0o644); err != nil {
+			return executor.Result{}, err
+		}
+		res.ChangedFiles = append(res.ChangedFiles, name)
 	}
 	return res, nil
 }

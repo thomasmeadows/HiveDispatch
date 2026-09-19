@@ -3,6 +3,8 @@ package fake
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -61,5 +63,21 @@ func TestCauseDescribe(t *testing.T) {
 		if c.Describe() == "" {
 			t.Errorf("%q has no description", c)
 		}
+	}
+}
+
+func TestPlaceholderWritesFile(t *testing.T) {
+	e := New()
+	e.Placeholder = true
+	dir := t.TempDir()
+	res, err := e.Run(context.Background(), executor.Task{TicketKey: "HIVE-1", Workspace: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "HIVEDISPATCH_PLACEHOLDER.md")); err != nil {
+		t.Error("placeholder file not written")
+	}
+	if len(res.ChangedFiles) != 1 {
+		t.Errorf("changed = %v", res.ChangedFiles)
 	}
 }
