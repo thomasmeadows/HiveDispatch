@@ -1,0 +1,2 @@
+{"type": "system", "subtype": "init", "cwd": "/work/HIVE-1", "session_id": "tri-3", "tools": ["Read"], "model": "claude-opus-5", "permissionMode": "plan"}
+{"type": "result", "subtype": "success", "is_error": false, "num_turns": 1, "stop_reason": "end_turn", "terminal_reason": "completed", "session_id": "tri-3", "result": "{\"decision\":\"needs_info\",\"reason\":\"unclear\"}", "structured_output": {"decision": "needs_info", "reason": "unclear"}, "total_cost_usd": 0.02, "permission_denials": [], "api_error_status": null}
