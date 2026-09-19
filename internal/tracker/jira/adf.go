@@ -103,12 +103,13 @@ func renderInline(nodes []adfNode) string {
 				sb.WriteString(ts)
 			}
 		default:
-			if len(n.Content) > 0 {
+			switch {
+			case len(n.Content) > 0:
 				sb.WriteString(renderInline(n.Content))
-			} else if n.Text != "" {
+			case n.Text != "":
 				sb.WriteString(n.Text)
-			} else {
-				sb.WriteString(fmt.Sprintf("[%s]", n.Type))
+			default:
+				fmt.Fprintf(&sb, "[%s]", n.Type)
 			}
 		}
 	}
