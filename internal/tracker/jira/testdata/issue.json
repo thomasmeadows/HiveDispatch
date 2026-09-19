@@ -1,0 +1,24 @@
+{
+  "id": "10001",
+  "key": "HIVE-1",
+  "self": "https://example.atlassian.net/rest/api/3/issue/10001",
+  "fields": {
+    "summary": "Add a --version flag",
+    "description": {"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Print the build version."}]}]},
+    "status": {"name": "Ready"},
+    "labels": ["hive"],
+    "updated": "2026-09-19T10:15:00.000+0000",
+    "customfield_10042": "worker-b",
+    "customfield_10043": "2026-09-19T10:00:00.000+0000",
+    "comment": {
+      "comments": [
+        {
+          "id": "20001",
+          "author": {"accountId": "acc-1", "displayName": "Thomas"},
+          "created": "2026-09-19T09:00:00.000+0000",
+          "body": {"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Please also update the README."}]}]}
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "issues": [
+    {"id":"10001","key":"HIVE-1","fields":{"summary":"one","status":{"name":"Ready"},"labels":[],"updated":"2026-09-19T10:15:00.000+0000","customfield_10042":null,"customfield_10043":null,"comment":{"comments":[]}}}
+  ],
+  "nextPageToken": "tok2",
+  "isLast": false
+}
