@@ -32,6 +32,8 @@ type Client struct {
 	beforeReadBack func(key string)
 }
 
+var _ tracker.Tracker = (*Client)(nil)
+
 // Option configures a Client.
 type Option func(*Client)
 
