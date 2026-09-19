@@ -41,7 +41,8 @@ type transcript struct {
 }
 
 type streamParser struct {
-	cwd       string
+	cwd       string // the workspace we ran in
+	initCwd   string // what the CLI reported in its init event
 	onToolUse func(count int)
 	t         transcript
 	edited    map[string]bool
@@ -60,6 +61,7 @@ type envelope struct {
 	Type      string `json:"type"`
 	Subtype   string `json:"subtype"`
 	SessionID string `json:"session_id"`
+	Cwd       string `json:"cwd"`
 	Message   *struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"message"`
@@ -88,8 +90,11 @@ func (p *streamParser) Line(raw []byte) {
 	}
 	switch env.Type {
 	case "system":
-		if env.Subtype == "init" && env.SessionID != "" {
-			p.t.SessionID = env.SessionID
+		if env.Subtype == "init" {
+			if env.SessionID != "" {
+				p.t.SessionID = env.SessionID
+			}
+			p.initCwd = env.Cwd
 		}
 	case "assistant":
 		if env.Message == nil {
@@ -130,8 +135,14 @@ func (p *streamParser) Line(raw []byte) {
 }
 
 func (p *streamParser) addEdited(path string) {
-	if rel, err := filepath.Rel(p.cwd, path); err == nil && !strings.HasPrefix(rel, "..") {
-		path = rel
+	for _, base := range []string{p.cwd, p.initCwd} {
+		if base == "" {
+			continue
+		}
+		if rel, err := filepath.Rel(base, path); err == nil && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
+			path = rel
+			break
+		}
 	}
 	if !p.edited[path] {
 		p.edited[path] = true
