@@ -1,0 +1,3 @@
+{"type": "system", "subtype": "init", "cwd": "/work/HIVE-3", "session_id": "q-session", "tools": ["Read"], "model": "claude-opus-5", "permissionMode": "dontAsk"}
+{"type": "assistant", "session_id": "q-session", "message": {"role": "assistant", "content": [{"type": "text", "text": "I looked at the code.\n\nHIVE_NEEDS_INPUT: Should the flag print semver or the git SHA?"}]}}
+{"type": "result", "subtype": "success", "is_error": false, "num_turns": 1, "stop_reason": "end_turn", "terminal_reason": "completed", "session_id": "q-session", "result": "I looked at the code.\n\nHIVE_NEEDS_INPUT: Should the flag print semver or the git SHA?", "total_cost_usd": 0.05, "permission_denials": [], "api_error_status": null}
