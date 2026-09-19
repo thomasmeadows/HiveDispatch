@@ -178,3 +178,18 @@ func TestLoadRejectsMissingGitHubTokenAndBadStateStore(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestLoadExecutorDefaults(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	cfg, err := Load(writeTemp(t, validYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Executor != "claude" || cfg.Claude.Binary != "claude" {
+		t.Errorf("cfg = %+v", cfg)
+	}
+	if _, err := Load(writeTemp(t, validYAML+"executor: gpt\n")); err == nil || !strings.Contains(err.Error(), "executor") {
+		t.Errorf("err = %v", err)
+	}
+}

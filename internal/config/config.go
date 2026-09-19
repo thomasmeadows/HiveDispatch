@@ -27,6 +27,8 @@ type Config struct {
 	PollJitter        time.Duration `yaml:"poll_jitter"`
 	RunWindows        RunWindows    `yaml:"run_windows"`
 	StateStore        string        `yaml:"state_store"` // "branch" (default) or "local"
+	Executor          string        `yaml:"executor"`    // "claude" (default) or "fake"
+	Claude            ClaudeConfig  `yaml:"claude"`
 	Jira              JiraConfig    `yaml:"jira"`
 	GitHub            GitHubConfig  `yaml:"github"`
 	Repos             []RepoConfig  `yaml:"repos"`
@@ -55,6 +57,13 @@ type JiraStatuses struct {
 	NeedsInfo  string `yaml:"needs_info"`
 	InReview   string `yaml:"in_review"`
 	NeedsHuman string `yaml:"needs_human"`
+}
+
+// ClaudeConfig configures the Claude Code executor at the worker level;
+// per-repo settings live in .hivedispatch.yaml inside the governed repo.
+type ClaudeConfig struct {
+	Binary string `yaml:"binary"` // default "claude"
+	Model  string `yaml:"model"`  // default model when the repo sets none
 }
 
 // GitHubConfig is used only for the pull-request API; git itself uses the
@@ -120,6 +129,8 @@ func (c *Config) applyDefaults() {
 	def(&s.NeedsHuman, "Needs Human")
 	def(&c.GitHub.APIURL, "https://api.github.com")
 	def(&c.StateStore, "branch")
+	def(&c.Executor, "claude")
+	def(&c.Claude.Binary, "claude")
 	for i := range c.Repos {
 		def(&c.Repos[i].DefaultBranch, "main")
 	}
@@ -149,6 +160,9 @@ func (c *Config) Validate() error {
 	}
 	if c.GitHub.Token == "" {
 		problems = append(problems, "HIVE_GITHUB_TOKEN environment variable is required")
+	}
+	if c.Executor != "" && c.Executor != "claude" && c.Executor != "fake" {
+		problems = append(problems, fmt.Sprintf("executor: want claude or fake, got %q", c.Executor))
 	}
 	if c.StateStore != "" && c.StateStore != "branch" && c.StateStore != "local" {
 		problems = append(problems, fmt.Sprintf("state_store: want branch or local, got %q", c.StateStore))

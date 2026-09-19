@@ -16,6 +16,8 @@ import (
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
+	"github.com/thomasmeadows/hivedispatch/internal/executor"
+	"github.com/thomasmeadows/hivedispatch/internal/executor/claudecode"
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
 	gitws "github.com/thomasmeadows/hivedispatch/internal/gitops/git"
@@ -37,9 +39,10 @@ commands:
   version                     print the version
   check [-config P] [-jira]   validate the worker config; -jira verifies against the live site
   init  -jira [-config P]     create the claim custom fields in Jira and print their IDs
-  run   [-config P] [-once] [-placeholder]
-                              poll and dispatch (fake executor until Phase 4; -placeholder
-                              makes it write a file so the branch/PR path is exercised)
+  run   [-config P] [-once] [-executor claude|fake] [-placeholder]
+                              poll and dispatch; -executor overrides the config
+                              (-placeholder makes the fake executor write a file so
+                              the branch/PR path is exercised)
 `
 
 func main() {
@@ -148,6 +151,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	once := fs.Bool("once", false, "poll once and exit")
+	executorFlag := fs.String("executor", "", "override config executor: claude or fake")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -194,13 +198,27 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	ex := exfake.New()
-	ex.Placeholder = *placeholder
+	name := cfg.Executor
+	if *executorFlag != "" {
+		name = *executorFlag
+	}
+	var ex executor.Executor
+	switch name {
+	case "fake":
+		f := exfake.New()
+		f.Placeholder = *placeholder
+		ex = f
+	case "claude":
+		ex = claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary, Model: cfg.Claude.Model})
+	default:
+		fmt.Fprintf(stderr, "unknown executor %q\n", name)
+		return 2
+	}
 	d := &dispatch.Dispatcher{
 		Cfg:        dispatch.ConfigFrom(cfg),
 		Tracker:    tr,
 		Triager:    passthrough.Triager{},
-		Executor:   ex, // Phase 4 replaces this with the Claude Code adapter
+		Executor:   ex,
 		Workspaces: ws,
 		Host:       host,
 		Store:      &router.Store{Stores: stores},
