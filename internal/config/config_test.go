@@ -120,3 +120,34 @@ func TestLoadMissingFile(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 }
+
+func TestLoadRunDefaultsAndWindows(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	body := validYAML + `
+run_windows:
+  timezone: America/New_York
+  windows:
+    - days: [mon, tue]
+      start: "22:00"
+      end: "06:00"
+`
+	cfg, err := Load(writeTemp(t, body))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.RunTimeout != 45*time.Minute || cfg.StepBudget != 200 || cfg.MaxAttempts != 3 || cfg.PollJitter != 10*time.Second {
+		t.Errorf("defaults: %+v", cfg)
+	}
+	if cfg.RunWindows.Timezone != "America/New_York" || len(cfg.RunWindows.Windows) != 1 || cfg.RunWindows.Windows[0].End != "06:00" {
+		t.Errorf("windows = %+v", cfg.RunWindows)
+	}
+}
+
+func TestValidateRejectsBadWindow(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	body := validYAML + "run_windows:\n  timezone: Mars/Olympus\n  windows:\n    - {start: \"25:00\", end: \"06:00\"}\n"
+	_, err := Load(writeTemp(t, body))
+	if err == nil || !strings.Contains(err.Error(), "timezone") || !strings.Contains(err.Error(), "start") {
+		t.Fatalf("err = %v", err)
+	}
+}
