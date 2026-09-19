@@ -1,0 +1,122 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+const validYAML = `
+agent_id: worker-a
+workroot: ~/hive-work
+jira:
+  base_url: https://example.atlassian.net
+  email: me@example.com
+  jql: 'project = HIVE AND status = "Ready"'
+  fields:
+    agent_id: customfield_10042
+    claimed_at: customfield_10043
+repos:
+  - name: thomasmeadows/HiveDispatch
+    url: git@github.com:thomasmeadows/HiveDispatch.git
+    jira_project: HIVE
+`
+
+func writeTemp(t *testing.T, body string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestLoadAppliesDefaultsAndEnvToken(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HOME", "/home/tester")
+	cfg, err := Load(writeTemp(t, validYAML))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Jira.Token != "secret" {
+		t.Errorf("token = %q, want secret", cfg.Jira.Token)
+	}
+	if cfg.Workroot != "/home/tester/hive-work" {
+		t.Errorf("workroot = %q, want ~ expanded", cfg.Workroot)
+	}
+	if cfg.PollInterval != 60*time.Second {
+		t.Errorf("poll_interval default = %v, want 60s", cfg.PollInterval)
+	}
+	if cfg.HeartbeatInterval != 60*time.Second {
+		t.Errorf("heartbeat_interval default = %v, want 60s", cfg.HeartbeatInterval)
+	}
+	if cfg.ClaimTimeout != 2*time.Hour {
+		t.Errorf("claim_timeout default = %v, want 2h", cfg.ClaimTimeout)
+	}
+	if cfg.Jira.Statuses.Ready != "Ready" || cfg.Jira.Statuses.NeedsHuman != "Needs Human" {
+		t.Errorf("status defaults not applied: %+v", cfg.Jira.Statuses)
+	}
+	if cfg.Repos[0].DefaultBranch != "main" {
+		t.Errorf("default_branch default = %q, want main", cfg.Repos[0].DefaultBranch)
+	}
+}
+
+func TestLoadParsesDurations(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	body := validYAML + "poll_interval: 90s\nclaim_timeout: 3h\n"
+	cfg, err := Load(writeTemp(t, body))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.PollInterval != 90*time.Second || cfg.ClaimTimeout != 3*time.Hour {
+		t.Errorf("durations = %v/%v", cfg.PollInterval, cfg.ClaimTimeout)
+	}
+}
+
+func TestLoadRejectsMissingToken(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "")
+	_, err := Load(writeTemp(t, validYAML))
+	if err == nil || !strings.Contains(err.Error(), "HIVE_JIRA_TOKEN") {
+		t.Fatalf("err = %v, want mention of HIVE_JIRA_TOKEN", err)
+	}
+}
+
+func TestValidateReportsEveryMissingField(t *testing.T) {
+	c := &Config{}
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, want := range []string{"agent_id", "jira.base_url", "jira.email", "jira.jql", "jira.fields.agent_id", "jira.fields.claimed_at", "repos"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
+	}
+}
+
+func TestValidateRejectsClaimTimeoutShorterThanHeartbeat(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	body := validYAML + "heartbeat_interval: 5m\nclaim_timeout: 1m\n"
+	_, err := Load(writeTemp(t, body))
+	if err == nil || !strings.Contains(err.Error(), "claim_timeout") {
+		t.Fatalf("err = %v, want claim_timeout complaint", err)
+	}
+}
+
+func TestValidateSkipsFieldsDuringInit(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_INIT", "1")
+	body := strings.ReplaceAll(validYAML, "    agent_id: customfield_10042\n    claimed_at: customfield_10043\n", "")
+	if _, err := Load(writeTemp(t, body)); err != nil {
+		t.Fatalf("Load during init: %v", err)
+	}
+}
+
+func TestLoadMissingFile(t *testing.T) {
+	_, err := Load(filepath.Join(t.TempDir(), "nope.yaml"))
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+}
