@@ -13,6 +13,7 @@ import (
 type Workspace struct {
 	Path   string
 	Branch string
+	Base   string // ref the branch was cut from, e.g. "origin/main"
 }
 
 // Workspaces prepares and finalizes ticket workspaces.

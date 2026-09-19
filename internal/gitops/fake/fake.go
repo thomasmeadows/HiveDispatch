@@ -29,12 +29,12 @@ func New(root string) *Workspaces {
 }
 
 // Prepare creates <root>/<key> and returns it.
-func (w *Workspaces) Prepare(_ context.Context, _ config.RepoConfig, key string) (gitops.Workspace, error) {
+func (w *Workspaces) Prepare(_ context.Context, repo config.RepoConfig, key string) (gitops.Workspace, error) {
 	dir := filepath.Join(w.Root, key)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return gitops.Workspace{}, err
 	}
-	return gitops.Workspace{Path: dir, Branch: gitops.BranchName(key)}, nil
+	return gitops.Workspace{Path: dir, Branch: gitops.BranchName(key), Base: "origin/" + repo.DefaultBranch}, nil
 }
 
 // Finalize records the call and reports Changed for the ticket.
