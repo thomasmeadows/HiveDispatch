@@ -1,9 +1,8 @@
-// Package claudecode adapts the Claude Code CLI to executor.Executor.
-//
-// The CLI is run headless with --output-format stream-json. The orchestrator
-// never interprets the session id it stores as the resume token; it only
-// hands it back with --resume.
-package claudecode
+// Package claudecli runs the Claude Code CLI headless and parses its
+// stream-json output. Both the executor and the triager build on it, so
+// process supervision (process-group kill, step budget, timeout, bounded
+// logs) lives in one place.
+package claudecli
 
 import (
 	"encoding/json"
@@ -12,12 +11,14 @@ import (
 	"time"
 )
 
-type rateLimit struct {
+// RateLimit is the last rate_limit_event seen on the stream.
+type RateLimit struct {
 	Status   string
 	ResetsAt time.Time
 }
 
-type resultMsg struct {
+// ResultMsg is the final "result" message of a headless run.
+type ResultMsg struct {
 	Subtype          string          `json:"subtype"`
 	IsError          bool            `json:"is_error"`
 	Result           string          `json:"result"`
@@ -30,26 +31,29 @@ type resultMsg struct {
 	TotalCostUSD     float64         `json:"total_cost_usd"`
 }
 
-// transcript is what the parser learned from a run.
-type transcript struct {
+// Transcript is what the parser learned from a run.
+type Transcript struct {
 	SessionID   string
 	ToolUses    int
 	EditedFiles []string
-	RateLimit   *rateLimit
-	Result      *resultMsg
+	RateLimit   *RateLimit
+	Result      *ResultMsg
 	Lines       int
 }
 
-type streamParser struct {
+// Parser consumes stream-json lines and accumulates a Transcript.
+type Parser struct {
 	cwd       string // the workspace we ran in
 	initCwd   string // what the CLI reported in its init event
 	onToolUse func(count int)
-	t         transcript
+	t         Transcript
 	edited    map[string]bool
 }
 
-func newStreamParser(cwd string, onToolUse func(int)) *streamParser {
-	return &streamParser{cwd: cwd, onToolUse: onToolUse, edited: map[string]bool{}}
+// NewParser returns a parser that relativises edited paths against cwd and
+// calls onToolUse with the running count after every tool call.
+func NewParser(cwd string, onToolUse func(int)) *Parser {
+	return &Parser{cwd: cwd, onToolUse: onToolUse, edited: map[string]bool{}}
 }
 
 // editingTools are the built-in tools whose input names a file they change.
@@ -78,7 +82,7 @@ type contentBlock struct {
 }
 
 // Line consumes one line of output. Non-JSON lines are counted and ignored.
-func (p *streamParser) Line(raw []byte) {
+func (p *Parser) Line(raw []byte) {
 	p.t.Lines++
 	raw = []byte(strings.TrimSpace(string(raw)))
 	if len(raw) == 0 || raw[0] != '{' {
@@ -121,10 +125,10 @@ func (p *streamParser) Line(raw []byte) {
 		}
 	case "rate_limit_event":
 		if env.RateLimitInfo != nil {
-			p.t.RateLimit = &rateLimit{Status: env.RateLimitInfo.Status, ResetsAt: time.Unix(env.RateLimitInfo.ResetsAt, 0)}
+			p.t.RateLimit = &RateLimit{Status: env.RateLimitInfo.Status, ResetsAt: time.Unix(env.RateLimitInfo.ResetsAt, 0)}
 		}
 	case "result":
-		var r resultMsg
+		var r ResultMsg
 		if json.Unmarshal(raw, &r) == nil {
 			p.t.Result = &r
 			if r.SessionID != "" {
@@ -134,7 +138,7 @@ func (p *streamParser) Line(raw []byte) {
 	}
 }
 
-func (p *streamParser) addEdited(path string) {
+func (p *Parser) addEdited(path string) {
 	for _, base := range []string{p.cwd, p.initCwd} {
 		if base == "" {
 			continue
@@ -151,6 +155,6 @@ func (p *streamParser) addEdited(path string) {
 }
 
 // Transcript returns what has been parsed so far.
-func (p *streamParser) Transcript() transcript {
+func (p *Parser) Transcript() Transcript {
 	return p.t
 }

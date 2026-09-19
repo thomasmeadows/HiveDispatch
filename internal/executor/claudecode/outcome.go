@@ -5,19 +5,12 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/thomasmeadows/hivedispatch/internal/claudecli"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/prompt"
 )
 
 const maxSummary = 4000
-
-// exitInfo describes how the subprocess ended.
-type exitInfo struct {
-	CtxErr      error
-	StepTripped bool
-	ExitErr     error
-	Stderr      string
-}
 
 // parseNeedsInput finds the last HIVE_NEEDS_INPUT: line and returns the
 // question, which runs to the end of the text.
@@ -43,7 +36,7 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-func looksLikeBudget(tr transcript) bool {
+func looksLikeBudget(tr claudecli.Transcript) bool {
 	r := tr.Result
 	if r != nil && r.APIErrorStatus != nil && *r.APIErrorStatus == 429 {
 		return true
@@ -59,7 +52,7 @@ func looksLikeBudget(tr transcript) bool {
 }
 
 // mapOutcome turns what was parsed plus how the process ended into a Result.
-func mapOutcome(tr transcript, exit exitInfo) executor.Result {
+func mapOutcome(tr claudecli.Transcript, exit claudecli.Exit) executor.Result {
 	res := executor.Result{ResumeToken: tr.SessionID, ChangedFiles: tr.EditedFiles}
 	text := ""
 	if tr.Result != nil {

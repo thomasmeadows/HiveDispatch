@@ -1,4 +1,4 @@
-package claudecode
+package claudecli
 
 import (
 	"bufio"
@@ -7,14 +7,14 @@ import (
 	"time"
 )
 
-func parseFixture(t *testing.T, name, cwd string, onToolUse func(int)) transcript {
+func parseFixture(t *testing.T, name, cwd string, onToolUse func(int)) Transcript {
 	t.Helper()
-	f, err := os.Open("testdata/" + name)
+	f, err := os.Open("clitest/" + name)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = f.Close() }()
-	p := newStreamParser(cwd, onToolUse)
+	p := NewParser(cwd, onToolUse)
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	for sc.Scan() {
@@ -60,11 +60,11 @@ func TestParseErrorTranscriptCollectsEditsAndRateLimit(t *testing.T) {
 }
 
 func TestParseIgnoresGarbage(t *testing.T) {
-	p := newStreamParser("/w", nil)
+	p := NewParser("/w", nil)
 	p.Line([]byte("Warning: no stdin data received"))
 	p.Line([]byte(""))
 	p.Line([]byte(`{"type":"unknown_future_event"}`))
 	if tr := p.Transcript(); tr.Result != nil || tr.Lines != 3 {
-		t.Errorf("transcript = %+v", tr)
+		t.Errorf("Transcript = %+v", tr)
 	}
 }

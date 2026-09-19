@@ -4,6 +4,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 [ -n "$FAKE_CLAUDE_ARGS_FILE" ] && printf '%s\n' "$@" > "$FAKE_CLAUDE_ARGS_FILE"
 [ -n "$FAKE_CLAUDE_STDIN_FILE" ] && cat > "$FAKE_CLAUDE_STDIN_FILE"
 case "$FAKE_CLAUDE_MODE" in
+  fixture)    cat "$FAKE_CLAUDE_FIXTURE" ;;
   success)    cat "$here/stream_success.jsonl" ;;
   error)      cat "$here/stream_error.jsonl"; exit 1 ;;
   needsinput) cat "$here/stream_needsinput.jsonl" ;;
