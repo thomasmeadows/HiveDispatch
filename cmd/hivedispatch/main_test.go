@@ -73,3 +73,10 @@ func TestInitWithoutJiraFlag(t *testing.T) {
 		t.Fatalf("exit %d, want 2", code)
 	}
 }
+
+func TestRunRequiresConfig(t *testing.T) {
+	var out, errb bytes.Buffer
+	if code := run([]string{"run", "-config", filepath.Join(t.TempDir(), "missing.yaml")}, &out, &errb); code != 1 {
+		t.Fatalf("exit %d, want 1: %s", code, errb.String())
+	}
+}

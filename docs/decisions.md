@@ -53,3 +53,19 @@ Decided: the Claude Code adapter implements `Plan()`; the single-worker dispatch
 ## 2026-09-19 — Headless default is `dontAsk` plus an allowlist
 
 Decided: default `--permission-mode dontAsk` with tools from repo config. Rejected: `bypassPermissions` as default. Why: an unattended agent with the user's git credentials should fail closed. `bypassPermissions` is an explicit opt-in for sandboxed runs.
+
+## 2026-09-19 — Dispatcher comments carry a marker
+
+Decided: every comment the dispatcher posts starts with `[HiveDispatch]`. Why: with a personal API token the dispatcher's comments are authored by the same Jira user as the human's, so author identity cannot separate questions from answers. The marker can.
+
+## 2026-09-19 — Humans move a ticket back to Ready after answering
+
+Decided: after `needs_info`, the ticket sits in Needs Info until a human answers and transitions it back to Ready; the next poll detects the reply and resumes. Rejected: polling Needs Info tickets for new comments. Why: an explicit transition is a deliberate "go" from a phone, and it keeps the trigger JQL the single definition of "work I may take". Automatic resume can be added later without changing the resume path.
+
+## 2026-09-19 — Two-context shutdown: drain, then interrupt
+
+Decided: the first Ctrl-C stops polling and lets the run in flight finish; the second cancels the run, and cleanup (safety commit, comment, release) still happens on a background context. Why: a safe stop beats a punctual one, but an operator must always be able to stop a runaway run without leaving a claimed ticket behind.
+
+## 2026-09-19 — Dispatcher returns OutcomeFailed with an error on PR failure
+
+Decided: if the branch pushed but the PR could not be opened, the ticket returns to Ready with a comment and the call returns an error. Why: the branch exists, so the next attempt finds or opens the PR without redoing the work; Ready is the only state the poller will pick up again.

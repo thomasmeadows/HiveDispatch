@@ -4,7 +4,7 @@ Ticket-driven orchestration for autonomous coding agents.
 
 HiveDispatch turns tickets into pull requests. It polls an issue tracker, triages each ticket, claims it, branches, runs a coding-agent CLI (Claude Code first) in an isolated worktree, commits, opens a PR, and reports back on the ticket — so steering development work needs nothing but a ticket and a comment thread, including from a phone.
 
-**Status: pre-alpha.** Phase 0–1 of the MVP (config, CLI, Jira tracker) is under construction. Nothing dispatches yet.
+**Status: pre-alpha.** Phases 0–2 of the MVP are done: config, CLI, Jira tracker, and the dispatcher loop running against a fake executor. `hivedispatch run` claims tickets, comments, and transitions them but does not yet run a coding agent.
 
 ## What it is not
 
