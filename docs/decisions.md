@@ -85,3 +85,23 @@ Decided: the dispatcher's own commits (`hive: checkpoint`, `hive: WIP (...)`, st
 ## 2026-09-19 — State-branch conflict check is on the files we push
 
 Decided: when a push is rejected, the store fetches and compares the incoming diff against the files it is about to push; any overlap is `ErrClaimInvariant`, otherwise it rebases. Discovered in testing: this catches a second worker's *first* write to a file another worker already created, not only later overwrites — earlier than the spec's wording implied, which is the safer side.
+
+## 2026-09-19 — Never pass --bare to Claude Code
+
+Decided: the adapter never uses `--bare`. Discovered: on 2.1.278, `--bare` skips loading stored credentials, so headless runs fail with "Not logged in". Hooks and plugins are constrained instead through the repo's tool allowlist.
+
+## 2026-09-19 — Rate-limit events are the budget signal
+
+Decided: `rate_limit_event` messages on the stream (status, resetsAt, per-window utilization) are the primary budget signal; `api_error_status == 429` and "usage limit" text are fallbacks. The spec assumed subscription plans expose no quota data; the stream does. The reset time goes into the recovery comment, and the utilization is the input for a later pre-flight check.
+
+## 2026-09-19 — Per-repo policy is read by the executor from the worktree
+
+Decided: the Claude Code adapter reads `.hivedispatch.yaml` from the ticket worktree at run time. Rejected: threading repo config through `executor.Task`. Why: keeps the executor contract unchanged and the policy versioned with the code it governs — the branch the agent works on carries the rules it works under.
+
+## 2026-09-19 — Plan() prefers structured_output
+
+Decided: with `--json-schema`, Claude Code returns both `structured_output` (object) and `result` (JSON string); the adapter uses the former and falls back to parsing the latter. Verified against 2.1.278.
+
+## 2026-09-19 — Edited paths are relativised against the init cwd as well as the workspace
+
+Decided: the stream parser relativises `Edit`/`Write` paths against both the workspace it was given and the `cwd` the CLI reported in its `init` event. Why: the two normally agree, but recorded transcripts and symlinked work roots do not, and `ChangedFiles` should be repo-relative either way.

@@ -92,3 +92,26 @@ The worker runs with your git credentials and can push any branch your credentia
 hivedispatch check -jira
 hivedispatch run -once -placeholder   # takes one Ready ticket to a PR with a placeholder commit
 ```
+
+## 8. Claude Code
+
+The worker shells out to the `claude` CLI. Log in once as the user that runs the worker (`claude` then `/login`) — headless runs reuse the stored credentials. Do not set `--bare` anywhere; it skips credential loading.
+
+Per-repo policy lives in `.hivedispatch.yaml` at the repository root:
+
+```yaml
+executor:
+  model: sonnet                 # optional; default is the CLI's default
+  permission_mode: dontAsk      # acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
+  tools: [default]              # built-in tool set; use a list to restrict
+  allowed_tools:                # pre-approved patterns for dontAsk mode
+    - Edit
+    - "Bash(go test:*)"
+  max_budget_usd: 5             # optional; API-billing accounts only
+guidance: |
+  Free text appended to every prompt for this repo.
+```
+
+`dontAsk` fails closed: anything not in `allowed_tools` is denied and the agent must work around it or ask. `bypassPermissions` is for sandboxed runs only.
+
+The run log for each attempt is saved to the state branch under `logs/<KEY>/<timestamp>.log`.
