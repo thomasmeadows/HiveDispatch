@@ -1,0 +1,6 @@
+/bin/
+/dist/
+*.test
+*.out
+coverage.html
+.hivedispatch.local.yaml
