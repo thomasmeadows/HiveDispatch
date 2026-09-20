@@ -4,10 +4,10 @@
   "agent": "worker-1",
   "branch": "hive/GITHUB-8",
   "attempts": 1,
-  "phase": "pr_opened",
+  "phase": "done",
   "lastStatus": "completed",
   "resumeToken": "cb7de223-5e43-4120-ae08-3d4a6a3cb28c",
   "prUrl": "https://github.com/thomasmeadows/HiveDispatch/pull/9",
   "questionAt": "0001-01-01T00:00:00Z",
-  "updatedAt": "2026-09-20T07:19:48.004738649Z"
+  "updatedAt": "2026-09-20T07:19:51.54182602Z"
 }
