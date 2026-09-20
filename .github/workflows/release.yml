@@ -1,0 +1,40 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: linux,  goarch: amd64 }
+          - { goos: linux,  goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: |
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+            -o hivedispatch-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/hivedispatch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hivedispatch-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: hivedispatch-${{ matrix.goos }}-${{ matrix.goarch }}
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: hivedispatch-*
+          generate_release_notes: true

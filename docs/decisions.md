@@ -143,3 +143,11 @@ Decided: the dispatcher logs one line per lifecycle step of a ticket it works �
 ## 2026-09-20 — The ticket thread is the review channel (verified)
 
 PR #2 failed lint in CI. A comment on the ticket naming the failures, plus moving it back to Ready, made the worker re-run the ticket with `--resume` on the stored session: the agent fixed the three errcheck findings in context and pushed; the PR was merged. Decided: keep the resume token on completed runs (not only after needs_info) so a ticket can be iterated from its thread without re-explaining. Rejected for now: watching PR check runs and commenting automatically — the manual loop works and automating it belongs to the Review capability on the roadmap.
+
+## 2026-09-20 — Retention ages raw logs by mtime; events are never pruned
+
+Decided: `retention_days` (default 30) removes raw executor logs older than the cutoff and run records at phase `done` not updated since; `events.jsonl` stays as the audit trail. git does not preserve mtimes, so on a fresh clone every log looks new and is kept — the safe side of a retention error. Rejected: dating logs from their filenames (fragile) or pruning events (destroys the "what did the swarm do" answer).
+
+## 2026-09-20 — status reads local state; once bypasses the queue by design
+
+`status` opens the state stores and nothing else: no Jira call, no token discovery, no executor, so it is safe to run anywhere and answers from the last push. `once KEY` deliberately ignores the trigger JQL and run windows — it is the operator saying "this one, now" — but still runs the Jira preflight and the normal claim protocol, so it cannot collide with a running worker.

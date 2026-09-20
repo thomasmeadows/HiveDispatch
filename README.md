@@ -4,7 +4,7 @@ Ticket-driven orchestration for autonomous coding agents.
 
 HiveDispatch turns tickets into pull requests. It polls an issue tracker, triages each ticket, claims it, branches, runs a coding-agent CLI (Claude Code first) in an isolated worktree, commits, opens a PR, and reports back on the ticket — so steering development work needs nothing but a ticket and a comment thread, including from a phone.
 
-**Status: alpha.** The MVP loop is complete: a Jira ticket is triaged by Claude Code (dispatch / ask / reject), claimed, implemented by Claude Code in an isolated worktree, pushed, and opened as a GitHub PR — with questions posted back to the ticket and the run resumed when a human answers.
+**v0.1.0 — alpha.** The single-worker MVP is complete and has run end to end on a real Jira project, GitHub repository, and Claude Code — including this repository's own tickets: a Jira ticket is triaged by Claude Code (dispatch / ask / reject), claimed, implemented by Claude Code in an isolated worktree, pushed, and opened as a GitHub PR — with questions posted back to the ticket and the run resumed when a human answers.
 
 ## How a ticket flows
 
@@ -46,9 +46,11 @@ hivedispatch check -jira          # verifies Jira, reports the GitHub token sour
 
 hivedispatch run -once -executor fake -placeholder   # dry run: ticket → branch → PR, no agent
 hivedispatch run                                     # the real thing
+hivedispatch once SCRUM-42                           # drive one ticket by hand
+hivedispatch status                                  # what has run, from the state branch
 ```
 
-Every step's prerequisites are spelled out in [`docs/setup.md`](docs/setup.md).
+Prebuilt binaries for Linux and macOS are on the [releases page](https://github.com/thomasmeadows/HiveDispatch/releases). Every step's prerequisites are in [`docs/setup.md`](docs/setup.md); every key in [`docs/config.md`](docs/config.md).
 
 ## License
 
