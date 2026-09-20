@@ -24,7 +24,7 @@ HiveDispatch turns tickets into pull requests. It polls an issue tracker, triage
 
 ## Design
 
-Read [`docs/design-spec.md`](docs/design-spec.md) for the architecture and [`docs/decisions.md`](docs/decisions.md) for every choice made along the way and the alternatives rejected.
+Read [`docs/design-spec.md`](docs/design-spec.md) for the architecture and [`docs/decisions.md`](docs/decisions.md) for every choice made along the way and the alternatives rejected. To build and test the project locally, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 The control plane is deterministic. Model discretion is confined to two places: triage (is this ticket worth attempting, and how?) and code generation inside the executor. Everything between — polling, claiming, branching, reporting — is ordinary code with ordinary failure modes.
 
