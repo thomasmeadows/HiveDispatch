@@ -4,7 +4,9 @@
   "agent": "worker-1",
   "branch": "hive/GITHUB-8",
   "attempts": 1,
-  "phase": "working",
+  "phase": "pushed",
+  "lastStatus": "completed",
+  "resumeToken": "cb7de223-5e43-4120-ae08-3d4a6a3cb28c",
   "questionAt": "0001-01-01T00:00:00Z",
-  "updatedAt": "2026-09-20T07:07:27.690412135Z"
+  "updatedAt": "2026-09-20T07:19:44.881864232Z"
 }
