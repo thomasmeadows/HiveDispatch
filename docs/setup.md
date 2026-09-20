@@ -41,7 +41,9 @@ which adds both fields (if missing) and puts them on the default screen so they 
 
 **Manual alternative:** Settings → Issues → Custom fields → Create a *Text field (single line)* named `HiveDispatch Agent` and a *Date time picker* named `HiveDispatch Claimed At`. Then add both to the edit screen of every project HiveDispatch works in. If a claim fails with "Field cannot be set. It is not on the appropriate screen", this step was missed.
 
-**Team-managed projects** manage fields per project: add the two fields under Project settings → Issue types.
+**Team-managed projects** (Jira calls them "next-gen"; `hivedispatch check -jira` labels them) keep their own field list per issue type, and there is no API to attach a global field to them. After `init -jira`, open the project → **Project settings → Issue types**, pick each issue type HiveDispatch should handle (Task, Story, …), and in the *Fields* panel search for "HiveDispatch" and add both **HiveDispatch Agent** and **HiveDispatch Claimed At**. `check -jira` verifies the fields are editable on a real issue and tells you if this step is still missing.
+
+**Duplicate fields.** If `check -jira` warns that several fields share a claim-field name, an earlier version created duplicates; the worker uses the lowest id. Delete the others under Settings → Issues → Custom fields (they go to the trash and can be restored).
 
 ## 3. Workflow statuses
 
@@ -49,7 +51,11 @@ Ready · In Progress · Needs Info · In Review · Needs Human
 
 Any names work; map them under `jira.statuses`. The workflow must allow transitions between them from every state HiveDispatch uses (Ready → In Progress, In Progress → Needs Info/In Review/Needs Human/Ready, Needs Info → Ready). The simplest workflow allows all transitions.
 
-## 4. Trigger query
+## 4. Project key
+
+`repos[].jira_project` is the Jira **project key** — the letters before the dash in ticket keys (`SCRUM` for `SCRUM-4`). Tickets in that project are dispatched into that repository. `check -jira` lists the keys on your site if the configured one does not exist.
+
+## 4b. Trigger query
 
 `jira.jql` selects what HiveDispatch may work on, e.g.
 

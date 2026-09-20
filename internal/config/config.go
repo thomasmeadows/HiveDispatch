@@ -9,6 +9,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -105,6 +106,10 @@ type WindowConfig struct {
 	End   string   `yaml:"end"`   // HH:MM, exclusive
 }
 
+// projectKeyRe matches Jira project keys: letters first, then letters,
+// digits or underscores.
+var projectKeyRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
+
 func (c *Config) applyDefaults() {
 	if c.PollInterval == 0 {
 		c.PollInterval = 60 * time.Second
@@ -200,6 +205,8 @@ func (c *Config) Validate() error {
 		placeholder(r.URL, fmt.Sprintf("repos[%d].url", i))
 		if r.JiraProject == "KEY" {
 			problems = append(problems, fmt.Sprintf("repos[%d].jira_project still has the starter placeholder KEY — use your Jira project key", i))
+		} else if r.JiraProject != "" && !projectKeyRe.MatchString(r.JiraProject) {
+			problems = append(problems, fmt.Sprintf("repos[%d].jira_project %q is not a Jira project key — it is the letters before the dash in ticket keys, e.g. SCRUM for SCRUM-4", i, r.JiraProject))
 		}
 	}
 	if c.Executor != "" && c.Executor != "claude" && c.Executor != "fake" {

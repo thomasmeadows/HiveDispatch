@@ -125,3 +125,7 @@ Decided: the PR token is looked up as `HIVE_GITHUB_TOKEN` → `gh auth token` �
 ## 2026-09-19 — Claim field ids are resolved by name
 
 Decided: `jira.fields.*` are optional; at startup the worker looks up "HiveDispatch Agent" and "HiveDispatch Claimed At" by name and uses their ids. Rejected: requiring the user to paste `customfield_NNNNN` ids after `init -jira`. Why: the ids are an API detail with no meaning to a person setting the tool up; the first-run feedback was that the field was unexplained. Explicit ids remain as an override for renamed fields or multiple sites.
+
+## 2026-09-19 — Field listing uses /field/search; check verifies editability
+
+Discovered on the first live run: `GET /rest/api/3/field` did not return the freshly created claim fields at all (they appeared only in `GET /rest/api/3/field/search`), so `init -jira` created a second pair and `run` could not find any. Decided: all field listing goes through `/field/search?type=custom` with pagination; `check -jira` warns about duplicate names and uses the lowest id. Also discovered: on a team-managed project, globally created fields are not editable on issues until added to the project's issue types by hand, and there is no public API for that. Decided: `check -jira` reads `editmeta` on a real issue and prints the exact click path when the fields are not editable, rather than letting the first claim fail at run time. `check` also verifies `repos[].jira_project` against the site's project keys, because the first live config had `1` where `SCRUM` was needed.

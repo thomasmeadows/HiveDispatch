@@ -102,17 +102,35 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	rep, err := client.Check(context.Background())
+	var projects []string
+	for _, r := range cfg.Repos {
+		projects = append(projects, r.JiraProject)
+	}
+	rep, err := client.Check(context.Background(), projects)
 	if err != nil {
 		fmt.Fprintln(stderr, "jira check failed:", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "jira ok: authenticated as %s; trigger JQL matches %d ticket(s)\n", rep.User, rep.SampleTickets)
+	for _, p := range rep.UnknownProjects {
+		fmt.Fprintf(stderr, "repos: jira_project %q does not exist on this site; projects here: %s\n", p, strings.Join(rep.Projects, ", "))
+	}
 	for _, f := range rep.MissingFields {
 		fmt.Fprintf(stderr, "missing custom field: %s (run `hivedispatch init -jira`)\n", f)
 	}
+	for _, d := range rep.DuplicateFields {
+		fmt.Fprintf(stderr, "warning: several custom fields share a claim-field name (%s); using the lowest id — delete the others in Jira: Settings → Issues → Custom fields\n", d)
+	}
 	for _, s := range rep.MissingStatuses {
 		fmt.Fprintf(stderr, "missing workflow status: %q (see docs/setup.md)\n", s)
+	}
+	switch {
+	case rep.NotEditableOn != "":
+		fmt.Fprintf(stderr, "claim fields exist but cannot be set on %s.\n  Team-managed project: Project settings → Issue types → each type → Fields → add \"%s\" and \"%s\".\n  Company-managed project: add both fields to the project's edit screen.\n", rep.NotEditableOn, jira.FieldNameAgent, jira.FieldNameClaimedAt)
+	case rep.SampleIssue != "":
+		fmt.Fprintf(stdout, "claim fields are editable (checked on %s)\n", rep.SampleIssue)
+	default:
+		fmt.Fprintln(stdout, "no issue found to verify the claim fields are editable; create one in the project and run check again")
 	}
 	if !rep.OK() {
 		return 1

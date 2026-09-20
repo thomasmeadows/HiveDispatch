@@ -247,3 +247,12 @@ func TestStarterConfigIsRejectedUntilEdited(t *testing.T) {
 		t.Fatalf("edited starter should validate: %v", err)
 	}
 }
+
+func TestValidateRejectsNonKeyJiraProject(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	body := strings.ReplaceAll(validYAML, "jira_project: HIVE", "jira_project: 1")
+	_, err := Load(writeTemp(t, body))
+	if err == nil || !strings.Contains(err.Error(), "SCRUM-4") {
+		t.Fatalf("err = %v, want a hint with an example key", err)
+	}
+}

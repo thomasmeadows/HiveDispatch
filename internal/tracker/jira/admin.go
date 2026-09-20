@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 )
 
@@ -18,14 +19,19 @@ const (
 // CheckReport is the result of a live configuration check.
 type CheckReport struct {
 	User            string
-	MissingFields   []string
+	MissingFields   []string // names (when resolving by name) or ids (when configured) not found
+	DuplicateFields []string // "name: id, id" where more than one field carries a claim-field name
 	MissingStatuses []string
-	SampleTickets   int
+	SampleTickets   int      // tickets matched by the trigger JQL
+	SampleIssue     string   // issue used to verify the claim fields are editable
+	NotEditableOn   string   // SampleIssue when the claim fields cannot be set on it
+	Projects        []string // "KEY (team-managed)" for every project on the site
+	UnknownProjects []string // configured project keys that do not exist
 }
 
-// OK reports whether nothing is missing.
+// OK reports whether nothing blocks a run.
 func (r CheckReport) OK() bool {
-	return len(r.MissingFields) == 0 && len(r.MissingStatuses) == 0
+	return len(r.MissingFields) == 0 && len(r.MissingStatuses) == 0 && r.NotEditableOn == "" && len(r.UnknownProjects) == 0
 }
 
 type fieldJSON struct {
@@ -33,9 +39,88 @@ type fieldJSON struct {
 	Name string `json:"name"`
 }
 
-// Check verifies credentials, custom field IDs, status names, and that the
-// trigger JQL runs. It performs only reads.
-func (c *Client) Check(ctx context.Context) (CheckReport, error) {
+// listCustomFields returns every custom field on the site.
+//
+// It uses /field/search rather than /field: on some sites /field omits
+// custom fields that are not on a company-managed screen, which made
+// freshly created claim fields invisible.
+func (c *Client) listCustomFields(ctx context.Context) ([]fieldJSON, error) {
+	var out []fieldJSON
+	for start := 0; ; {
+		q := url.Values{"type": {"custom"}, "startAt": {fmt.Sprint(start)}, "maxResults": {"100"}}
+		var page struct {
+			Values []fieldJSON `json:"values"`
+			IsLast bool        `json:"isLast"`
+			Total  int         `json:"total"`
+		}
+		if err := c.do(ctx, http.MethodGet, "/rest/api/3/field/search?"+q.Encode(), nil, &page); err != nil {
+			return nil, fmt.Errorf("list fields: %w", err)
+		}
+		out = append(out, page.Values...)
+		start += len(page.Values)
+		if page.IsLast || len(page.Values) == 0 || start >= page.Total {
+			return out, nil
+		}
+	}
+}
+
+// byName groups custom field ids by name, lowest id first.
+func byName(fields []fieldJSON) map[string][]string {
+	m := map[string][]string{}
+	for _, f := range fields {
+		m[f.Name] = append(m[f.Name], f.ID)
+	}
+	for _, ids := range m {
+		sort.Strings(ids)
+	}
+	return m
+}
+
+// resolve fills empty claim field ids from names. It returns the names
+// that could not be found and the names that matched several fields.
+func (c *Client) resolve(fields []fieldJSON) (missing, duplicates []string) {
+	names := byName(fields)
+	pick := func(id *string, name string) {
+		if *id != "" {
+			return
+		}
+		ids := names[name]
+		switch {
+		case len(ids) == 0:
+			missing = append(missing, name)
+		default:
+			if len(ids) > 1 {
+				duplicates = append(duplicates, name+": "+strings.Join(ids, ", "))
+			}
+			*id = ids[0]
+		}
+	}
+	pick(&c.cfg.Fields.AgentID, FieldNameAgent)
+	pick(&c.cfg.Fields.ClaimedAt, FieldNameClaimedAt)
+	return missing, duplicates
+}
+
+// ResolveFields fills in any claim field id the config left empty by
+// looking the field up by name. Explicit ids are kept.
+func (c *Client) ResolveFields(ctx context.Context) error {
+	if c.cfg.Fields.AgentID != "" && c.cfg.Fields.ClaimedAt != "" {
+		return nil
+	}
+	fields, err := c.listCustomFields(ctx)
+	if err != nil {
+		return err
+	}
+	if missing, _ := c.resolve(fields); len(missing) > 0 {
+		return fmt.Errorf("jira: custom field(s) %q not found — run `hivedispatch init -jira` to create them, or set jira.fields to their customfield_NNNNN ids", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// Check verifies credentials, claim fields (existence and editability),
+// status names, and that the trigger JQL runs. It performs only reads.
+// projects are the Jira project keys HiveDispatch dispatches into; they
+// supply a sample issue when the trigger JQL matches nothing.
+func (c *Client) Check(ctx context.Context, projects []string) (CheckReport, error) {
 	var rep CheckReport
 	var me struct {
 		DisplayName string `json:"displayName"`
@@ -45,27 +130,22 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 	}
 	rep.User = me.DisplayName
 
-	fields, err := c.listFields(ctx)
+	fields, err := c.listCustomFields(ctx)
 	if err != nil {
 		return rep, err
 	}
 	have := map[string]bool{}
-	byName := map[string]string{}
 	for _, f := range fields {
 		have[f.ID] = true
-		byName[f.Name] = f.ID
 	}
-	// Unset ids are resolved by name; set ids must exist.
-	for _, want := range []struct{ id, name string }{{c.cfg.Fields.AgentID, FieldNameAgent}, {c.cfg.Fields.ClaimedAt, FieldNameClaimedAt}} {
-		switch {
-		case want.id == "":
-			if _, ok := byName[want.name]; !ok {
-				rep.MissingFields = append(rep.MissingFields, want.name)
-			}
-		case !have[want.id]:
-			rep.MissingFields = append(rep.MissingFields, want.id)
+	for _, id := range []string{c.cfg.Fields.AgentID, c.cfg.Fields.ClaimedAt} {
+		if id != "" && !have[id] {
+			rep.MissingFields = append(rep.MissingFields, id)
 		}
 	}
+	missing, dups := c.resolve(fields)
+	rep.MissingFields = append(rep.MissingFields, missing...)
+	rep.DuplicateFields = dups
 
 	var statuses []struct {
 		Name string `json:"name"`
@@ -87,48 +167,90 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 		}
 	}
 
+	var projs []struct {
+		Key   string `json:"key"`
+		Style string `json:"style"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/rest/api/3/project", nil, &projs); err != nil {
+		return rep, fmt.Errorf("list projects: %w", err)
+	}
+	known := map[string]bool{}
+	for _, p := range projs {
+		known[strings.ToUpper(p.Key)] = true
+		label := p.Key
+		if p.Style == "next-gen" {
+			label += " (team-managed)"
+		}
+		rep.Projects = append(rep.Projects, label)
+	}
+	var valid []string
+	for _, p := range projects {
+		if known[strings.ToUpper(p)] {
+			valid = append(valid, p)
+		} else {
+			rep.UnknownProjects = append(rep.UnknownProjects, p)
+		}
+	}
+	projects = valid
+
 	tickets, err := c.Poll(ctx)
 	if err != nil {
 		return rep, fmt.Errorf("trigger JQL failed: %w", err)
 	}
 	rep.SampleTickets = len(tickets)
+	sample := ""
+	if len(tickets) > 0 {
+		sample = tickets[0].Key
+	} else if len(projects) > 0 {
+		sample, _ = c.anyIssue(ctx, projects)
+	}
+	if sample != "" && len(rep.MissingFields) == 0 {
+		rep.SampleIssue = sample
+		editable, err := c.editable(ctx, sample)
+		if err != nil {
+			return rep, err
+		}
+		if !editable[c.cfg.Fields.AgentID] || !editable[c.cfg.Fields.ClaimedAt] {
+			rep.NotEditableOn = sample
+		}
+	}
 	return rep, nil
 }
 
-// ResolveFields fills in any claim field ID that the config left empty by
-// looking the field up by the name EnsureFields gives it. Explicit IDs in
-// the config are kept, which allows renamed fields or several sites.
-func (c *Client) ResolveFields(ctx context.Context) error {
-	if c.cfg.Fields.AgentID != "" && c.cfg.Fields.ClaimedAt != "" {
-		return nil
+// anyIssue returns the most recently created issue in projects, or "".
+func (c *Client) anyIssue(ctx context.Context, projects []string) (string, error) {
+	quoted := make([]string, len(projects))
+	for i, p := range projects {
+		quoted[i] = `"` + p + `"`
 	}
-	fields, err := c.listFields(ctx)
-	if err != nil {
-		return err
+	body := map[string]any{
+		"jql":        "project in (" + strings.Join(quoted, ", ") + ") ORDER BY created DESC",
+		"fields":     []string{"summary"},
+		"maxResults": 1,
 	}
-	byName := map[string]string{}
-	for _, f := range fields {
-		byName[f.Name] = f.ID
+	var resp searchResponse
+	if err := c.do(ctx, http.MethodPost, "/rest/api/3/search/jql", body, &resp); err != nil {
+		return "", err
 	}
-	var missing []string
-	if c.cfg.Fields.AgentID == "" {
-		if id, ok := byName[FieldNameAgent]; ok {
-			c.cfg.Fields.AgentID = id
-		} else {
-			missing = append(missing, FieldNameAgent)
-		}
+	if len(resp.Issues) == 0 {
+		return "", nil
 	}
-	if c.cfg.Fields.ClaimedAt == "" {
-		if id, ok := byName[FieldNameClaimedAt]; ok {
-			c.cfg.Fields.ClaimedAt = id
-		} else {
-			missing = append(missing, FieldNameClaimedAt)
-		}
+	return resp.Issues[0].Key, nil
+}
+
+// editable returns the set of field ids that can be set on the issue.
+func (c *Client) editable(ctx context.Context, key string) (map[string]bool, error) {
+	var meta struct {
+		Fields map[string]any `json:"fields"`
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("jira: custom field(s) %q not found — run `hivedispatch init -jira` to create them, or set jira.fields to their customfield_NNNNN ids", strings.Join(missing, ", "))
+	if err := c.do(ctx, http.MethodGet, issuePath(key, "/editmeta"), nil, &meta); err != nil {
+		return nil, fmt.Errorf("editmeta %s: %w", key, err)
 	}
-	return nil
+	out := map[string]bool{}
+	for id := range meta.Fields {
+		out[id] = true
+	}
+	return out, nil
 }
 
 // EnsuredFields are the custom field IDs after EnsureFields.
@@ -138,40 +260,31 @@ type EnsuredFields struct {
 }
 
 // EnsureFields creates the two claim custom fields if they do not exist and
-// adds newly created ones to the default screen so they are writable.
+// adds newly created ones to the default screen so they are writable on
+// company-managed projects. Team-managed projects must add the fields to
+// their issue types in the project settings.
 func (c *Client) EnsureFields(ctx context.Context) (EnsuredFields, error) {
-	fields, err := c.listFields(ctx)
+	fields, err := c.listCustomFields(ctx)
 	if err != nil {
 		return EnsuredFields{}, err
 	}
-	byName := map[string]string{}
-	for _, f := range fields {
-		byName[f.Name] = f.ID
-	}
+	names := byName(fields)
 	var out EnsuredFields
-	out.AgentID, err = c.ensureField(ctx, byName, FieldNameAgent,
+	out.AgentID, err = c.ensureField(ctx, names, FieldNameAgent,
 		"com.atlassian.jira.plugin.system.customfieldtypes:textfield",
 		"com.atlassian.jira.plugin.system.customfieldtypes:textsearcher")
 	if err != nil {
 		return out, err
 	}
-	out.ClaimedAt, err = c.ensureField(ctx, byName, FieldNameClaimedAt,
+	out.ClaimedAt, err = c.ensureField(ctx, names, FieldNameClaimedAt,
 		"com.atlassian.jira.plugin.system.customfieldtypes:datetime",
 		"com.atlassian.jira.plugin.system.customfieldtypes:datetimerange")
 	return out, err
 }
 
-func (c *Client) listFields(ctx context.Context) ([]fieldJSON, error) {
-	var fields []fieldJSON
-	if err := c.do(ctx, http.MethodGet, "/rest/api/3/field", nil, &fields); err != nil {
-		return nil, fmt.Errorf("list fields: %w", err)
-	}
-	return fields, nil
-}
-
-func (c *Client) ensureField(ctx context.Context, byName map[string]string, name, typ, searcher string) (string, error) {
-	if id, ok := byName[name]; ok {
-		return id, nil
+func (c *Client) ensureField(ctx context.Context, names map[string][]string, name, typ, searcher string) (string, error) {
+	if ids := names[name]; len(ids) > 0 {
+		return ids[0], nil
 	}
 	var created fieldJSON
 	err := c.do(ctx, http.MethodPost, "/rest/api/3/field", map[string]any{

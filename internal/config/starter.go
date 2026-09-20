@@ -77,7 +77,8 @@ repos:
   - name: yourorg/yourrepo
     # Clone URL your own git credentials can push to (ssh key or credential helper).
     url: git@github.com:yourorg/yourrepo.git
-    # Tickets whose key starts with this project are dispatched into this repo.
+    # The Jira project KEY: the letters before the dash in ticket keys (SCRUM for
+    # SCRUM-4). Tickets in this project are dispatched into this repo.
     jira_project: KEY
     # default_branch: main
 
