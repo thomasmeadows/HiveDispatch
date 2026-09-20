@@ -14,17 +14,28 @@ var starterPlaceholders = []string{"YOURTEAM", "you@example.com", "yourorg", "yo
 // Starter is the commented config written by `hivedispatch init`. Every
 // value that must come from somewhere else says where.
 const Starter = `# HiveDispatch worker configuration.
-# Secrets never go in this file. Export them in the shell that runs the worker:
-#   export HIVE_JIRA_TOKEN=...    # https://id.atlassian.com/manage-profile/security/api-tokens
-#   export HIVE_GITHUB_TOKEN=...  # https://github.com/settings/personal-access-tokens
-#                                 # (fine-grained: Pull requests read/write, Contents read)
+# Secrets never go in this file.
+#
+#   export HIVE_JIRA_TOKEN=...    # required. https://id.atlassian.com/manage-profile/security/api-tokens
+#
+#   GitHub: opening a pull request needs a token even on public repositories
+#   (GitHub does not accept anonymous PR creation). The worker looks, in order, for
+#   HIVE_GITHUB_TOKEN, "gh auth token" (if you use the GitHub CLI), then your git
+#   credential helper for github.com. If none is found it still pushes the branch
+#   and asks you on the ticket to open the PR yourself.
+#   export HIVE_GITHUB_TOKEN=...  # optional. https://github.com/settings/personal-access-tokens
+#                                 # fine-grained: Pull requests read/write, Contents read
+#                                 # classic: repo scope (or public_repo for public repos)
+#
+#   Cloning and pushing use your own git credentials (ssh key or credential helper),
+#   not the token: "git clone <url>" must work non-interactively.
 #
 # Setup order:
 #   1. Fill in agent_id, jira.*, and repos below.
 #   2. export HIVE_JIRA_TOKEN, then run:  hivedispatch init -jira
 #      It creates the two claim fields in Jira and prints their ids; paste them
 #      under jira.fields.
-#   3. export HIVE_GITHUB_TOKEN, then run: hivedispatch check -jira
+#   3. hivedispatch check -jira   (also reports where the GitHub token came from)
 #   4. hivedispatch run -once
 # Full walkthrough: docs/setup.md in the repository.
 

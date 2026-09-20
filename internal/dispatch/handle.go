@@ -168,8 +168,10 @@ func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.
 				d.event(bg, run, "pr_failed", err.Error())
 				return OutcomeFailed, fmt.Errorf("open PR for %s: %w", t.Key, err)
 			}
-			run.PRURL = pr.URL
-			d.setPhase(bg, run, state.PhasePROpened)
+			if pr != nil {
+				run.PRURL = pr.URL
+				d.setPhase(bg, run, state.PhasePROpened)
+			}
 		}
 		d.comment(bg, t.Key, reportCompleted(res, pr, run.Branch, pushed))
 		d.transition(bg, t.Key, tracker.StateInReview)

@@ -19,7 +19,9 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/claudecode"
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
+	"github.com/thomasmeadows/hivedispatch/internal/githost"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
+	"github.com/thomasmeadows/hivedispatch/internal/githost/none"
 	gitws "github.com/thomasmeadows/hivedispatch/internal/gitops/git"
 	"github.com/thomasmeadows/hivedispatch/internal/schedule"
 	"github.com/thomasmeadows/hivedispatch/internal/state"
@@ -87,6 +89,11 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintf(stdout, "config ok: agent %s, %d repo(s), jira %s\n", cfg.AgentID, len(cfg.Repos), cfg.Jira.BaseURL)
+	if _, src := github.DiscoverToken(context.Background(), "github.com"); src != "" {
+		fmt.Fprintf(stdout, "github ok: token from %s\n", src)
+	} else {
+		fmt.Fprintln(stdout, "github: no token found (HIVE_GITHUB_TOKEN, gh auth token, or git credential helper) — branches will be pushed but PRs will not be opened")
+	}
 	if !*live {
 		return 0
 	}
@@ -158,7 +165,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "init failed:", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "jira fields ready. Put this in %s:\n\njira:\n  fields:\n    agent_id: %s\n    claimed_at: %s\n\nThen: export HIVE_GITHUB_TOKEN and run `hivedispatch check -jira`.\n", *cfgPath, ids.AgentID, ids.ClaimedAt)
+	fmt.Fprintf(stdout, "jira fields ready. Put this in %s:\n\njira:\n  fields:\n    agent_id: %s\n    claimed_at: %s\n\nThen run `hivedispatch check -jira`.\n", *cfgPath, ids.AgentID, ids.ClaimedAt)
 	return 0
 }
 
@@ -210,10 +217,17 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		}
 		stores[strings.ToUpper(repo.JiraProject)] = st
 	}
-	host, err := github.New(cfg.GitHub)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
+	var host githost.GitHost = none.Host{}
+	if tok, src := github.DiscoverToken(ctx, "github.com"); src != "" {
+		cfg.GitHub.Token = tok
+		host, err = github.New(cfg.GitHub)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		logger.Info("github token", "source", src)
+	} else {
+		logger.Warn("no GitHub token found; branches will be pushed but pull requests will not be opened")
 	}
 	name := cfg.Executor
 	if *executorFlag != "" {

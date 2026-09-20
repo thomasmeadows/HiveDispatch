@@ -39,8 +39,10 @@ $EDITOR ~/.config/hivedispatch/config.yaml
 export HIVE_JIRA_TOKEN=...        # https://id.atlassian.com/manage-profile/security/api-tokens
 hivedispatch init -jira           # creates the two claim fields in Jira, prints their ids → paste into config
 
-export HIVE_GITHUB_TOKEN=...      # fine-grained PAT: Pull requests read/write, Contents read
-hivedispatch check -jira          # verifies credentials, fields, statuses, and the trigger query
+# GitHub token for opening PRs: HIVE_GITHUB_TOKEN, or `gh auth login`, or your git
+# credential helper — found automatically. Without one, branches are pushed and you
+# open the PR yourself. (GitHub needs auth to open PRs even on public repos.)
+hivedispatch check -jira          # verifies Jira, reports the GitHub token source
 
 hivedispatch run -once -executor fake -placeholder   # dry run: ticket → branch → PR, no agent
 hivedispatch run                                     # the real thing

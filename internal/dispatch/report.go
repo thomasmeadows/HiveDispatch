@@ -38,7 +38,7 @@ func reportCompleted(res executor.Result, pr *githost.PR, branch string, pushed 
 	case pr != nil:
 		fmt.Fprintf(&sb, "%s Opened %s from branch `%s`.", Marker, pr.URL, branch)
 	case pushed:
-		fmt.Fprintf(&sb, "%s Pushed branch `%s` but could not open a PR.", Marker, branch)
+		fmt.Fprintf(&sb, "%s Pushed branch `%s` but could not open a PR (no GitHub credentials configured) — please open it by hand.", Marker, branch)
 	default:
 		fmt.Fprintf(&sb, "%s Finished with no code changes.", Marker)
 	}

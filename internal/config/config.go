@@ -79,7 +79,7 @@ type TriageConfig struct {
 // user's own credentials.
 type GitHubConfig struct {
 	APIURL string `yaml:"api_url"` // default https://api.github.com
-	Token  string `yaml:"-"`       // from HIVE_GITHUB_TOKEN
+	Token  string `yaml:"-"`       // HIVE_GITHUB_TOKEN, or discovered from gh / git credentials at startup
 }
 
 // RepoConfig is one repository the worker may dispatch work into.
@@ -156,8 +156,8 @@ func (c *Config) applyDefaults() {
 // each with a hint about where the value comes from.
 //
 // When HIVE_INIT=1 only what `hivedispatch init -jira` needs is required:
-// the claim field IDs are what it produces, and the GitHub token is not
-// used until `run`.
+// the claim field IDs are what it produces. A GitHub token is never
+// required here; without one, branches are pushed but no PR is opened.
 func (c *Config) Validate() error {
 	var problems []string
 	need := func(v, name, hint string) {
@@ -187,9 +187,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Jira.Token == "" {
 		problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required — create an API token at https://id.atlassian.com/manage-profile/security/api-tokens and `export HIVE_JIRA_TOKEN=...`")
-	}
-	if c.GitHub.Token == "" && !initOnly {
-		problems = append(problems, "HIVE_GITHUB_TOKEN environment variable is required — create a fine-grained token at https://github.com/settings/personal-access-tokens (Pull requests: read/write, Contents: read) and `export HIVE_GITHUB_TOKEN=...`")
 	}
 	if len(c.Repos) == 0 {
 		problems = append(problems, "repos must list at least one repository — name (owner/repo), url (clone URL), jira_project (the ticket key prefix)")

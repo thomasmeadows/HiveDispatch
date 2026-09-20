@@ -117,3 +117,7 @@ Decided: the triager returns `notes` that are appended to the standard executor 
 ## 2026-09-19 — One shared CLI runner
 
 Decided: `internal/claudecli` owns process supervision and stream parsing for both executor and triager. Why: the step budget, timeout, process-group kill and log capture are the same problem in both places; the second user is what proved the extraction.
+
+## 2026-09-19 — GitHub token is optional and discovered
+
+Decided: the PR token is looked up as `HIVE_GITHUB_TOKEN` → `gh auth token` → git credential helper; with none found the worker degrades to "push the branch, ask a human to open the PR" rather than refusing to run. Rejected: making the token required (the first-run experience asked for a credential most users already have somewhere), and skipping PRs silently. Clarified: GitHub requires authentication to create a pull request even on public repositories, so "not needed for public repos" is true only for cloning and reading, not for opening PRs.

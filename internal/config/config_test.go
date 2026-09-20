@@ -170,11 +170,14 @@ func TestLoadGitHubAndStateDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsMissingGitHubTokenAndBadStateStore(t *testing.T) {
+func TestGitHubTokenIsOptionalButStateStoreIsChecked(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
 	t.Setenv("HIVE_GITHUB_TOKEN", "")
+	if _, err := Load(writeTemp(t, validYAML)); err != nil {
+		t.Fatalf("missing GitHub token must not fail validation: %v", err)
+	}
 	_, err := Load(writeTemp(t, validYAML+"state_store: cloud\n"))
-	if err == nil || !strings.Contains(err.Error(), "HIVE_GITHUB_TOKEN") || !strings.Contains(err.Error(), "state_store") {
+	if err == nil || !strings.Contains(err.Error(), "state_store") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -216,7 +219,7 @@ func TestValidateMessagesSayWhereToGetValues(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	for _, want := range []string{"id.atlassian.com", "github.com/settings", "customfield_", "docs/setup.md"} {
+	for _, want := range []string{"id.atlassian.com", "customfield_", "docs/setup.md"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q:\n%s", want, err)
 		}

@@ -11,6 +11,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
+	"github.com/thomasmeadows/hivedispatch/internal/githost"
 	hostfake "github.com/thomasmeadows/hivedispatch/internal/githost/fake"
 	gitfake "github.com/thomasmeadows/hivedispatch/internal/gitops/fake"
 	"github.com/thomasmeadows/hivedispatch/internal/state"
@@ -330,4 +331,26 @@ func TestTriageErrorLeavesTicketReady(t *testing.T) {
 	}
 	h.assertTransitions(t)
 	h.assertReleased(t)
+}
+
+func TestCompletedWithoutPRHostStillReportsBranch(t *testing.T) {
+	h := newHarness(t)
+	h.ws.Changed["HIVE-1"] = true
+	h.d.Host = nonePRHost{}
+	if out := h.handle(t); out != OutcomeCompleted {
+		t.Fatalf("out = %v", out)
+	}
+	h.assertTransitions(t, tracker.StateInProgress, tracker.StateInReview)
+	h.assertLastComment(t, "hive/HIVE-1", "could not open a PR")
+	if r := h.run(t); r.PRURL != "" || r.Phase != state.PhaseDone {
+		t.Errorf("run = %+v", r)
+	}
+}
+
+// nonePRHost mirrors githost/none: pushes happen, PRs do not.
+type nonePRHost struct{}
+
+func (nonePRHost) FindPR(context.Context, string, string) (*githost.PR, error) { return nil, nil }
+func (nonePRHost) OpenPR(context.Context, string, githost.Request) (*githost.PR, error) {
+	return nil, nil
 }

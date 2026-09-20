@@ -72,13 +72,28 @@ repos:
 
 ## 5. GitHub
 
-Create a fine-grained personal access token with **Pull requests: read and write** and **Contents: read** on the repositories HiveDispatch works in, and export it:
+Two separate things talk to GitHub, with two separate credentials:
+
+| Purpose | Credential | Needed when |
+|---|---|---|
+| Clone and push branches | your own git credentials — an ssh key or a credential helper | always; `git clone <url>` must work non-interactively as the worker's user |
+| Open pull requests via the API | a GitHub token | to open PRs — **even on public repositories**, GitHub does not accept anonymous PR creation. Without one the worker still pushes the branch and asks on the ticket for a human to open the PR |
+
+The token is found automatically, in this order:
+
+1. `HIVE_GITHUB_TOKEN` in the environment
+2. `gh auth token` — if you use the GitHub CLI and have run `gh auth login`, nothing else is needed
+3. your git credential helper for `github.com` (`git credential fill`) — if you push over HTTPS with a stored token, that token is reused
+
+`hivedispatch check` prints which source it found.
+
+To create a token explicitly: https://github.com/settings/personal-access-tokens → *Fine-grained tokens* → *Generate new token*, choose the repositories HiveDispatch works in, and grant **Pull requests: Read and write** and **Contents: Read**. (A classic token needs the `repo` scope, or `public_repo` for public repositories only.) Then:
 
 ```sh
-export HIVE_GITHUB_TOKEN=...
+export HIVE_GITHUB_TOKEN=github_pat_...
 ```
 
-The token is used only for the pull-request API. Cloning and pushing use your own git credentials (ssh keys or a credential helper), so make sure `git clone <repo url>` works non-interactively as the user running the worker.
+If you use GitHub Enterprise, set `github.api_url` in the worker config (default `https://api.github.com`).
 
 ## 6. Work directory layout
 
