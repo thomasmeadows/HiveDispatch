@@ -22,6 +22,7 @@ type CheckReport struct {
 	NotWritable   string // SampleIssue when the token cannot edit issues
 
 	Project        string   // title of the configured project board, when it was found
+	ProjectField   string   // the single-select field the columns belong to
 	ProjectError   string   // why the board could not be used; empty when none is configured
 	MissingColumns []string // configured column names the board's field does not have
 }
@@ -136,6 +137,7 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 
 // checkProject resolves the board and lists the configured columns it lacks.
 func (c *Client) checkProject(ctx context.Context, rep *CheckReport) {
+	rep.ProjectField = c.cfg.Project.Field
 	ref, err := c.project(ctx, true)
 	if err != nil {
 		rep.ProjectError = err.Error()

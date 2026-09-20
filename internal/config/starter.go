@@ -44,6 +44,25 @@ const Starter = `# HiveDispatch worker configuration.
 #   token needs Issues read/write. Run "hivedispatch init -github" to create the labels.
 tracker: jira
 
+# GitHub Issues only. Optional: also move each issue's card on a GitHub Projects board
+# as its state changes. Labels stay the source of truth; the board mirrors them. Take
+# owner and number from the board's URL: github.com/users/OWNER/projects/N (or
+# github.com/orgs/OWNER/projects/N). The token then also needs the project scope
+# ("gh auth refresh -s project", or Projects: read and write on a fine-grained token).
+# github:
+#   project:
+#     owner: OWNER
+#     number: 1
+#     # Single-select field and its option per state. Defaults shown; every option
+#     # must exist on the board ("hivedispatch check -live" lists the missing ones).
+#     field: Status
+#     columns:
+#       ready: Ready
+#       in_progress: In Progress
+#       needs_info: Needs Info
+#       in_review: In Review
+#       needs_human: Needs Human
+
 # Any short name for this worker. Shown on tickets it claims.
 agent_id: worker-1
 

@@ -144,6 +144,26 @@ To queue an issue, add the **`hive:ready`** label (one tap in the GitHub mobile 
 
 Label names are configurable under `github.labels`.
 
+### A GitHub Projects board
+
+Optionally the worker also moves each issue's card on a GitHub Projects (v2) board as the label changes, so the board shows the same state as the labels. Point `github.project` at the board — `owner` and `number` come from its URL, `github.com/users/OWNER/projects/N` or `github.com/orgs/OWNER/projects/N` — and name the option of its single-select field (`Status` by default) for each state:
+
+```yaml
+github:
+  project:
+    owner: thomasmeadows
+    number: 2
+    field: Status
+    columns:
+      ready: Ready
+      in_progress: In Progress
+      needs_info: Needs Info
+      in_review: In Review
+      needs_human: Needs Human
+```
+
+Every option must already exist on the board; `hivedispatch check -live` lists the ones that do not. Projects has no REST API, so the token additionally needs the **`project`** scope — `gh auth refresh -s project` for a GitHub CLI token, or **Projects: read and write** on a fine-grained token. On each transition the worker adds the issue to the board if it is not there yet and sets the field; labels remain the queue and the source of truth, so a board that cannot be reached is logged and never blocks a run.
+
 Choose a `project` that no Jira project on the same worker uses. Ticket keys are the identity for branches, run records and worktrees; `SCRUM-5` from Jira and issue #5 in a repo with `project: SCRUM` would share all three.
 
 ## 9. Claude Code

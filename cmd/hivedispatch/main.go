@@ -176,6 +176,14 @@ func githubPreflight(ctx context.Context, client *ghissues.Client, stdout, stder
 		fmt.Fprintf(stderr, "%s is missing labels %s (run `hivedispatch init -github`)\n", repo, strings.Join(labels, ", "))
 	}
 	switch {
+	case rep.ProjectError != "":
+		fmt.Fprintf(stderr, "project board: %s\n  Check github.project.owner and .number against the board's URL, and that the token has the project scope.\n", rep.ProjectError)
+	case len(rep.MissingColumns) > 0:
+		fmt.Fprintf(stderr, "project board %q has no %s option(s) %s — add the column(s) on the board or change github.project.columns\n", rep.Project, rep.ProjectField, strings.Join(rep.MissingColumns, ", "))
+	case rep.Project != "":
+		fmt.Fprintf(stdout, "project board %q ok: every state has a column\n", rep.Project)
+	}
+	switch {
 	case rep.NotWritable != "":
 		fmt.Fprintf(stderr, "the token can read but not edit issues (probed on %s).\n  Fine-grained token: https://github.com/settings/personal-access-tokens → Repository permissions → Issues: Read and write.\n  Classic token: the repo scope.\n", rep.NotWritable)
 	case rep.SampleIssue != "":
