@@ -44,8 +44,9 @@ commands:
   check [-config P] [-jira]   validate the worker config; -jira verifies against the live site
   init  [-config P]           write a commented starter config (never overwrites)
   init  -jira [-config P]     create the claim custom fields in Jira and print their IDs
-  run   [-config P] [-once] [-executor claude|fake] [-triage claude|passthrough] [-placeholder]
-                              poll and dispatch; -executor and -triage override the config
+  run   [-config P] [-once] [-executor claude|fake] [-triage claude|passthrough]
+        [-placeholder] [-skip-preflight]
+                              verify Jira setup, then poll and dispatch; -executor and -triage override the config
                               (-placeholder makes the fake executor write a file so
                               the branch/PR path is exercised)
 `
@@ -102,14 +103,23 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	if !jiraPreflight(context.Background(), client, cfg, stdout, stderr) {
+		return 1
+	}
+	return 0
+}
+
+// jiraPreflight runs the live Jira check and prints the report. It returns
+// false when something would prevent a run.
+func jiraPreflight(ctx context.Context, client *jira.Client, cfg *config.Config, stdout, stderr io.Writer) bool {
 	var projects []string
 	for _, r := range cfg.Repos {
 		projects = append(projects, r.JiraProject)
 	}
-	rep, err := client.Check(context.Background(), projects)
+	rep, err := client.Check(ctx, projects)
 	if err != nil {
 		fmt.Fprintln(stderr, "jira check failed:", err)
-		return 1
+		return false
 	}
 	fmt.Fprintf(stdout, "jira ok: authenticated as %s; trigger JQL matches %d ticket(s)\n", rep.User, rep.SampleTickets)
 	for _, p := range rep.UnknownProjects {
@@ -126,16 +136,13 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	}
 	switch {
 	case rep.NotEditableOn != "":
-		fmt.Fprintf(stderr, "claim fields exist but cannot be set on %s.\n  Team-managed project: Project settings → Issue types → each type → Fields → add \"%s\" and \"%s\".\n  Company-managed project: add both fields to the project's edit screen.\n", rep.NotEditableOn, jira.FieldNameAgent, jira.FieldNameClaimedAt)
+		fmt.Fprintf(stderr, "claim fields exist but cannot be set on %s.\n  Team-managed project: Project settings → Issue types → each type → Fields panel → search \"HiveDispatch\", add both fields, then Save changes.\n  Company-managed project: add both fields to the project's edit screen.\n", rep.NotEditableOn)
 	case rep.SampleIssue != "":
 		fmt.Fprintf(stdout, "claim fields are editable (checked on %s)\n", rep.SampleIssue)
 	default:
 		fmt.Fprintln(stdout, "no issue found to verify the claim fields are editable; create one in the project and run check again")
 	}
-	if !rep.OK() {
-		return 1
-	}
-	return 0
+	return rep.OK()
 }
 
 func runInit(args []string, stdout, stderr io.Writer) int {
@@ -189,6 +196,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	once := fs.Bool("once", false, "poll once and exit")
 	executorFlag := fs.String("executor", "", "override config executor: claude or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
+	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying Jira fields, statuses, and projects")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -206,6 +214,10 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	if err := tr.ResolveFields(context.Background()); err != nil {
 		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if !*skipPreflight && !jiraPreflight(context.Background(), tr, cfg, stdout, stderr) {
+		fmt.Fprintln(stderr, "not starting: fix the above, or pass -skip-preflight")
 		return 1
 	}
 	sched, err := schedule.Parse(cfg.RunWindows)
