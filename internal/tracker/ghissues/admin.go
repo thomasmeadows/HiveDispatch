@@ -2,6 +2,7 @@ package ghissues
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -17,11 +18,13 @@ type CheckReport struct {
 	MissingRepos  []string            // configured repos that could not be read
 	MissingLabels map[string][]string // repo → state labels not yet created
 	SampleTickets int
+	SampleIssue   string // issue used to probe write access
+	NotWritable   string // SampleIssue when the token cannot edit issues
 }
 
 // OK reports whether nothing blocks a run.
 func (r CheckReport) OK() bool {
-	return len(r.MissingRepos) == 0 && len(r.MissingLabels) == 0
+	return len(r.MissingRepos) == 0 && len(r.MissingLabels) == 0 && r.NotWritable == ""
 }
 
 // labelColours give each state a distinct, muted colour on the issue list.
@@ -99,6 +102,27 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 		return rep, fmt.Errorf("poll failed: %w", err)
 	}
 	rep.SampleTickets = len(tickets)
+	if len(tickets) > 0 {
+		// GitHub cannot report a fine-grained token's permissions, so probe
+		// with a write that changes nothing: re-send the body as it is.
+		rep.SampleIssue = tickets[0].Key
+		repo, n, err := c.keyToRef(tickets[0].Key)
+		if err != nil {
+			return rep, err
+		}
+		var is issueJSON
+		if _, err := c.do(ctx, http.MethodGet, issuePath(repo, n, ""), nil, &is); err != nil {
+			return rep, err
+		}
+		if err := c.patchBody(ctx, repo, n, is.Body); err != nil {
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && (apiErr.Status == http.StatusForbidden || apiErr.Status == http.StatusNotFound) {
+				rep.NotWritable = tickets[0].Key
+			} else {
+				return rep, err
+			}
+		}
+	}
 	return rep, nil
 }
 

@@ -2,6 +2,7 @@ package ghissues
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -123,5 +124,9 @@ func (c *Client) requireHolder(ctx context.Context, key, agentID string) (repo s
 // patchBody rewrites only the issue body.
 func (c *Client) patchBody(ctx context.Context, repo string, n int, body string) error {
 	_, err := c.do(ctx, http.MethodPatch, issuePath(repo, n, ""), map[string]string{"body": body}, nil)
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden {
+		return fmt.Errorf("%w\n  hint: the GitHub token cannot edit issues — grant it Issues: Read and write (fine-grained) or the repo scope (classic)", err)
+	}
 	return err
 }

@@ -152,6 +152,14 @@ func githubPreflight(ctx context.Context, client *ghissues.Client, stdout, stder
 	for repo, labels := range rep.MissingLabels {
 		fmt.Fprintf(stderr, "%s is missing labels %s (run `hivedispatch init -github`)\n", repo, strings.Join(labels, ", "))
 	}
+	switch {
+	case rep.NotWritable != "":
+		fmt.Fprintf(stderr, "the token can read but not edit issues (probed on %s).\n  Fine-grained token: https://github.com/settings/personal-access-tokens → Repository permissions → Issues: Read and write.\n  Classic token: the repo scope.\n", rep.NotWritable)
+	case rep.SampleIssue != "":
+		fmt.Fprintf(stdout, "token can edit issues (probed on %s)\n", rep.SampleIssue)
+	default:
+		fmt.Fprintln(stdout, "no ready issue to probe write access; add hive:ready to one and run check again")
+	}
 	return rep.OK()
 }
 
