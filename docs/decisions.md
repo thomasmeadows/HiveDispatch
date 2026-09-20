@@ -129,3 +129,9 @@ Decided: `jira.fields.*` are optional; at startup the worker looks up "HiveDispa
 ## 2026-09-19 — Field listing uses /field/search; check verifies editability
 
 Discovered on the first live run: `GET /rest/api/3/field` did not return the freshly created claim fields at all (they appeared only in `GET /rest/api/3/field/search`), so `init -jira` created a second pair and `run` could not find any. Decided: all field listing goes through `/field/search?type=custom` with pagination; `check -jira` warns about duplicate names and uses the lowest id. Also discovered: on a team-managed project, globally created fields are not editable on issues until added to the project's issue types by hand, and there is no public API for that. Decided: `check -jira` reads `editmeta` on a real issue and prints the exact click path when the fields are not editable, rather than letting the first claim fail at run time. `check` also verifies `repos[].jira_project` against the site's project keys, because the first live config had `1` where `SCRUM` was needed.
+
+## 2026-09-20 — First live end-to-end run
+
+SCRUM-5 on a team-managed Jira project → claimed by `worker-1` → passthrough triage → Claude Code in a worktree → one commit on `hive/SCRUM-5` → GitHub PR #1 → ticket commented and moved to In Review → claim released. Every phase was pushed to `hive/state` before the next action. The ticket was against HiveDispatch's own repository.
+
+What the first run taught, all fixed before it succeeded: `/rest/api/3/field` hides new custom fields (use `/field/search`); team-managed projects need the claim fields added to each issue type by hand, and the Jira UI can freeze when adding a global date-time field (it eventually took — if it does not, the fallback is to collapse both fields into one text field, which the code does not yet do); `jira_project` is a key, not an id; `--bare` breaks headless auth; a GitHub token is required to open PRs even on public repos.
