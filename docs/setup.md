@@ -102,10 +102,23 @@ The token is found automatically, in this order:
 
 `hivedispatch check` prints which source it found.
 
-To create a token explicitly: https://github.com/settings/personal-access-tokens → *Fine-grained tokens* → *Generate new token*, choose the repositories HiveDispatch works in, and grant **Pull requests: Read and write** and **Contents: Read**. (A classic token needs the `repo` scope, or `public_repo` for public repositories only.) Then:
+### Which kind of token
+
+GitHub has two kinds of personal access token. HiveDispatch does not care which you use — both are sent the same way (`Authorization: Bearer …`), only the prefix differs (`ghp_` classic, `github_pat_` fine-grained, `gho_` for the GitHub CLI's token), and nothing in HiveDispatch inspects it. What differs is what each kind can be allowed to do:
+
+| Need | Fine-grained token | Classic token |
+|---|---|---|
+| Open pull requests | *Pull requests: Read and write* + *Contents: Read* | `repo` (or `public_repo` for public repos only) |
+| Read and write issues (`tracker: github`) | *Issues: Read and write* | `repo` |
+| Move cards on an **organisation-owned** Projects board | *Projects: Read and write* on the organisation | `project` |
+| Move cards on a **user-owned** Projects board | **not possible** — fine-grained tokens have no account-level Projects permission | `project` |
+
+Recommendation: a fine-grained token scoped to the repositories HiveDispatch works in, unless you mirror state to a board under your personal account — then one classic token with `repo` + `project` does everything. (`gh auth login` followed by `gh auth refresh -s project` yields such a token, and the worker picks it up automatically when `HIVE_GITHUB_TOKEN` is unset.)
+
+To create a fine-grained token: https://github.com/settings/personal-access-tokens → *Generate new token*, choose the repositories, and grant the permissions from the table. For a classic token: https://github.com/settings/tokens → *Generate new token (classic)* and tick the scopes. Then:
 
 ```sh
-export HIVE_GITHUB_TOKEN=github_pat_...
+export HIVE_GITHUB_TOKEN=...
 ```
 
 If you use GitHub Enterprise, set `github.api_url` in the worker config (default `https://api.github.com`).
