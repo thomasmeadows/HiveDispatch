@@ -61,6 +61,10 @@ type Dispatcher struct {
 	Schedule   *schedule.Schedule // nil = always open
 	Now        func() time.Time   // nil = time.Now
 	Log        *slog.Logger       // nil = slog.Default()
+	// Polled is called after each successful poll with the time it happened.
+	// The CLI uses it for its status line; nil = no-op. Polling itself is
+	// deliberately not logged: it happens every few seconds and says nothing.
+	Polled func(at time.Time)
 }
 
 // Outcome summarises what Handle did with a ticket.
@@ -116,16 +120,19 @@ func (d *Dispatcher) Once(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if d.Polled != nil {
+		d.Polled(d.now())
+	}
 	handled := 0
 	for _, t := range tickets {
 		if ctx.Err() != nil {
 			break
 		}
+		// Handle logs the lifecycle of every ticket it works; only the
+		// error path needs a line here.
 		out, err := d.Handle(ctx, t)
 		if err != nil {
 			d.log().Error("handle failed", "ticket", t.Key, "outcome", out, "err", err)
-		} else {
-			d.log().Info("handled", "ticket", t.Key, "outcome", out)
 		}
 		if out != OutcomeSkipped && out != OutcomeClaimLost {
 			handled++

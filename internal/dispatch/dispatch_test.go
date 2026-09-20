@@ -1,10 +1,11 @@
 package dispatch
 
 import (
+	"bytes"
 	"context"
-	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/githost"
 	hostfake "github.com/thomasmeadows/hivedispatch/internal/githost/fake"
 	gitfake "github.com/thomasmeadows/hivedispatch/internal/gitops/fake"
+	"github.com/thomasmeadows/hivedispatch/internal/schedule"
 	"github.com/thomasmeadows/hivedispatch/internal/state"
 	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker"
@@ -29,7 +31,26 @@ type harness struct {
 	ws    *gitfake.Workspaces
 	host  *hostfake.Host
 	store *localdir.Store
+	logs  *syncBuffer
 	d     *Dispatcher
+}
+
+// syncBuffer is a bytes.Buffer safe for the heartbeat goroutine to log to.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 func newHarness(t *testing.T) *harness {
@@ -41,6 +62,7 @@ func newHarness(t *testing.T) *harness {
 		ws:    gitfake.New(t.TempDir()),
 		host:  hostfake.New(),
 		store: localdir.New(t.TempDir()),
+		logs:  &syncBuffer{},
 	}
 	h.tr.Now = func() time.Time { return now }
 	h.d = &Dispatcher{
@@ -51,7 +73,7 @@ func newHarness(t *testing.T) *harness {
 		},
 		Tracker: h.tr, Triager: h.tri, Executor: h.ex, Workspaces: h.ws, Host: h.host, Store: h.store,
 		Now: func() time.Time { return now },
-		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Log: slog.New(slog.NewTextHandler(h.logs, nil)),
 	}
 	h.tr.Add(tracker.Ticket{Key: "HIVE-1", Summary: "one"})
 	return h
@@ -344,6 +366,117 @@ func TestCompletedWithoutPRHostStillReportsBranch(t *testing.T) {
 	h.assertLastComment(t, "hive/HIVE-1", "could not open a PR")
 	if r := h.run(t); r.PRURL != "" || r.Phase != state.PhaseDone {
 		t.Errorf("run = %+v", r)
+	}
+}
+
+// assertLogged checks that one log line carries every fragment, in order of
+// the lines written. Fragments are matched against the slog text format.
+func (h *harness) assertLogged(t *testing.T, fragments ...string) {
+	t.Helper()
+	for _, line := range strings.Split(h.logs.String(), "\n") {
+		ok := true
+		for _, f := range fragments {
+			if !strings.Contains(line, f) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return
+		}
+	}
+	t.Errorf("no log line contains all of %q:\n%s", fragments, h.logs.String())
+}
+
+func (h *harness) assertNotLogged(t *testing.T, fragment string) {
+	t.Helper()
+	if strings.Contains(h.logs.String(), fragment) {
+		t.Errorf("log should not contain %q:\n%s", fragment, h.logs.String())
+	}
+}
+
+func TestLogsPickedUpStartedAndFinished(t *testing.T) {
+	h := newHarness(t)
+	h.ws.Changed["HIVE-1"] = true
+	h.ex.Results["HIVE-1"] = executor.Result{Status: executor.StatusCompleted, Summary: "added flag"}
+	h.handle(t)
+	h.assertLogged(t, `msg="picked up ticket"`, "ticket=HIVE-1", "summary=one")
+	h.assertLogged(t, `msg="work started"`, "ticket=HIVE-1", "attempt=1/3")
+	h.assertLogged(t, `msg="work finished"`, "ticket=HIVE-1", `result="added flag"`, "pull/1")
+}
+
+func TestLogsNeedsInfoFromTriage(t *testing.T) {
+	h := newHarness(t)
+	h.tri.Decisions["HIVE-1"] = triage.Decision{Kind: triage.KindNeedsInfo, Question: "Which DB?"}
+	h.handle(t)
+	h.assertLogged(t, `msg="picked up ticket"`, "ticket=HIVE-1")
+	h.assertLogged(t, `msg="work needs info"`, "ticket=HIVE-1", `result="Which DB?"`)
+	h.assertNotLogged(t, `msg="work started"`)
+}
+
+func TestLogsNeedsInfoFromExecutor(t *testing.T) {
+	h := newHarness(t)
+	h.ex.Results["HIVE-1"] = executor.Result{Status: executor.StatusNeedsInput, Question: "Postgres or SQLite?"}
+	h.handle(t)
+	h.assertLogged(t, `msg="work started"`, "ticket=HIVE-1")
+	h.assertLogged(t, `msg="work needs info"`, "ticket=HIVE-1", `result="Postgres or SQLite?"`)
+}
+
+func TestLogsNeedsHumanOnReject(t *testing.T) {
+	h := newHarness(t)
+	h.tri.Decisions["HIVE-1"] = triage.Decision{Kind: triage.KindReject, Reason: "cross-cutting"}
+	h.handle(t)
+	h.assertLogged(t, `msg="work needs human"`, "ticket=HIVE-1", "result=cross-cutting")
+}
+
+func TestLogsFailedThenNeedsHumanWhenExhausted(t *testing.T) {
+	h := newHarness(t)
+	h.ex.Results["HIVE-1"] = executor.Result{Status: executor.StatusFailed, StopCause: executor.CauseBudget, Summary: "partial"}
+	h.handle(t)
+	h.assertLogged(t, `msg="work failed"`, "ticket=HIVE-1", "cause=budget", "result=partial", "attempt=1/3")
+	h.assertNotLogged(t, `msg="work needs human"`)
+
+	h = newHarness(t)
+	if err := h.store.Save(context.Background(), &state.Run{Ticket: "HIVE-1", Attempts: 2}); err != nil {
+		t.Fatal(err)
+	}
+	h.ex.Results["HIVE-1"] = executor.Result{Status: executor.StatusFailed, StopCause: executor.CauseError, Summary: "boom"}
+	h.handle(t)
+	h.assertLogged(t, `msg="work needs human"`, "ticket=HIVE-1", "cause=error", "result=boom", "attempt=3/3")
+}
+
+func TestSkippedTicketsAreNotLoggedAtInfo(t *testing.T) {
+	h := newHarness(t)
+	h.tr.OverwriteClaim("HIVE-1", "worker-b", now.Add(-time.Minute))
+	if _, err := h.d.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	h.assertNotLogged(t, "level=INFO")
+}
+
+func TestOncePollsAndReportsPollTime(t *testing.T) {
+	h := newHarness(t)
+	var polled []time.Time
+	h.d.Polled = func(at time.Time) { polled = append(polled, at) }
+	if _, err := h.d.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(polled) != 1 || !polled[0].Equal(now) {
+		t.Fatalf("polled = %v, want [%v]", polled, now)
+	}
+}
+
+func TestOnceOutsideWindowDoesNotReportPoll(t *testing.T) {
+	h := newHarness(t)
+	sched, err := schedule.Parse(config.RunWindows{Timezone: "UTC", Windows: []config.WindowConfig{{Start: "01:00", End: "02:00"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.d.Schedule = sched
+	h.d.Now = func() time.Time { return time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC) }
+	h.d.Polled = func(time.Time) { t.Error("Polled must not fire when the window is closed") }
+	if _, err := h.d.Once(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
 
