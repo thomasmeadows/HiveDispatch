@@ -80,12 +80,15 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 		case triage.KindNeedsInfo:
 			run.LastStatus = string(executor.StatusNeedsInput)
 			run.QuestionAt = now
+			run.Phase = state.PhaseBlocked // waiting on a human
 			d.save(ctx, run)
 			d.comment(ctx, t.Key, reportTriageNeedsInfo(dec.Question))
 			d.transition(ctx, t.Key, tracker.StateNeedsInfo)
 			d.event(ctx, run, "triage_needs_info", dec.Question)
 			return d.finished("work needs info", t.Key, OutcomeNeedsInfo, dec.Question), nil
 		case triage.KindReject:
+			run.LastStatus = "rejected"
+			d.setPhase(ctx, run, state.PhaseDone)
 			d.comment(ctx, t.Key, reportRejected(dec.Reason))
 			d.transition(ctx, t.Key, tracker.StateNeedsHuman)
 			d.event(ctx, run, "triage_reject", dec.Reason)
@@ -186,6 +189,7 @@ func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.
 		return d.finished("work finished", t.Key, OutcomeCompleted, res.Summary, where...), nil
 	case executor.StatusNeedsInput:
 		run.QuestionAt = d.now()
+		run.Phase = state.PhaseBlocked
 		d.save(bg, run)
 		d.comment(bg, t.Key, reportNeedsInput(res.Question))
 		d.transition(bg, t.Key, tracker.StateNeedsInfo)

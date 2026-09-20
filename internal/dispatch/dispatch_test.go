@@ -202,7 +202,7 @@ func TestTriageNeedsInfo(t *testing.T) {
 	if len(h.ex.Calls()) != 0 {
 		t.Error("executor must not run")
 	}
-	if r := h.run(t); r.LastStatus != string(executor.StatusNeedsInput) || r.QuestionAt.IsZero() {
+	if r := h.run(t); r.LastStatus != string(executor.StatusNeedsInput) || r.QuestionAt.IsZero() || r.Phase != state.PhaseBlocked {
 		t.Errorf("run = %+v", r)
 	}
 }
@@ -216,6 +216,9 @@ func TestTriageReject(t *testing.T) {
 	h.assertTransitions(t, tracker.StateNeedsHuman)
 	h.assertLastComment(t, "cross-cutting")
 	h.assertReleased(t)
+	if r := h.run(t); r.Phase != state.PhaseDone || r.LastStatus != "rejected" {
+		t.Errorf("rejected run must be terminal: %+v", r)
+	}
 }
 
 func TestDispatchCompletedWithPR(t *testing.T) {

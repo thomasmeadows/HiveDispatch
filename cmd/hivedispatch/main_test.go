@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
+	"github.com/thomasmeadows/hivedispatch/internal/state"
+	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
 	"github.com/thomasmeadows/hivedispatch/internal/statusline"
 )
 
@@ -241,5 +244,64 @@ func TestInitJiraOnIncompleteConfigExplainsEachValue(t *testing.T) {
 	}
 	if strings.Contains(errb.String(), "HIVE_GITHUB_TOKEN") || strings.Contains(errb.String(), "customfield") {
 		t.Errorf("init -jira must not demand the GitHub token or the field ids it creates:\n%s", errb.String())
+	}
+}
+
+// writeValidConfigWith writes a minimal valid config plus extra YAML lines.
+func writeValidConfigWith(t *testing.T, extra string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "c.yaml")
+	body := `
+agent_id: w
+jira:
+  base_url: https://x.atlassian.net
+  email: a@b.c
+  jql: project = X
+  fields: {agent_id: customfield_1, claimed_at: customfield_2}
+repos:
+  - {name: o/r, url: git@github.com:o/r.git, jira_project: X}
+` + extra
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestOnceRejectsUnknownProjectBeforeNetwork(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	p := writeValidConfigWith(t, "")
+	var out, errb bytes.Buffer
+	if code := run([]string{"once", "NOPE-1", "-config", p}, &out, &errb); code != 1 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "NOPE") || !strings.Contains(errb.String(), "jira_project") {
+		t.Errorf("stderr = %q", errb.String())
+	}
+	if code := run([]string{"once"}, &out, &errb); code != 2 {
+		t.Errorf("missing key should be usage error, got %d", code)
+	}
+}
+
+func TestStatusWithLocalStore(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	p := writeValidConfigWith(t, "state_store: local\nworkroot: "+home+"/work\n")
+	st := localdir.New(filepath.Join(home, "work", "state", "o__r"))
+	if err := st.Save(context.Background(), &state.Run{Ticket: "X-1", Phase: state.PhaseDone, LastStatus: "completed", Attempts: 1, Agent: "w", PRURL: "https://x/pull/1"}); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if code := run([]string{"status", "-config", p}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	for _, want := range []string{"X-1", "done", "completed", "https://x/pull/1"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("stdout missing %q:\n%s", want, out.String())
+		}
+	}
+	out.Reset()
+	if code := run([]string{"status", "-config", p, "-json"}, &out, &errb); code != 0 || !strings.HasPrefix(strings.TrimSpace(out.String()), "[") {
+		t.Errorf("json: exit %d out=%q", code, out.String())
 	}
 }

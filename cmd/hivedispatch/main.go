@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -37,6 +38,9 @@ commands:
                               verify Jira setup, then poll and dispatch; -executor and -triage override the config
                               (-placeholder makes the fake executor write a file so
                               the branch/PR path is exercised)
+  once  KEY [same flags as run]
+                              handle one ticket by key, ignoring the trigger query and run windows
+  status [-config P] [-json]  list run records from the state branch(es)
 `
 
 func main() {
@@ -58,6 +62,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runInit(args[1:], stdout, stderr)
 	case "run":
 		return runRun(args[1:], stdout, stderr)
+	case "once":
+		return runOnce(args[1:], stdout, stderr)
+	case "status":
+		return runStatus(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -226,8 +234,13 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	defer stopLoop()
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
+	var exiting atomic.Bool
+	defer exiting.Store(true)
 	go func() {
 		<-loopCtx.Done()
+		if exiting.Load() {
+			return // normal exit, not a signal
+		}
 		logger.Info("draining; press Ctrl-C again to interrupt the current run")
 		stopLoop()
 		sig := make(chan os.Signal, 1)
@@ -313,4 +326,61 @@ func isTerminal(w io.Writer) bool {
 	}
 	fi, err := f.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// runOnce handles a single ticket by key, bypassing the trigger query and
+// the run windows. It is the operator's "do this one now".
+func runOnce(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		fmt.Fprintln(stderr, "usage: hivedispatch once KEY [flags]")
+		return 2
+	}
+	key := args[0]
+	fs := flag.NewFlagSet("once", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
+	executorFlag := fs.String("executor", "", "override config executor: claude or fake")
+	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
+	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying Jira fields, statuses, and projects")
+	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	project, _, _ := strings.Cut(key, "-")
+	known := false
+	for _, r := range cfg.Repos {
+		if strings.EqualFold(r.JiraProject, project) {
+			known = true
+		}
+	}
+	if !known {
+		fmt.Fprintf(stderr, "%s: no repo has jira_project %q configured\n", key, project)
+		return 1
+	}
+	logger := slog.New(slog.NewTextHandler(stderr, nil))
+	ctx := context.Background()
+	w, err := newWorker(ctx, cfg, wireOptions{executor: *executorFlag, triage: *triageFlag, placeholder: *placeholder, preflight: !*skipPreflight}, logger, stdout, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	ticket, err := w.tracker.Get(ctx, key)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	runCtx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	out, err := w.d.Handle(runCtx, ticket)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %s: %v\n", key, out, err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "%s: %s\n", key, out)
+	return 0
 }
