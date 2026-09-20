@@ -208,3 +208,38 @@ func TestLoadTriageDefaults(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestValidateMessagesSayWhereToGetValues(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "")
+	t.Setenv("HIVE_GITHUB_TOKEN", "")
+	err := (&Config{}).Validate()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, want := range []string{"id.atlassian.com", "github.com/settings", "customfield_", "docs/setup.md"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q:\n%s", want, err)
+		}
+	}
+}
+
+func TestStarterConfigIsRejectedUntilEdited(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	t.Setenv("HIVE_INIT", "1")
+	p := writeTemp(t, Starter)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("unedited starter must not validate")
+	}
+	for _, want := range []string{"jira.base_url", "YOURTEAM", "repos[0].name", "placeholder"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err should mention %q:\n%s", want, err)
+		}
+	}
+	// Edited starter validates (fields empty is fine under HIVE_INIT).
+	edited := strings.NewReplacer("YOURTEAM", "acme", "you@example.com", "me@acme.com", "project = KEY", "project = ACME",
+		"yourorg/yourrepo", "acme/app", "yourorg", "acme", "yourrepo", "app", "jira_project: KEY", "jira_project: ACME").Replace(Starter)
+	if _, err := Load(writeTemp(t, edited)); err != nil {
+		t.Fatalf("edited starter should validate during init: %v", err)
+	}
+}

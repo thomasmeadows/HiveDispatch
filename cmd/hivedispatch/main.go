@@ -40,6 +40,7 @@ const usage = `usage: hivedispatch <command> [flags]
 commands:
   version                     print the version
   check [-config P] [-jira]   validate the worker config; -jira verifies against the live site
+  init  [-config P]           write a commented starter config (never overwrites)
   init  -jira [-config P]     create the claim custom fields in Jira and print their IDs
   run   [-config P] [-once] [-executor claude|fake] [-triage claude|passthrough] [-placeholder]
                               poll and dispatch; -executor and -triage override the config
@@ -120,9 +121,22 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	written, err := config.WriteStarter(*cfgPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if written {
+		fmt.Fprintf(stdout, "wrote starter config to %s\n\nEdit it (every field says where its value comes from), export HIVE_JIRA_TOKEN, then run:\n  hivedispatch init -jira\n", *cfgPath)
+		if !*doJira {
+			return 0
+		}
+		fmt.Fprintln(stderr, "\ninit -jira: fill in the config first, then run this again.")
+		return 1
+	}
 	if !*doJira {
-		fmt.Fprintln(stderr, "init: nothing to do (pass -jira)")
-		return 2
+		fmt.Fprintf(stdout, "config already exists at %s\nNext: export HIVE_JIRA_TOKEN and run `hivedispatch init -jira`\n", *cfgPath)
+		return 0
 	}
 	// The claim field IDs are what init produces, so they are not required yet.
 	if err := os.Setenv("HIVE_INIT", "1"); err != nil {
@@ -131,7 +145,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintf(stderr, "%v\n\nEdit %s and run `hivedispatch init -jira` again.\n", err, *cfgPath)
 		return 1
 	}
 	client, err := jira.New(cfg.Jira)
@@ -144,7 +158,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "init failed:", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "jira fields ready. Put this in your config:\n\njira:\n  fields:\n    agent_id: %s\n    claimed_at: %s\n", ids.AgentID, ids.ClaimedAt)
+	fmt.Fprintf(stdout, "jira fields ready. Put this in %s:\n\njira:\n  fields:\n    agent_id: %s\n    claimed_at: %s\n\nThen: export HIVE_GITHUB_TOKEN and run `hivedispatch check -jira`.\n", *cfgPath, ids.AgentID, ids.ClaimedAt)
 	return 0
 }
 

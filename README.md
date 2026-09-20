@@ -32,10 +32,21 @@ The control plane is deterministic. Model discretion is confined to two places: 
 
 ```sh
 go install github.com/thomasmeadows/hivedispatch/cmd/hivedispatch@latest
-hivedispatch version
+
+hivedispatch init                 # writes ~/.config/hivedispatch/config.yaml, fully commented
+$EDITOR ~/.config/hivedispatch/config.yaml
+
+export HIVE_JIRA_TOKEN=...        # https://id.atlassian.com/manage-profile/security/api-tokens
+hivedispatch init -jira           # creates the two claim fields in Jira, prints their ids → paste into config
+
+export HIVE_GITHUB_TOKEN=...      # fine-grained PAT: Pull requests read/write, Contents read
+hivedispatch check -jira          # verifies credentials, fields, statuses, and the trigger query
+
+hivedispatch run -once -executor fake -placeholder   # dry run: ticket → branch → PR, no agent
+hivedispatch run                                     # the real thing
 ```
 
-Setup (Jira, GitHub, git): see [`docs/setup.md`](docs/setup.md).
+Every step's prerequisites are spelled out in [`docs/setup.md`](docs/setup.md).
 
 ## License
 

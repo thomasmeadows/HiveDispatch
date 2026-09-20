@@ -152,30 +152,57 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-// Validate returns an error listing every missing or inconsistent field.
+// Validate returns an error listing every missing or inconsistent field,
+// each with a hint about where the value comes from.
 //
-// When HIVE_INIT=1 the claim field IDs are not required, because
-// `hivedispatch init -jira` is what creates them.
+// When HIVE_INIT=1 only what `hivedispatch init -jira` needs is required:
+// the claim field IDs are what it produces, and the GitHub token is not
+// used until `run`.
 func (c *Config) Validate() error {
 	var problems []string
-	need := func(v, name string) {
+	need := func(v, name, hint string) {
 		if strings.TrimSpace(v) == "" {
-			problems = append(problems, name+" is required")
+			problems = append(problems, name+" is required — "+hint)
 		}
 	}
-	need(c.AgentID, "agent_id")
-	need(c.Jira.BaseURL, "jira.base_url")
-	need(c.Jira.Email, "jira.email")
-	need(c.Jira.JQL, "jira.jql")
-	if os.Getenv("HIVE_INIT") != "1" {
-		need(c.Jira.Fields.AgentID, "jira.fields.agent_id")
-		need(c.Jira.Fields.ClaimedAt, "jira.fields.claimed_at")
+	initOnly := os.Getenv("HIVE_INIT") == "1"
+	placeholder := func(v, name string) {
+		for _, ph := range starterPlaceholders {
+			if strings.Contains(v, ph) {
+				problems = append(problems, name+" still has the starter placeholder "+ph+" — replace it with your real value")
+				return
+			}
+		}
+	}
+	need(c.AgentID, "agent_id", "any short name for this worker, e.g. laptop-1")
+	need(c.Jira.BaseURL, "jira.base_url", "your Jira Cloud site, e.g. https://yourteam.atlassian.net")
+	need(c.Jira.Email, "jira.email", "the Atlassian account email the API token belongs to")
+	need(c.Jira.JQL, "jira.jql", `the query that selects work, e.g. project = KEY AND status = "Ready" AND labels = hive`)
+	placeholder(c.Jira.BaseURL, "jira.base_url")
+	placeholder(c.Jira.Email, "jira.email")
+	placeholder(c.Jira.JQL, "jira.jql")
+	if !initOnly {
+		need(c.Jira.Fields.AgentID, "jira.fields.agent_id", "a customfield_NNNNN id; run `hivedispatch init -jira` to create both fields and print the ids")
+		need(c.Jira.Fields.ClaimedAt, "jira.fields.claimed_at", "a customfield_NNNNN id; run `hivedispatch init -jira` to create both fields and print the ids")
 	}
 	if c.Jira.Token == "" {
-		problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required")
+		problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required — create an API token at https://id.atlassian.com/manage-profile/security/api-tokens and `export HIVE_JIRA_TOKEN=...`")
 	}
-	if c.GitHub.Token == "" {
-		problems = append(problems, "HIVE_GITHUB_TOKEN environment variable is required")
+	if c.GitHub.Token == "" && !initOnly {
+		problems = append(problems, "HIVE_GITHUB_TOKEN environment variable is required — create a fine-grained token at https://github.com/settings/personal-access-tokens (Pull requests: read/write, Contents: read) and `export HIVE_GITHUB_TOKEN=...`")
+	}
+	if len(c.Repos) == 0 {
+		problems = append(problems, "repos must list at least one repository — name (owner/repo), url (clone URL), jira_project (the ticket key prefix)")
+	}
+	for i, r := range c.Repos {
+		need(r.Name, fmt.Sprintf("repos[%d].name", i), "owner/repo as shown on GitHub")
+		need(r.URL, fmt.Sprintf("repos[%d].url", i), "the clone URL your git credentials can push to, e.g. git@github.com:owner/repo.git")
+		need(r.JiraProject, fmt.Sprintf("repos[%d].jira_project", i), "the Jira project key, i.e. the part before the dash in ticket keys")
+		placeholder(r.Name, fmt.Sprintf("repos[%d].name", i))
+		placeholder(r.URL, fmt.Sprintf("repos[%d].url", i))
+		if r.JiraProject == "KEY" {
+			problems = append(problems, fmt.Sprintf("repos[%d].jira_project still has the starter placeholder KEY — use your Jira project key", i))
+		}
 	}
 	if c.Executor != "" && c.Executor != "claude" && c.Executor != "fake" {
 		problems = append(problems, fmt.Sprintf("executor: want claude or fake, got %q", c.Executor))
@@ -185,14 +212,6 @@ func (c *Config) Validate() error {
 	}
 	if c.StateStore != "" && c.StateStore != "branch" && c.StateStore != "local" {
 		problems = append(problems, fmt.Sprintf("state_store: want branch or local, got %q", c.StateStore))
-	}
-	if len(c.Repos) == 0 {
-		problems = append(problems, "repos must list at least one repository")
-	}
-	for i, r := range c.Repos {
-		need(r.Name, fmt.Sprintf("repos[%d].name", i))
-		need(r.URL, fmt.Sprintf("repos[%d].url", i))
-		need(r.JiraProject, fmt.Sprintf("repos[%d].jira_project", i))
 	}
 	if c.ClaimTimeout > 0 && c.HeartbeatInterval > 0 && c.ClaimTimeout <= c.HeartbeatInterval {
 		problems = append(problems, "claim_timeout must be longer than heartbeat_interval")
@@ -212,5 +231,5 @@ func (c *Config) Validate() error {
 	if len(problems) == 0 {
 		return nil
 	}
-	return errors.New("invalid config:\n  - " + strings.Join(problems, "\n  - "))
+	return errors.New("invalid config:\n  - " + strings.Join(problems, "\n  - ") + "\n\nSee docs/setup.md for the full walkthrough.")
 }

@@ -1,6 +1,14 @@
 # Setup
 
-HiveDispatch needs: a Jira Cloud site (API token, two custom fields for the claim protocol, five workflow statuses), a GitHub token for opening pull requests, and git credentials that can clone and push the repositories it works in.
+HiveDispatch needs: a Jira Cloud site (API token, two custom fields for the claim protocol, five workflow statuses), a GitHub token for opening pull requests, git credentials that can clone and push the repositories it works in, and a logged-in Claude Code CLI.
+
+## 0. Start here
+
+```sh
+hivedispatch init
+```
+
+writes a commented starter config to `~/.config/hivedispatch/config.yaml` (or `-config PATH`) and never overwrites a non-empty file. Every field in it says where its value comes from. The sections below follow the same order as the comments in that file. If a later command reports `invalid config`, each line names the field and where to get it.
 
 ## 1. API token
 
