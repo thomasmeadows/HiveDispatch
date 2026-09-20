@@ -165,6 +165,8 @@ guidance: |
 
 `dontAsk` fails closed: anything not in `allowed_tools` is denied and the agent must work around it or ask. `bypassPermissions` is for sandboxed runs only.
 
+Allowlist patterns match whole tokens by prefix, so `Bash(golangci-lint:*)` allows `golangci-lint run ./...` but not `/home/me/go/bin/golangci-lint run` — put tool directories on the agent's `PATH` with `executor.path` instead of allowing absolute paths.
+
 The run log for each attempt is saved to the state branch under `logs/<KEY>/<timestamp>.log`.
 
 ### Triage

@@ -1,5 +1,7 @@
 # HiveDispatch policy for this repository. Read by the worker from the ticket worktree.
 executor:
+  # golangci-lint is installed with `go install`; make sure the agent can find it.
+  path: ["~/go/bin", "$HOME/go/bin"]
   permission_mode: dontAsk
   tools: [default]
   allowed_tools:
@@ -13,7 +15,6 @@ executor:
     - "Bash(go vet:*)"
     - "Bash(gofmt:*)"
     - "Bash(golangci-lint:*)"
-    - "Bash(go run github.com/golangci/golangci-lint:*)"
     - "Bash(git add:*)"
     - "Bash(git commit:*)"
     - "Bash(git status:*)"
@@ -24,8 +25,8 @@ guidance: |
   interface in internal/ with a fake; unit tests never touch the network.
   Before finishing, all three must pass — CI runs them and a PR with failures is not done:
     go vet ./... && go test -race ./... && golangci-lint run ./...
-  If golangci-lint is not on PATH, use:
-    go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...
+  golangci-lint is on PATH (the repo policy adds ~/go/bin); if it is genuinely missing,
+  say so in your summary rather than working around the permission policy.
   errcheck is on: never discard an error, including from io.WriteString and Close
   (use `_ = f()` deliberately if the error is truly irrelevant).
   Record design decisions in docs/decisions.md with the alternative rejected.

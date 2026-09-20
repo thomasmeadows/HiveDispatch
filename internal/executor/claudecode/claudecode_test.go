@@ -123,3 +123,20 @@ func TestPlanUsesStructuredOutput(t *testing.T) {
 		t.Errorf("args = %s", args)
 	}
 }
+
+func TestRunPrependsRepoPath(t *testing.T) {
+	e, _, _ := fakeExec(t, "success")
+	envFile := filepath.Join(t.TempDir(), "env")
+	t.Setenv("FAKE_CLAUDE_ENV_FILE", envFile)
+	tk := task(t)
+	if err := os.WriteFile(filepath.Join(tk.Workspace, ".hivedispatch.yaml"), []byte("executor:\n  path: [/opt/tools/bin]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Run(context.Background(), tk); err != nil {
+		t.Fatal(err)
+	}
+	env, _ := os.ReadFile(envFile)
+	if !strings.Contains(string(env), "PATH=/opt/tools/bin"+string(os.PathListSeparator)) {
+		t.Errorf("PATH not prepended:\n%s", env)
+	}
+}

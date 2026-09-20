@@ -36,3 +36,13 @@ func TestLoadParsesAndValidates(t *testing.T) {
 		t.Error("invalid permission mode should error")
 	}
 }
+
+func TestExtraPathExpands(t *testing.T) {
+	t.Setenv("HOME", "/home/x")
+	t.Setenv("GOBIN_TEST", "/opt/go/bin")
+	e := ExecutorConfig{Path: []string{"~/go/bin", "$GOBIN_TEST", ""}}
+	got := e.ExtraPath()
+	if len(got) != 2 || got[0] != "/home/x/go/bin" || got[1] != "/opt/go/bin" {
+		t.Errorf("ExtraPath = %v", got)
+	}
+}

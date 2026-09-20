@@ -165,3 +165,7 @@ Decided:
 - `Result.RetryAfter` and `claudecli.BudgetError` carry the reset time as data; `LooksLikeBudget` is the one place that decides what counts as a budget stop, and now includes "session limit".
 - A run that completed and pushed but has no PR is finished on the next poll without triage or the agent: the artifacts say exactly where it stopped, as the spec argues. The run stays at phase `pushed` when the PR fails so this path is taken.
 - `check -live` and the run preflight probe pull-request write access with a POST whose head branch does not exist (422 with permission, 403 without). GitHub exposes no read-only way to learn a fine-grained token's permissions.
+
+## 2026-09-20 — Repo policy can extend the agent's PATH
+
+Decided: `executor.path` in `.hivedispatch.yaml` prepends directories to the agent's `PATH`. Rejected: allowing absolute tool paths in `allowed_tools` (Claude Code matches whole tokens by prefix, so `Bash(golangci-lint:*)` never matches `/home/me/go/bin/golangci-lint`), and the `go run …@latest` fallback (its command token is `github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`, which the allowlist entry did not match either, and it recompiles the linter every run). Observed on PR #4: the agent tried all three, was denied each time, and stopped rather than routing around the policy — the right behaviour, and the reason the fix belongs in the environment.

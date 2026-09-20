@@ -53,6 +53,7 @@ Read from the ticket's worktree, so it is versioned with the code and can differ
 | `executor.tools` | `[default]` | Built-in tool set, or a list to restrict |
 | `executor.allowed_tools` | *(none)* | Pre-approved patterns for `dontAsk`, e.g. `Edit`, `"Bash(go test:*)"` |
 | `executor.max_budget_usd` | *(none)* | Per-run spend cap (API-billed accounts) |
+| `executor.path` | *(none)* | Directories prepended to the agent's `PATH` (`~` and `$VAR` expand), e.g. `["~/go/bin"]` so `golangci-lint` resolves |
 | `guidance` | *(none)* | Text appended to every prompt for this repo: conventions, required checks, where decisions are recorded |
 
 ## Environment
