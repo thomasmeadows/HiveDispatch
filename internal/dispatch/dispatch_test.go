@@ -69,7 +69,7 @@ func newHarness(t *testing.T) *harness {
 		Cfg: Config{
 			AgentID: "worker-a", ClaimTimeout: time.Hour, HeartbeatInterval: time.Hour,
 			RunTimeout: time.Second, StepBudget: 50, MaxAttempts: 3,
-			Repos: []config.RepoConfig{{Name: "o/r", URL: "git@x:o/r.git", DefaultBranch: "main", JiraProject: "HIVE"}},
+			Repos: []config.RepoConfig{{Name: "o/r", URL: "git@x:o/r.git", DefaultBranch: "main", Project: "HIVE"}},
 		},
 		Tracker: h.tr, Triager: h.tri, Executor: h.ex, Workspaces: h.ws, Host: h.host, Store: h.store,
 		Now: func() time.Time { return now },

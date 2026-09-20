@@ -110,7 +110,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 func jiraPreflight(ctx context.Context, client *jira.Client, cfg *config.Config, stdout, stderr io.Writer) bool {
 	var projects []string
 	for _, r := range cfg.Repos {
-		projects = append(projects, r.JiraProject)
+		projects = append(projects, r.Project)
 	}
 	rep, err := client.Check(ctx, projects)
 	if err != nil {
@@ -354,7 +354,7 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 	project, _, _ := strings.Cut(key, "-")
 	known := false
 	for _, r := range cfg.Repos {
-		if strings.EqualFold(r.JiraProject, project) {
+		if strings.EqualFold(r.Project, project) {
 			known = true
 		}
 	}

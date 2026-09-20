@@ -38,6 +38,12 @@ const Starter = `# HiveDispatch worker configuration.
 #   4. hivedispatch run -once
 # Full walkthrough: docs/setup.md in the repository.
 
+# Which issue tracker holds the queue: jira (default) or github.
+#   github: state is carried by labels (hive:ready, hive:in-progress, ...) and the claim by
+#   a hidden marker in the issue body; the jira: block is then ignored, and the GitHub
+#   token needs Issues read/write. Run "hivedispatch init -github" to create the labels.
+tracker: jira
+
 # Any short name for this worker. Shown on tickets it claims.
 agent_id: worker-1
 
@@ -77,9 +83,9 @@ repos:
   - name: yourorg/yourrepo
     # Clone URL your own git credentials can push to (ssh key or credential helper).
     url: git@github.com:yourorg/yourrepo.git
-    # The Jira project KEY: the letters before the dash in ticket keys (SCRUM for
-    # SCRUM-4). Tickets in this project are dispatched into this repo.
-    jira_project: KEY
+    # Ticket key prefix for this repo. Jira: the project key (SCRUM for SCRUM-4).
+    # GitHub Issues: any short upper-case tag you choose; issue #12 becomes KEY-12.
+    project: KEY
     # default_branch: main
 
 # Optional. Defaults shown.

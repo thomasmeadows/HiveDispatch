@@ -53,7 +53,7 @@ func openStores(ctx context.Context, cfg *config.Config) (*gitws.Workspaces, sta
 	stores := map[string]state.RunStore{}
 	for _, repo := range cfg.Repos {
 		if cfg.StateStore == "local" {
-			stores[strings.ToUpper(repo.JiraProject)] = localdir.New(filepath.Join(cfg.Workroot, "state", strings.ReplaceAll(repo.Name, "/", "__")))
+			stores[strings.ToUpper(repo.Project)] = localdir.New(filepath.Join(cfg.Workroot, "state", strings.ReplaceAll(repo.Name, "/", "__")))
 			continue
 		}
 		base, err := ws.EnsureBase(ctx, repo)
@@ -64,7 +64,7 @@ func openStores(ctx context.Context, cfg *config.Config) (*gitws.Workspaces, sta
 		if err != nil {
 			return nil, nil, fmt.Errorf("state branch: %w", err)
 		}
-		stores[strings.ToUpper(repo.JiraProject)] = st
+		stores[strings.ToUpper(repo.Project)] = st
 	}
 	return ws, &router.Store{Stores: stores}, nil
 }

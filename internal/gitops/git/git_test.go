@@ -11,7 +11,7 @@ import (
 )
 
 func repoCfg(remote string) config.RepoConfig {
-	return config.RepoConfig{Name: "o/r", URL: remote, DefaultBranch: "main", JiraProject: "HIVE"}
+	return config.RepoConfig{Name: "o/r", URL: remote, DefaultBranch: "main", Project: "HIVE"}
 }
 
 func TestPrepareCreatesWorktreeOnTicketBranch(t *testing.T) {

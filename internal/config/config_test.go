@@ -242,7 +242,7 @@ func TestStarterConfigIsRejectedUntilEdited(t *testing.T) {
 	}
 	// Edited starter validates (empty field ids are resolved by name later).
 	edited := strings.NewReplacer("YOURTEAM", "acme", "you@example.com", "me@acme.com", "project = KEY", "project = ACME",
-		"yourorg/yourrepo", "acme/app", "yourorg", "acme", "yourrepo", "app", "jira_project: KEY", "jira_project: ACME").Replace(Starter)
+		"yourorg/yourrepo", "acme/app", "yourorg", "acme", "yourrepo", "app", "project: KEY", "project: ACME").Replace(Starter)
 	if _, err := Load(writeTemp(t, edited)); err != nil {
 		t.Fatalf("edited starter should validate: %v", err)
 	}
@@ -268,5 +268,56 @@ func TestLoadRetentionDefault(t *testing.T) {
 	}
 	if cfg, err := Load(writeTemp(t, validYAML+"retention_days: -1\n")); err != nil || cfg.RetentionDays != -1 {
 		t.Errorf("-1 should mean never: %v %v", cfg, err)
+	}
+}
+
+const githubYAML = `
+tracker: github
+agent_id: worker-a
+repos:
+  - name: thomasmeadows/HiveDispatch
+    url: git@github.com:thomasmeadows/HiveDispatch.git
+    project: HD
+`
+
+func TestTrackerGithubSkipsJiraValidation(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "")
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	cfg, err := Load(writeTemp(t, githubYAML))
+	if err != nil {
+		t.Fatalf("github tracker must not need jira settings: %v", err)
+	}
+	if cfg.Tracker != "github" || cfg.Repos[0].Project != "HD" {
+		t.Errorf("cfg = %+v", cfg)
+	}
+	if l := cfg.GitHub.Labels; l.Ready != "hive:ready" || l.NeedsHuman != "hive:needs-human" {
+		t.Errorf("label defaults = %+v", l)
+	}
+	t.Setenv("HIVE_GITHUB_TOKEN", "")
+	_, err = Load(writeTemp(t, githubYAML))
+	if err == nil || !strings.Contains(err.Error(), "gh auth login") {
+		t.Errorf("without a token the hint should mention gh auth login: %v", err)
+	}
+}
+
+func TestJiraProjectAliasPopulatesProject(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	cfg, err := Load(writeTemp(t, validYAML)) // uses jira_project
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Repos[0].Project != "HIVE" {
+		t.Errorf("project = %q, want alias copied", cfg.Repos[0].Project)
+	}
+	if cfg.Tracker != "jira" {
+		t.Errorf("tracker default = %q", cfg.Tracker)
+	}
+}
+
+func TestTrackerUnknownRejected(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	_, err := Load(writeTemp(t, validYAML+"tracker: trello\n"))
+	if err == nil || !strings.Contains(err.Error(), "tracker") {
+		t.Errorf("err = %v", err)
 	}
 }

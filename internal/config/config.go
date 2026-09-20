@@ -16,6 +16,7 @@ import (
 
 // Config is the worker-level configuration.
 type Config struct {
+	Tracker           string        `yaml:"tracker"` // "jira" (default) or "github"
 	AgentID           string        `yaml:"agent_id"`
 	Workroot          string        `yaml:"workroot"`
 	PollInterval      time.Duration `yaml:"poll_interval"`
@@ -79,11 +80,22 @@ type TriageConfig struct {
 	Model      string        `yaml:"model"`
 }
 
-// GitHubConfig is used only for the pull-request API; git itself uses the
-// user's own credentials.
+// GitHubConfig covers the pull-request API and, with tracker: github, the
+// issues API; git itself uses the user's own credentials.
 type GitHubConfig struct {
-	APIURL string `yaml:"api_url"` // default https://api.github.com
-	Token  string `yaml:"-"`       // HIVE_GITHUB_TOKEN, or discovered from gh / git credentials at startup
+	APIURL string       `yaml:"api_url"` // default https://api.github.com
+	Token  string       `yaml:"-"`       // HIVE_GITHUB_TOKEN, or discovered from gh / git credentials at startup
+	Labels GitHubLabels `yaml:"labels"`  // state labels when tracker is github
+}
+
+// GitHubLabels are the issue labels that carry HiveDispatch state when the
+// tracker is GitHub Issues. Exactly one is on an issue at a time.
+type GitHubLabels struct {
+	Ready      string `yaml:"ready"`
+	InProgress string `yaml:"in_progress"`
+	NeedsInfo  string `yaml:"needs_info"`
+	InReview   string `yaml:"in_review"`
+	NeedsHuman string `yaml:"needs_human"`
 }
 
 // RepoConfig is one repository the worker may dispatch work into.
@@ -91,7 +103,8 @@ type RepoConfig struct {
 	Name          string `yaml:"name"`           // owner/repo
 	URL           string `yaml:"url"`            // clone URL
 	DefaultBranch string `yaml:"default_branch"` // default "main"
-	JiraProject   string `yaml:"jira_project"`   // tickets in this project map to this repo
+	Project       string `yaml:"project"`        // ticket key prefix; tickets in this project map to this repo
+	JiraProject   string `yaml:"jira_project"`   // deprecated alias for project
 }
 
 // RunWindows restricts when the poller claims new work. Empty means always.
@@ -160,7 +173,15 @@ func (c *Config) applyDefaults() {
 	}
 	for i := range c.Repos {
 		def(&c.Repos[i].DefaultBranch, "main")
+		def(&c.Repos[i].Project, c.Repos[i].JiraProject)
 	}
+	def(&c.Tracker, "jira")
+	l := &c.GitHub.Labels
+	def(&l.Ready, "hive:ready")
+	def(&l.InProgress, "hive:in-progress")
+	def(&l.NeedsInfo, "hive:needs-info")
+	def(&l.InReview, "hive:in-review")
+	def(&l.NeedsHuman, "hive:needs-human")
 }
 
 // Validate returns an error listing every missing or inconsistent field,
@@ -184,19 +205,28 @@ func (c *Config) Validate() error {
 		}
 	}
 	need(c.AgentID, "agent_id", "any short name for this worker, e.g. laptop-1")
-	need(c.Jira.BaseURL, "jira.base_url", "your Jira Cloud site, e.g. https://yourteam.atlassian.net")
-	need(c.Jira.Email, "jira.email", "the Atlassian account email the API token belongs to")
-	need(c.Jira.JQL, "jira.jql", `the query that selects work, e.g. project = KEY AND status = "Ready" AND labels = hive`)
-	placeholder(c.Jira.BaseURL, "jira.base_url")
-	placeholder(c.Jira.Email, "jira.email")
-	placeholder(c.Jira.JQL, "jira.jql")
-	for _, f := range []struct{ v, name string }{{c.Jira.Fields.AgentID, "jira.fields.agent_id"}, {c.Jira.Fields.ClaimedAt, "jira.fields.claimed_at"}} {
-		if f.v != "" && !strings.HasPrefix(f.v, "customfield_") {
-			problems = append(problems, f.name+" must be a Jira custom field id like customfield_10042 (or leave it empty to look the field up by name)")
+	switch c.Tracker {
+	case "", "jira":
+		need(c.Jira.BaseURL, "jira.base_url", "your Jira Cloud site, e.g. https://yourteam.atlassian.net")
+		need(c.Jira.Email, "jira.email", "the Atlassian account email the API token belongs to")
+		need(c.Jira.JQL, "jira.jql", `the query that selects work, e.g. project = KEY AND status = "Ready" AND labels = hive`)
+		placeholder(c.Jira.BaseURL, "jira.base_url")
+		placeholder(c.Jira.Email, "jira.email")
+		placeholder(c.Jira.JQL, "jira.jql")
+		for _, f := range []struct{ v, name string }{{c.Jira.Fields.AgentID, "jira.fields.agent_id"}, {c.Jira.Fields.ClaimedAt, "jira.fields.claimed_at"}} {
+			if f.v != "" && !strings.HasPrefix(f.v, "customfield_") {
+				problems = append(problems, f.name+" must be a Jira custom field id like customfield_10042 (or leave it empty to look the field up by name)")
+			}
 		}
-	}
-	if c.Jira.Token == "" {
-		problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required — create an API token at https://id.atlassian.com/manage-profile/security/api-tokens and `export HIVE_JIRA_TOKEN=...`")
+		if c.Jira.Token == "" {
+			problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required — create an API token at https://id.atlassian.com/manage-profile/security/api-tokens and `export HIVE_JIRA_TOKEN=...`")
+		}
+	case "github":
+		if c.GitHub.Token == "" {
+			problems = append(problems, "tracker: github needs a GitHub token with Issues read/write — `export HIVE_GITHUB_TOKEN=...`, or run `gh auth login` (the GitHub CLI token is picked up automatically)")
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("tracker: want jira or github, got %q", c.Tracker))
 	}
 	if len(c.Repos) == 0 {
 		problems = append(problems, "repos must list at least one repository — name (owner/repo), url (clone URL), jira_project (the ticket key prefix)")
@@ -204,13 +234,13 @@ func (c *Config) Validate() error {
 	for i, r := range c.Repos {
 		need(r.Name, fmt.Sprintf("repos[%d].name", i), "owner/repo as shown on GitHub")
 		need(r.URL, fmt.Sprintf("repos[%d].url", i), "the clone URL your git credentials can push to, e.g. git@github.com:owner/repo.git")
-		need(r.JiraProject, fmt.Sprintf("repos[%d].jira_project", i), "the Jira project key, i.e. the part before the dash in ticket keys")
+		need(r.Project, fmt.Sprintf("repos[%d].project", i), "the ticket key prefix: the Jira project key, or any short upper-case tag for GitHub Issues")
 		placeholder(r.Name, fmt.Sprintf("repos[%d].name", i))
 		placeholder(r.URL, fmt.Sprintf("repos[%d].url", i))
-		if r.JiraProject == "KEY" {
-			problems = append(problems, fmt.Sprintf("repos[%d].jira_project still has the starter placeholder KEY — use your Jira project key", i))
-		} else if r.JiraProject != "" && !projectKeyRe.MatchString(r.JiraProject) {
-			problems = append(problems, fmt.Sprintf("repos[%d].jira_project %q is not a Jira project key — it is the letters before the dash in ticket keys, e.g. SCRUM for SCRUM-4", i, r.JiraProject))
+		if r.Project == "KEY" {
+			problems = append(problems, fmt.Sprintf("repos[%d].project still has the starter placeholder KEY — use your project key", i))
+		} else if r.Project != "" && !projectKeyRe.MatchString(r.Project) {
+			problems = append(problems, fmt.Sprintf("repos[%d].project %q is not a project key — it is the letters before the dash in ticket keys, e.g. SCRUM for SCRUM-4", i, r.Project))
 		}
 	}
 	if c.Executor != "" && c.Executor != "claude" && c.Executor != "fake" {

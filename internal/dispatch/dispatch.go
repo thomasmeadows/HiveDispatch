@@ -102,7 +102,7 @@ func (d *Dispatcher) repoFor(key string) (config.RepoConfig, bool) {
 		return config.RepoConfig{}, false
 	}
 	for _, r := range d.Cfg.Repos {
-		if strings.EqualFold(r.JiraProject, project) {
+		if strings.EqualFold(r.Project, project) {
 			return r, true
 		}
 	}
