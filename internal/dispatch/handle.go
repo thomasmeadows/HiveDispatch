@@ -39,6 +39,7 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 	if !won {
 		return OutcomeClaimLost, nil
 	}
+	d.log().Info("picked up ticket", "ticket", t.Key, "summary", t.Summary)
 	defer d.release(ctx, t.Key)
 
 	run, err := d.Store.Load(ctx, t.Key)
@@ -83,12 +84,12 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 			d.comment(ctx, t.Key, reportTriageNeedsInfo(dec.Question))
 			d.transition(ctx, t.Key, tracker.StateNeedsInfo)
 			d.event(ctx, run, "triage_needs_info", dec.Question)
-			return OutcomeNeedsInfo, nil
+			return d.finished("work needs info", t.Key, OutcomeNeedsInfo, dec.Question), nil
 		case triage.KindReject:
 			d.comment(ctx, t.Key, reportRejected(dec.Reason))
 			d.transition(ctx, t.Key, tracker.StateNeedsHuman)
 			d.event(ctx, run, "triage_reject", dec.Reason)
-			return OutcomeRejected, nil
+			return d.finished("work needs human", t.Key, OutcomeRejected, dec.Reason), nil
 		case triage.KindDispatch:
 			taskPrompt = dec.Prompt
 		default:
@@ -119,6 +120,7 @@ func (d *Dispatcher) canResume(t tracker.Ticket, run *state.Run) bool {
 func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, run *state.Run, ws gitops.Workspace, taskPrompt string) (Outcome, error) {
 	run.Attempts++
 	d.setPhase(ctx, run, state.PhaseWorking)
+	d.log().Info("work started", "ticket", t.Key, "attempt", d.attempt(run), "resume", run.ResumeToken != "")
 
 	execCtx, cancelExec := context.WithTimeout(ctx, d.Cfg.RunTimeout)
 	res, err := d.Executor.Run(execCtx, executor.Task{
@@ -177,14 +179,18 @@ func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.
 		d.transition(bg, t.Key, tracker.StateInReview)
 		d.setPhase(bg, run, state.PhaseDone)
 		d.event(bg, run, "completed", res.Summary)
-		return OutcomeCompleted, nil
+		where := []any{"branch", run.Branch}
+		if pr != nil {
+			where = []any{"pr", pr.URL}
+		}
+		return d.finished("work finished", t.Key, OutcomeCompleted, res.Summary, where...), nil
 	case executor.StatusNeedsInput:
 		run.QuestionAt = d.now()
 		d.save(bg, run)
 		d.comment(bg, t.Key, reportNeedsInput(res.Question))
 		d.transition(bg, t.Key, tracker.StateNeedsInfo)
 		d.event(bg, run, "needs_input", res.Question)
-		return OutcomeNeedsInput, nil
+		return d.finished("work needs info", t.Key, OutcomeNeedsInput, res.Question), nil
 	default:
 		return d.finishFailed(bg, t, run, res, pushed), nil
 	}
@@ -196,13 +202,27 @@ func (d *Dispatcher) finishFailed(ctx context.Context, t tracker.Ticket, run *st
 	exhausted := run.Attempts >= d.Cfg.MaxAttempts
 	d.save(ctx, run)
 	d.comment(ctx, t.Key, reportFailed(res, run.Attempts, d.Cfg.MaxAttempts, run.Branch, pushed, exhausted, d.now()))
+	msg := "work failed"
 	if exhausted {
 		d.transition(ctx, t.Key, tracker.StateNeedsHuman)
+		msg = "work needs human"
 	} else {
 		d.transition(ctx, t.Key, tracker.StateReady)
 	}
 	d.event(ctx, run, "failed", res.Summary)
-	return OutcomeFailed
+	return d.finished(msg, t.Key, OutcomeFailed, res.Summary, "cause", res.StopCause, "attempt", d.attempt(run))
+}
+
+// finished logs the end of work on a ticket: how it ended, and the result
+// the ticket was told about. It returns out so callers can return it.
+func (d *Dispatcher) finished(msg, key string, out Outcome, result string, extra ...any) Outcome {
+	args := append([]any{"ticket", key, "result", result}, extra...)
+	d.log().Info(msg, args...)
+	return out
+}
+
+func (d *Dispatcher) attempt(run *state.Run) string {
+	return fmt.Sprintf("%d/%d", run.Attempts, d.Cfg.MaxAttempts)
 }
 
 func (d *Dispatcher) ensurePR(ctx context.Context, repo config.RepoConfig, t tracker.Ticket, run *state.Run) (*githost.PR, error) {

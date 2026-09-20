@@ -12,7 +12,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
@@ -28,6 +30,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/state/gitbranch"
 	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
 	"github.com/thomasmeadows/hivedispatch/internal/state/router"
+	"github.com/thomasmeadows/hivedispatch/internal/statusline"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
 	"github.com/thomasmeadows/hivedispatch/internal/triage"
 	triclaude "github.com/thomasmeadows/hivedispatch/internal/triage/claudecode"
@@ -206,7 +209,15 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	logger := slog.New(slog.NewTextHandler(stderr, nil))
+	// On a terminal, logs scroll above a status line showing the last poll.
+	// -once has no loop to report on, and a pipe has no line to rewrite.
+	var status *statusline.Line
+	logOut := stderr
+	if !*once && isTerminal(stderr) {
+		status = statusline.New(stderr)
+		logOut = status
+	}
+	logger := slog.New(slog.NewTextHandler(logOut, nil))
 	tr, err := jira.New(cfg.Jira)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -326,9 +337,72 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "handled %d ticket(s)\n", n)
 		return 0
 	}
+	if status != nil {
+		stop := showLastPoll(d, status)
+		defer stop()
+	}
 	if err := d.Run(loopCtx, runCtx); err != nil && !errors.Is(err, context.Canceled) {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(logOut, err)
 		return 1
 	}
 	return 0
+}
+
+// showLastPoll keeps the status line reading "last poll <time> (<ago>)",
+// refreshed every second, until the returned stop function is called.
+func showLastPoll(d *dispatch.Dispatcher, line *statusline.Line) (stop func()) {
+	var mu sync.Mutex
+	var last time.Time
+	redraw := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		line.Set(pollStatus(last, time.Now()))
+	}
+	d.Polled = func(at time.Time) {
+		mu.Lock()
+		last = at
+		mu.Unlock()
+		redraw()
+	}
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		tick := time.NewTicker(time.Second)
+		defer tick.Stop()
+		redraw()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+				redraw()
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished
+		line.Clear()
+	}
+}
+
+// pollStatus is the status line text: when the tracker was last polled and
+// how long ago that was, so a quiet worker still visibly has a pulse.
+func pollStatus(last, now time.Time) string {
+	if last.IsZero() {
+		return "waiting for first poll"
+	}
+	return fmt.Sprintf("last poll %s (%s ago)", last.Format("2006-01-02 15:04:05"), now.Sub(last).Truncate(time.Second))
+}
+
+// isTerminal reports whether w is a character device, i.e. an interactive
+// terminal rather than a file or pipe.
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
