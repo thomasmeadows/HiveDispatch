@@ -2,11 +2,11 @@
   "ticket": "SCRUM-5",
   "agent": "worker-1",
   "branch": "hive/SCRUM-5",
-  "attempts": 1,
-  "phase": "claimed",
+  "attempts": 2,
+  "phase": "working",
   "lastStatus": "rejected",
   "resumeToken": "2daaed25-284e-4780-838f-5b169e1711d5",
   "prUrl": "https://github.com/thomasmeadows/HiveDispatch/pull/1",
   "questionAt": "0001-01-01T00:00:00Z",
-  "updatedAt": "2026-09-20T05:56:01.666882985Z"
+  "updatedAt": "2026-09-20T05:56:50.610916748Z"
 }
