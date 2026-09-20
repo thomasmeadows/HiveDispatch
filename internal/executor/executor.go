@@ -6,7 +6,10 @@
 // status and a human-readable summary, always — even on failure.
 package executor
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Status is the terminal status of a run.
 type Status string
@@ -74,6 +77,8 @@ type Result struct {
 	ResumeToken  string // opaque; persisted for the next run
 	ChangedFiles []string
 	Log          string
+	// RetryAfter is when a Budget stop is expected to clear; zero if unknown.
+	RetryAfter time.Time
 }
 
 // Executor wraps one coding-agent CLI. Timeouts ride on the context.

@@ -79,3 +79,29 @@ func TestOpenPRPostsAndMapsErrors(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestProbePRWrite(t *testing.T) {
+	mux := http.NewServeMux()
+	var forbidden bool
+	mux.HandleFunc("POST /repos/o/r/pulls", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if forbidden {
+			w.WriteHeader(403)
+			_, _ = w.Write([]byte(`{"message":"Resource not accessible by personal access token"}`))
+			return
+		}
+		// With permission GitHub validates the body and rejects the bogus head.
+		w.WriteHeader(422)
+		_, _ = w.Write([]byte(`{"message":"Validation Failed","errors":[{"message":"No commits between main and hivedispatch-permission-probe"}]}`))
+	})
+	c := newClient(t, mux)
+	if err := c.ProbePRWrite(context.Background(), "o/r", "main"); err != nil {
+		t.Errorf("422 means permitted: %v", err)
+	}
+	forbidden = true
+	err := c.ProbePRWrite(context.Background(), "o/r", "main")
+	if err == nil || !strings.Contains(err.Error(), "Pull requests") {
+		t.Errorf("403 should be reported with the permission to grant: %v", err)
+	}
+}

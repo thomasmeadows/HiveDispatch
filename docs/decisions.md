@@ -155,3 +155,13 @@ Decided: `retention_days` (default 30) removes raw executor logs older than the 
 ## 2026-09-20 — GitHub Issues tracker: labels for state, a body marker for the claim
 
 Decided: with `tracker: github`, one `hive:*` label at a time carries the lifecycle state and a hidden `<!-- hivedispatch-claim: agent time -->` comment at the end of the issue body carries the claim; keys are `<project>-<number>`. Rejected: the assignee as the claim (all workers share one account, so it cannot tell them apart), a per-worker label (litters the label list), GitHub Projects fields (a second system to set up, and no phone-tap equivalent to a label). Why: labels are visible and one tap on a phone; the body marker is invisible to readers, survives edits, and supports write-then-read-back exactly like the Jira fields. This is the second `Tracker` implementation the interface was waiting for; the dispatcher did not change.
+
+## 2026-09-20 — The session-limit scenario, live
+
+The first GitHub Issues run hit the Claude session limit mid-work. What held: the run stopped with `cause=budget`, the comment carried the reset time, the claim was released, and after the reset the next attempt resumed the same session and pushed. What did not: while the quota was exhausted the loop kept claiming and re-triaging every poll (four times in four minutes, each a wasted CLI call), and after the push the PR failed on a token without pull-request write, which sent the ticket back through triage — which, reading the failure comment, sensibly asked a human rather than re-running the agent.
+
+Decided:
+- A budget stop from the executor or the triager pauses the whole worker until the provider's reset time plus a minute (15 minutes when no reset time is known). A rate limit is a fleet condition, not a ticket condition. Rejected: per-ticket backoff (every other ticket would hit the same wall).
+- `Result.RetryAfter` and `claudecli.BudgetError` carry the reset time as data; `LooksLikeBudget` is the one place that decides what counts as a budget stop, and now includes "session limit".
+- A run that completed and pushed but has no PR is finished on the next poll without triage or the agent: the artifacts say exactly where it stopped, as the spec argues. The run stays at phase `pushed` when the PR fails so this path is taken.
+- `check -live` and the run preflight probe pull-request write access with a POST whose head branch does not exist (422 with permission, 403 without). GitHub exposes no read-only way to learn a fine-grained token's permissions.
