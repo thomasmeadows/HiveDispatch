@@ -187,3 +187,7 @@ Rejected: polling the board's column instead of the label (Projects has no REST 
 ## 2026-09-20 — Token kinds are interchangeable to the code; not to GitHub's permission model
 
 Both classic and fine-grained personal access tokens are sent as `Authorization: Bearer` and nothing inspects the prefix, so either works everywhere HiveDispatch talks to GitHub. Learned while wiring the Projects board: fine-grained tokens have no account-level Projects permission, so a **user-owned** board needs a classic token with `project` (organisation boards accept either). Documented as a table by need rather than by token kind, because that is the question people actually have.
+
+## 2026-09-20 — A run record remembers its ticket's URL
+
+Observed: with the GitHub repo still keyed `SCRUM`, issue #N loaded Jira ticket SCRUM-N's run record and resumed *its* Claude session — the agent carried on a conversation about a different ticket. Decided: the record stores the ticket URL; when a key resolves to a ticket with a different URL, the record is discarded (attempts, resume token, PR) and the run starts fresh with a warning. The correct configuration is still a distinct `project` per tracker; this makes the wrong one safe.

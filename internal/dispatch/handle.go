@@ -47,6 +47,14 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 	if err != nil {
 		return OutcomeSkipped, fmt.Errorf("load run %s: %w", t.Key, err)
 	}
+	if run.URL != "" && t.URL != "" && run.URL != t.URL {
+		// The key now names a different ticket (e.g. a Jira project and a
+		// GitHub repo sharing a prefix). Nothing in the old record — least
+		// of all its resume token — applies to this one.
+		d.log().Warn("run record belongs to another ticket with the same key; starting fresh", "ticket", t.Key, "was", run.URL, "now", t.URL)
+		run = &state.Run{Ticket: t.Key}
+	}
+	run.URL = t.URL
 	priorPhase := run.Phase // where the last run stopped, before we overwrite it
 	run.Agent = d.Cfg.AgentID
 	run.Branch = gitops.BranchName(t.Key)

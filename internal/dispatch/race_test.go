@@ -218,3 +218,26 @@ func TestPushedWithoutPRJustOpensThePR(t *testing.T) {
 		t.Errorf("run = %+v", r)
 	}
 }
+
+func TestKeyReusedByDifferentTicketResetsRun(t *testing.T) {
+	h := newHarness(t)
+	// A record from another tracker's ticket with the same key.
+	if err := h.store.Save(context.Background(), &state.Run{
+		Ticket: "HIVE-1", URL: "https://jira.example/browse/HIVE-1", Attempts: 2,
+		LastStatus: string(executor.StatusCompleted), Phase: state.PhaseDone, ResumeToken: "someone-elses-session", PRURL: "https://x/pull/9",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h.tr.Add(tracker.Ticket{Key: "HIVE-1", Summary: "one", URL: "https://github.com/o/r/issues/1"})
+	if out := h.handle(t); out != OutcomeCompleted {
+		t.Fatalf("out = %v", out)
+	}
+	calls := h.ex.Calls()
+	if len(calls) != 1 || calls[0].ResumeToken != "" {
+		t.Errorf("must not resume another ticket's session: %+v", calls)
+	}
+	r := h.run(t)
+	if r.Attempts != 1 || r.URL != "https://github.com/o/r/issues/1" || r.PRURL != "" {
+		t.Errorf("record should have been reset for the new ticket: %+v", r)
+	}
+}

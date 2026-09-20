@@ -27,6 +27,7 @@ const (
 // Run is the per-ticket record.
 type Run struct {
 	Ticket      string    `json:"ticket"`
+	URL         string    `json:"url,omitempty"` // the ticket this record belongs to; a key can be reused across trackers
 	Agent       string    `json:"agent"`
 	Branch      string    `json:"branch"`
 	Attempts    int       `json:"attempts"`
