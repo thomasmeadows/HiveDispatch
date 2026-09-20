@@ -3,10 +3,10 @@
   "agent": "worker-1",
   "branch": "hive/SCRUM-5",
   "attempts": 2,
-  "phase": "pr_opened",
+  "phase": "done",
   "lastStatus": "completed",
   "resumeToken": "2daaed25-284e-4780-838f-5b169e1711d5",
   "prUrl": "https://github.com/thomasmeadows/HiveDispatch/pull/6",
   "questionAt": "0001-01-01T00:00:00Z",
-  "updatedAt": "2026-09-20T06:04:22.562159615Z"
+  "updatedAt": "2026-09-20T06:04:25.891168403Z"
 }
