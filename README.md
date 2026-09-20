@@ -2,13 +2,13 @@
 
 Ticket-driven orchestration for autonomous coding agents.
 
-HiveDispatch turns tickets into pull requests. It polls an issue tracker, triages each ticket, claims it, branches, runs a coding-agent CLI (Claude Code first) in an isolated worktree, commits, opens a PR, and reports back on the ticket — so steering development work needs nothing but a ticket and a comment thread, including from a phone.
+HiveDispatch turns tickets into pull requests. It polls an issue tracker (Jira Cloud or GitHub Issues), triages each ticket, claims it, branches, runs a coding-agent CLI (Claude Code first) in an isolated worktree, commits, opens a PR, and reports back on the ticket — so steering development work needs nothing but a ticket and a comment thread, including from a phone.
 
 **v0.1.0 — alpha.** The single-worker MVP is complete and has run end to end on a real Jira project, GitHub repository, and Claude Code — including this repository's own tickets: a Jira ticket is triaged by Claude Code (dispatch / ask / reject), claimed, implemented by Claude Code in an isolated worktree, pushed, and opened as a GitHub PR — with questions posted back to the ticket and the run resumed when a human answers.
 
 ## How a ticket flows
 
-1. **Poll** — the worker runs your trigger JQL (e.g. `status = Ready AND labels = hive`).
+1. **Poll** — the worker runs your trigger JQL (e.g. `status = Ready AND labels = hive`), or lists GitHub issues labelled `hive:ready`.
 2. **Claim** — it writes its agent id to the ticket and reads it back; two workers racing resolve to one winner.
 3. **Triage** — Claude Code, read-only, inspects the repo and decides: dispatch with notes, ask one question, or reject.
 4. **Branch** — a git worktree on `hive/<KEY>`, resumed if it already exists.
@@ -36,13 +36,14 @@ go install github.com/thomasmeadows/hivedispatch/cmd/hivedispatch@latest
 hivedispatch init                 # writes ~/.config/hivedispatch/config.yaml, fully commented
 $EDITOR ~/.config/hivedispatch/config.yaml
 
-export HIVE_JIRA_TOKEN=...        # https://id.atlassian.com/manage-profile/security/api-tokens
-hivedispatch init -jira           # creates the two claim fields in Jira, prints their ids → paste into config
+export HIVE_JIRA_TOKEN=...        # Jira: https://id.atlassian.com/manage-profile/security/api-tokens
+hivedispatch init -jira           # Jira: creates the two claim fields
+hivedispatch init -github         # GitHub Issues (tracker: github): creates the hive:* labels
 
 # GitHub token for opening PRs: HIVE_GITHUB_TOKEN, or `gh auth login`, or your git
 # credential helper — found automatically. Without one, branches are pushed and you
 # open the PR yourself. (GitHub needs auth to open PRs even on public repos.)
-hivedispatch check -jira          # verifies Jira, reports the GitHub token source
+hivedispatch check -live          # verifies the tracker, reports the GitHub token source
 
 hivedispatch run -once -executor fake -placeholder   # dry run: ticket → branch → PR, no agent
 hivedispatch run                                     # the real thing

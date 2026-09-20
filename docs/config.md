@@ -8,6 +8,7 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 
 | Key | Default | Meaning |
 |---|---|---|
+| `tracker` | `jira` | `jira` or `github` (GitHub Issues: labels carry state, a hidden body marker carries the claim) |
 | `agent_id` | *(required)* | Name of this worker; written to tickets it claims |
 | `workroot` | `~/.local/share/hivedispatch` | Clones, worktrees, and state live under here |
 | `poll_interval` | `60s` | Time between polls |
@@ -36,7 +37,8 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 | `repos[].name` | *(required)* | `owner/repo` |
 | `repos[].url` | *(required)* | Clone URL your git credentials can push to |
 | `repos[].default_branch` | `main` | Base for ticket branches and PRs |
-| `repos[].jira_project` | *(required)* | Jira project key (`SCRUM` for `SCRUM-4`); tickets in it go to this repo |
+| `repos[].project` | *(required)* | Ticket key prefix. Jira: the project key (`SCRUM` for `SCRUM-4`). GitHub Issues: any short upper-case tag; issue #12 becomes `TAG-12`. `jira_project` is accepted as an alias |
+| `github.labels.ready` … `needs_human` | `hive:ready`, `hive:in-progress`, `hive:needs-info`, `hive:in-review`, `hive:needs-human` | State labels when `tracker: github` |
 | `run_windows.timezone` | local | IANA zone for the windows |
 | `run_windows.windows[]` | *(none = always)* | `{days: [mon, …], start: "22:00", end: "06:00"}`; `start` after `end` spans midnight. Windows gate the start of new work only |
 
@@ -58,7 +60,7 @@ Read from the ticket's worktree, so it is versioned with the code and can differ
 | Variable | Required | Meaning |
 |---|---|---|
 | `HIVE_JIRA_TOKEN` | yes | Atlassian API token for `jira.email` |
-| `HIVE_GITHUB_TOKEN` | no | Token for opening PRs. If unset, `gh auth token` and the git credential helper are tried; with none, branches are pushed and the ticket asks a human to open the PR |
+| `HIVE_GITHUB_TOKEN` | with `tracker: github` | Token for opening PRs and, with `tracker: github`, for reading and writing issues. If unset, `gh auth token` and the git credential helper are tried; with none and Jira, branches are pushed and the ticket asks a human to open the PR |
 
 ## Commands
 
@@ -66,7 +68,8 @@ Read from the ticket's worktree, so it is versioned with the code and can differ
 |---|---|
 | `init` | Write the starter worker config (never overwrites a non-empty file) |
 | `init -jira` | Create the two claim fields in Jira |
-| `check [-jira]` | Validate the config; with `-jira`, verify credentials, fields, editability, statuses, projects, and the trigger query |
+| `init -github` | Create the state labels in each GitHub repository |
+| `check [-live]` | Validate the config; with `-live`, verify the tracker (Jira: credentials, fields, editability, statuses, projects, trigger query; GitHub: token, repos, labels) |
 | `run [-once]` | Preflight, then poll and dispatch (once, or until Ctrl-C: first drains, second interrupts) |
 | `once KEY` | Handle one ticket by key, ignoring the trigger query and run windows |
 | `status [-json]` | List run records from the state branch(es) |

@@ -305,3 +305,19 @@ func TestStatusWithLocalStore(t *testing.T) {
 		t.Errorf("json: exit %d out=%q", code, out.String())
 	}
 }
+
+func TestCheckGithubTrackerNeedsToken(t *testing.T) {
+	t.Setenv("HIVE_GITHUB_TOKEN", "")
+	t.Setenv("PATH", t.TempDir()) // no gh, no git credential helper
+	p := filepath.Join(t.TempDir(), "c.yaml")
+	if err := os.WriteFile(p, []byte("tracker: github\nagent_id: w\nrepos:\n  - {name: o/r, url: git@github.com:o/r.git, project: HD}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if code := run([]string{"check", "-config", p}, &out, &errb); code != 1 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "gh auth login") || !strings.Contains(errb.String(), "HIVE_GITHUB_TOKEN") {
+		t.Errorf("stderr = %q", errb.String())
+	}
+}

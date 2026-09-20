@@ -22,6 +22,8 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/state/gitbranch"
 	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
 	"github.com/thomasmeadows/hivedispatch/internal/state/router"
+	"github.com/thomasmeadows/hivedispatch/internal/tracker"
+	"github.com/thomasmeadows/hivedispatch/internal/tracker/ghissues"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
 	"github.com/thomasmeadows/hivedispatch/internal/triage"
 	triclaude "github.com/thomasmeadows/hivedispatch/internal/triage/claudecode"
@@ -39,7 +41,7 @@ type wireOptions struct {
 // worker is everything a command needs to act on tickets.
 type worker struct {
 	cfg     *config.Config
-	tracker *jira.Client
+	tracker tracker.Tracker
 	ws      *gitws.Workspaces
 	store   state.RunStore
 	host    githost.GitHost
@@ -72,15 +74,48 @@ func openStores(ctx context.Context, cfg *config.Config) (*gitws.Workspaces, sta
 // newWorker connects to Jira, verifies the setup (when opts.preflight),
 // opens stores, discovers a GitHub token, and builds the dispatcher.
 func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger *slog.Logger, stdout, stderr io.Writer) (*worker, error) {
-	tr, err := jira.New(cfg.Jira)
-	if err != nil {
-		return nil, err
+	// The GitHub token serves the PR API and, with tracker: github, the
+	// issues API — so it is resolved before the tracker is built.
+	var host githost.GitHost = none.Host{}
+	tok, src := github.DiscoverToken(ctx, "github.com")
+	switch {
+	case src != "":
+		cfg.GitHub.Token = tok
+		var err error
+		host, err = github.New(cfg.GitHub)
+		if err != nil {
+			return nil, err
+		}
+		logger.Info("github token", "source", src)
+	case cfg.Tracker == "github":
+		return nil, fmt.Errorf("tracker: github needs a GitHub token — export HIVE_GITHUB_TOKEN or run `gh auth login`")
+	default:
+		logger.Warn("no GitHub token found; branches will be pushed but pull requests will not be opened")
 	}
-	if err := tr.ResolveFields(ctx); err != nil {
-		return nil, err
-	}
-	if opts.preflight && !jiraPreflight(ctx, tr, cfg, stdout, stderr) {
-		return nil, fmt.Errorf("not starting: fix the above, or pass -skip-preflight")
+
+	var tr tracker.Tracker
+	switch cfg.Tracker {
+	case "github":
+		gh, err := ghissues.New(cfg.GitHub, cfg.Repos)
+		if err != nil {
+			return nil, err
+		}
+		if opts.preflight && !githubPreflight(ctx, gh, stdout, stderr) {
+			return nil, fmt.Errorf("not starting: fix the above, or pass -skip-preflight")
+		}
+		tr = gh
+	default:
+		jc, err := jira.New(cfg.Jira)
+		if err != nil {
+			return nil, err
+		}
+		if err := jc.ResolveFields(ctx); err != nil {
+			return nil, err
+		}
+		if opts.preflight && !jiraPreflight(ctx, jc, cfg, stdout, stderr) {
+			return nil, fmt.Errorf("not starting: fix the above, or pass -skip-preflight")
+		}
+		tr = jc
 	}
 	sched, err := schedule.Parse(cfg.RunWindows)
 	if err != nil {
@@ -89,17 +124,6 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 	ws, store, err := openStores(ctx, cfg)
 	if err != nil {
 		return nil, err
-	}
-	var host githost.GitHost = none.Host{}
-	if tok, src := github.DiscoverToken(ctx, "github.com"); src != "" {
-		cfg.GitHub.Token = tok
-		host, err = github.New(cfg.GitHub)
-		if err != nil {
-			return nil, err
-		}
-		logger.Info("github token", "source", src)
-	} else {
-		logger.Warn("no GitHub token found; branches will be pushed but pull requests will not be opened")
 	}
 
 	name := cfg.Executor

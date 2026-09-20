@@ -20,6 +20,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
 	"github.com/thomasmeadows/hivedispatch/internal/statusline"
+	"github.com/thomasmeadows/hivedispatch/internal/tracker/ghissues"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
 )
 
@@ -30,9 +31,10 @@ const usage = `usage: hivedispatch <command> [flags]
 
 commands:
   version                     print the version
-  check [-config P] [-jira]   validate the worker config; -jira verifies against the live site
+  check [-config P] [-live]   validate the worker config; -live verifies against the tracker and GitHub
   init  [-config P]           write a commented starter config (never overwrites)
-  init  -jira [-config P]     create the claim custom fields in Jira and print their IDs
+  init  -jira [-config P]     create the claim custom fields in Jira
+  init  -github [-config P]   create the hive:* state labels in each GitHub repository
   run   [-config P] [-once] [-executor claude|fake] [-triage claude|passthrough]
         [-placeholder] [-skip-preflight]
                               verify Jira setup, then poll and dispatch; -executor and -triage override the config
@@ -76,7 +78,8 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
-	live := fs.Bool("jira", false, "also verify against the live Jira site")
+	live := fs.Bool("live", false, "also verify against the live tracker and GitHub")
+	liveJira := fs.Bool("jira", false, "alias for -live")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -85,24 +88,71 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "config ok: agent %s, %d repo(s), jira %s\n", cfg.AgentID, len(cfg.Repos), cfg.Jira.BaseURL)
-	if _, src := github.DiscoverToken(context.Background(), "github.com"); src != "" {
+	ctx := context.Background()
+	target := cfg.Jira.BaseURL
+	if cfg.Tracker == "github" {
+		target = "GitHub Issues"
+	}
+	fmt.Fprintf(stdout, "config ok: agent %s, %d repo(s), tracker %s (%s)\n", cfg.AgentID, len(cfg.Repos), cfg.Tracker, target)
+	tok, src := github.DiscoverToken(ctx, "github.com")
+	switch {
+	case src != "":
 		fmt.Fprintf(stdout, "github ok: token from %s\n", src)
-	} else {
+		cfg.GitHub.Token = tok
+	case cfg.Tracker == "github":
+		fmt.Fprintln(stderr, "github: no token found (HIVE_GITHUB_TOKEN, gh auth token, or git credential helper) — required when tracker is github")
+		return 1
+	default:
 		fmt.Fprintln(stdout, "github: no token found (HIVE_GITHUB_TOKEN, gh auth token, or git credential helper) — branches will be pushed but PRs will not be opened")
 	}
-	if !*live {
+	if !*live && !*liveJira {
 		return 0
 	}
-	client, err := jira.New(cfg.Jira)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-	if !jiraPreflight(context.Background(), client, cfg, stdout, stderr) {
+	if !trackerPreflight(ctx, cfg, stdout, stderr) {
 		return 1
 	}
 	return 0
+}
+
+// trackerPreflight runs the live check for whichever tracker is configured.
+func trackerPreflight(ctx context.Context, cfg *config.Config, stdout, stderr io.Writer) bool {
+	switch cfg.Tracker {
+	case "github":
+		client, err := ghissues.New(cfg.GitHub, cfg.Repos)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return false
+		}
+		return githubPreflight(ctx, client, stdout, stderr)
+	default:
+		client, err := jira.New(cfg.Jira)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return false
+		}
+		if err := client.ResolveFields(ctx); err != nil {
+			fmt.Fprintln(stderr, err)
+			return false
+		}
+		return jiraPreflight(ctx, client, cfg, stdout, stderr)
+	}
+}
+
+// githubPreflight runs the live GitHub Issues check and prints the report.
+func githubPreflight(ctx context.Context, client *ghissues.Client, stdout, stderr io.Writer) bool {
+	rep, err := client.Check(ctx)
+	if err != nil {
+		fmt.Fprintln(stderr, "github check failed:", err)
+		return false
+	}
+	fmt.Fprintf(stdout, "github issues ok: authenticated as %s; %d repo(s); %d issue(s) labelled ready\n", rep.User, len(rep.Repos), rep.SampleTickets)
+	for _, r := range rep.MissingRepos {
+		fmt.Fprintf(stderr, "repo problem: %s\n", r)
+	}
+	for repo, labels := range rep.MissingLabels {
+		fmt.Fprintf(stderr, "%s is missing labels %s (run `hivedispatch init -github`)\n", repo, strings.Join(labels, ", "))
+	}
+	return rep.OK()
 }
 
 // jiraPreflight runs the live Jira check and prints the report. It returns
@@ -146,6 +196,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	doJira := fs.Bool("jira", false, "create the claim custom fields in Jira")
+	doGitHub := fs.Bool("github", false, "create the state labels in each GitHub repository")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -155,15 +206,40 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if written {
-		fmt.Fprintf(stdout, "wrote starter config to %s\n\nEdit it (every field says where its value comes from), export HIVE_JIRA_TOKEN, then run:\n  hivedispatch init -jira\n", *cfgPath)
-		if !*doJira {
+		fmt.Fprintf(stdout, "wrote starter config to %s\n\nEdit it (every field says where its value comes from), then run:\n  hivedispatch init -jira      (Jira: creates the claim fields)\n  hivedispatch init -github    (GitHub Issues: creates the state labels)\n", *cfgPath)
+		if !*doJira && !*doGitHub {
 			return 0
 		}
-		fmt.Fprintln(stderr, "\ninit -jira: fill in the config first, then run this again.")
+		fmt.Fprintln(stderr, "\ninit: fill in the config first, then run this again.")
 		return 1
 	}
-	if !*doJira {
-		fmt.Fprintf(stdout, "config already exists at %s\nNext: export HIVE_JIRA_TOKEN and run `hivedispatch init -jira`\n", *cfgPath)
+	if !*doJira && !*doGitHub {
+		fmt.Fprintf(stdout, "config already exists at %s\nNext: `hivedispatch init -jira` or `hivedispatch init -github`, then `hivedispatch check -live`\n", *cfgPath)
+		return 0
+	}
+	if *doGitHub {
+		cfg, err := config.Load(*cfgPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "%v\n\nEdit %s and run `hivedispatch init -github` again.\n", err, *cfgPath)
+			return 1
+		}
+		tok, src := github.DiscoverToken(context.Background(), "github.com")
+		if src == "" {
+			fmt.Fprintln(stderr, "no GitHub token found: export HIVE_GITHUB_TOKEN (Issues read/write) or run `gh auth login`")
+			return 1
+		}
+		cfg.GitHub.Token = tok
+		client, err := ghissues.New(cfg.GitHub, cfg.Repos)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		n, err := client.EnsureLabels(context.Background())
+		if err != nil {
+			fmt.Fprintln(stderr, "init failed:", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "github labels ready (%d created). Put %q on an issue to queue it.\nNext: hivedispatch check -live\n", n, cfg.GitHub.Labels.Ready)
 		return 0
 	}
 	cfg, err := config.Load(*cfgPath)

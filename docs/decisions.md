@@ -151,3 +151,7 @@ Decided: `retention_days` (default 30) removes raw executor logs older than the 
 ## 2026-09-20 — status reads local state; once bypasses the queue by design
 
 `status` opens the state stores and nothing else: no Jira call, no token discovery, no executor, so it is safe to run anywhere and answers from the last push. `once KEY` deliberately ignores the trigger JQL and run windows — it is the operator saying "this one, now" — but still runs the Jira preflight and the normal claim protocol, so it cannot collide with a running worker.
+
+## 2026-09-20 — GitHub Issues tracker: labels for state, a body marker for the claim
+
+Decided: with `tracker: github`, one `hive:*` label at a time carries the lifecycle state and a hidden `<!-- hivedispatch-claim: agent time -->` comment at the end of the issue body carries the claim; keys are `<project>-<number>`. Rejected: the assignee as the claim (all workers share one account, so it cannot tell them apart), a per-worker label (litters the label list), GitHub Projects fields (a second system to set up, and no phone-tap equivalent to a label). Why: labels are visible and one tap on a phone; the body marker is invisible to readers, survives edits, and supports write-then-read-back exactly like the Jira fields. This is the second `Tracker` implementation the interface was waiting for; the dispatcher did not change.

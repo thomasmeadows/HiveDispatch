@@ -131,7 +131,20 @@ hivedispatch check -jira
 hivedispatch run -once -placeholder   # takes one Ready ticket to a PR with a placeholder commit
 ```
 
-## 8. Claude Code
+## 8. GitHub Issues instead of Jira
+
+Set `tracker: github` in the worker config and skip sections 1–4. The GitHub token (section 5) then also needs **Issues: read and write**. State lives in labels and the claim in a hidden marker in the issue body, so nothing else has to exist in the repository.
+
+```sh
+hivedispatch init -github     # creates hive:ready, hive:in-progress, hive:needs-info, hive:in-review, hive:needs-human in each repo
+hivedispatch check -live
+```
+
+To queue an issue, add the **`hive:ready`** label (one tap in the GitHub mobile app). The worker swaps the label as the ticket moves: `hive:in-progress` while it works, `hive:needs-info` when it has a question — answer in the thread and put `hive:ready` back — `hive:in-review` when a pull request is open, `hive:needs-human` when it will not attempt the issue. Ticket keys are `<project>-<issue number>` with `project` from `repos[].project`, so issue #12 in a repo with `project: HD` is `HD-12` and its branch is `hive/HD-12`.
+
+Label names are configurable under `github.labels`.
+
+## 9. Claude Code
 
 The worker shells out to the `claude` CLI. Log in once as the user that runs the worker (`claude` then `/login`) — headless runs reuse the stored credentials. Do not set `--bare` anywhere; it skips credential loading.
 
