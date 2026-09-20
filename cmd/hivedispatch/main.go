@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -18,23 +17,9 @@ import (
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
-	"github.com/thomasmeadows/hivedispatch/internal/executor"
-	"github.com/thomasmeadows/hivedispatch/internal/executor/claudecode"
-	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
-	"github.com/thomasmeadows/hivedispatch/internal/githost"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
-	"github.com/thomasmeadows/hivedispatch/internal/githost/none"
-	gitws "github.com/thomasmeadows/hivedispatch/internal/gitops/git"
-	"github.com/thomasmeadows/hivedispatch/internal/schedule"
-	"github.com/thomasmeadows/hivedispatch/internal/state"
-	"github.com/thomasmeadows/hivedispatch/internal/state/gitbranch"
-	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
-	"github.com/thomasmeadows/hivedispatch/internal/state/router"
 	"github.com/thomasmeadows/hivedispatch/internal/statusline"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
-	"github.com/thomasmeadows/hivedispatch/internal/triage"
-	triclaude "github.com/thomasmeadows/hivedispatch/internal/triage/claudecode"
-	"github.com/thomasmeadows/hivedispatch/internal/triage/passthrough"
 )
 
 // version is overridden at build time via -ldflags "-X main.version=...".
@@ -218,97 +203,20 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		logOut = status
 	}
 	logger := slog.New(slog.NewTextHandler(logOut, nil))
-	tr, err := jira.New(cfg.Jira)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-	if err := tr.ResolveFields(context.Background()); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-	if !*skipPreflight && !jiraPreflight(context.Background(), tr, cfg, stdout, stderr) {
-		fmt.Fprintln(stderr, "not starting: fix the above, or pass -skip-preflight")
-		return 1
-	}
-	sched, err := schedule.Parse(cfg.RunWindows)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
 	ctx := context.Background()
-	ws := gitws.New(filepath.Join(cfg.Workroot, "repos"))
-	stores := map[string]state.RunStore{}
-	for _, repo := range cfg.Repos {
-		base, err := ws.EnsureBase(ctx, repo)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
+	w, err := newWorker(ctx, cfg, wireOptions{executor: *executorFlag, triage: *triageFlag, placeholder: *placeholder, preflight: !*skipPreflight}, logger, stdout, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	d := w.d
+	if cfg.RetentionDays > 0 {
+		cutoff := time.Now().AddDate(0, 0, -cfg.RetentionDays)
+		if n, err := w.store.Prune(ctx, cutoff); err != nil {
+			logger.Warn("retention prune failed", "err", err)
+		} else if n > 0 {
+			logger.Info("retention", "removed", n, "before", cutoff.Format("2006-01-02"))
 		}
-		var st state.RunStore
-		if cfg.StateStore == "local" {
-			st = localdir.New(filepath.Join(cfg.Workroot, "state", strings.ReplaceAll(repo.Name, "/", "__")))
-		} else {
-			st, err = gitbranch.Open(ctx, base, filepath.Join(ws.RepoDir(repo), ".state"))
-			if err != nil {
-				fmt.Fprintln(stderr, "state branch:", err)
-				return 1
-			}
-		}
-		stores[strings.ToUpper(repo.JiraProject)] = st
-	}
-	var host githost.GitHost = none.Host{}
-	if tok, src := github.DiscoverToken(ctx, "github.com"); src != "" {
-		cfg.GitHub.Token = tok
-		host, err = github.New(cfg.GitHub)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		logger.Info("github token", "source", src)
-	} else {
-		logger.Warn("no GitHub token found; branches will be pushed but pull requests will not be opened")
-	}
-	name := cfg.Executor
-	if *executorFlag != "" {
-		name = *executorFlag
-	}
-	var ex executor.Executor
-	switch name {
-	case "fake":
-		f := exfake.New()
-		f.Placeholder = *placeholder
-		ex = f
-	case "claude":
-		ex = claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary, Model: cfg.Claude.Model})
-	default:
-		fmt.Fprintf(stderr, "unknown executor %q\n", name)
-		return 2
-	}
-	triKind := cfg.Triage.Kind
-	if *triageFlag != "" {
-		triKind = *triageFlag
-	}
-	var tri triage.Triager
-	switch triKind {
-	case "passthrough":
-		tri = passthrough.Triager{}
-	case "claude":
-		tri = triclaude.New(triclaude.Config{Binary: cfg.Claude.Binary, Model: cfg.Triage.Model, StepBudget: cfg.Triage.StepBudget, Timeout: cfg.Triage.Timeout})
-	default:
-		fmt.Fprintf(stderr, "unknown triage %q\n", triKind)
-		return 2
-	}
-	d := &dispatch.Dispatcher{
-		Cfg:        dispatch.ConfigFrom(cfg),
-		Tracker:    tr,
-		Triager:    tri,
-		Executor:   ex,
-		Workspaces: ws,
-		Host:       host,
-		Store:      &router.Store{Stores: stores},
-		Schedule:   sched,
-		Log:        logger,
 	}
 	logger.Info("starting", "agent", cfg.AgentID, "executor", d.Executor.Name(), "once", *once)
 

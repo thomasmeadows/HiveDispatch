@@ -256,3 +256,17 @@ func TestValidateRejectsNonKeyJiraProject(t *testing.T) {
 		t.Fatalf("err = %v, want a hint with an example key", err)
 	}
 }
+
+func TestLoadRetentionDefault(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	cfg, err := Load(writeTemp(t, validYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RetentionDays != 30 {
+		t.Errorf("retention_days default = %d", cfg.RetentionDays)
+	}
+	if cfg, err := Load(writeTemp(t, validYAML+"retention_days: -1\n")); err != nil || cfg.RetentionDays != -1 {
+		t.Errorf("-1 should mean never: %v %v", cfg, err)
+	}
+}

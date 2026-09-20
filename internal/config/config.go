@@ -26,8 +26,9 @@ type Config struct {
 	MaxAttempts       int           `yaml:"max_attempts"`
 	PollJitter        time.Duration `yaml:"poll_jitter"`
 	RunWindows        RunWindows    `yaml:"run_windows"`
-	StateStore        string        `yaml:"state_store"` // "branch" (default) or "local"
-	Executor          string        `yaml:"executor"`    // "claude" (default) or "fake"
+	StateStore        string        `yaml:"state_store"`    // "branch" (default) or "local"
+	RetentionDays     int           `yaml:"retention_days"` // prune raw logs and finished runs older than this; 0 disables
+	Executor          string        `yaml:"executor"`       // "claude" (default) or "fake"
 	Claude            ClaudeConfig  `yaml:"claude"`
 	Triage            TriageConfig  `yaml:"triage"`
 	Jira              JiraConfig    `yaml:"jira"`
@@ -145,6 +146,9 @@ func (c *Config) applyDefaults() {
 	def(&s.NeedsHuman, "Needs Human")
 	def(&c.GitHub.APIURL, "https://api.github.com")
 	def(&c.StateStore, "branch")
+	if c.RetentionDays == 0 {
+		c.RetentionDays = 30
+	}
 	def(&c.Executor, "claude")
 	def(&c.Claude.Binary, "claude")
 	def(&c.Triage.Kind, "claude")
@@ -214,6 +218,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Triage.Kind != "" && c.Triage.Kind != "claude" && c.Triage.Kind != "passthrough" {
 		problems = append(problems, fmt.Sprintf("triage.kind: want claude or passthrough, got %q", c.Triage.Kind))
+	}
+	if c.RetentionDays < -1 {
+		problems = append(problems, "retention_days must be -1 (never prune), or a number of days")
 	}
 	if c.StateStore != "" && c.StateStore != "branch" && c.StateStore != "local" {
 		problems = append(problems, fmt.Sprintf("state_store: want branch or local, got %q", c.StateStore))
