@@ -1,1 +1,2 @@
 {"time":"2026-09-20T00:08:14.409788896-04:00","agent":"worker-1","event":"failed","phase":"pushed","cause":"budget","message":"You've hit your session limit · resets 1:30am (America/New_York)\n\nQuota resets at 2026-09-20 05:30 UTC."}
+{"time":"2026-09-20T01:31:52.174379747-04:00","agent":"worker-1","event":"pr_failed","phase":"pushed","message":"github: POST /repos/thomasmeadows/HiveDispatch/pulls: 403: Resource not accessible by personal access token"}
