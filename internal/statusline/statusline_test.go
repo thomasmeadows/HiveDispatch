@@ -2,6 +2,7 @@ package statusline
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -51,6 +52,20 @@ func TestClearErasesAndForgetsTheLine(t *testing.T) {
 	if out.String() != want {
 		t.Errorf("out = %q, want %q", out.String(), want)
 	}
+}
+
+type failWriter struct{ err error }
+
+func (f failWriter) Write([]byte) (int, error) { return 0, f.err }
+
+func TestWriteReportsTerminalErrors(t *testing.T) {
+	want := errors.New("tty gone")
+	l := New(failWriter{want})
+	l.Set("status") // error has nowhere to go; must not panic
+	if _, err := fmt.Fprintln(l, "log line"); !errors.Is(err, want) {
+		t.Errorf("err = %v, want %v", err, want)
+	}
+	l.Clear()
 }
 
 func TestConcurrentUse(t *testing.T) {

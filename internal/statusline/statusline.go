@@ -25,11 +25,13 @@ func New(w io.Writer) *Line {
 }
 
 // Set replaces the status line with text. Text must not contain a newline.
+// A terminal that cannot be written to has nowhere to report it; the error
+// is dropped.
 func (l *Line) Set(text string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.text = text
-	l.draw()
+	_ = l.draw()
 }
 
 // Clear erases the status line and stops redrawing it after writes.
@@ -40,24 +42,31 @@ func (l *Line) Clear() {
 		return
 	}
 	l.text = ""
-	io.WriteString(l.w, clear)
+	_, _ = io.WriteString(l.w, clear)
 }
 
 // Write sends p to the terminal above the status line: the line is erased,
-// p is written, and the line is redrawn. p should end in a newline.
+// p is written, and the line is redrawn. p should end in a newline. The
+// first write error wins; n counts bytes of p only.
 func (l *Line) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.text != "" {
-		io.WriteString(l.w, clear)
+		if _, err := io.WriteString(l.w, clear); err != nil {
+			return 0, err
+		}
 	}
 	n, err := l.w.Write(p)
+	if err != nil {
+		return n, err
+	}
 	if l.text != "" {
-		l.draw()
+		err = l.draw()
 	}
 	return n, err
 }
 
-func (l *Line) draw() {
-	io.WriteString(l.w, clear+l.text)
+func (l *Line) draw() error {
+	_, err := io.WriteString(l.w, clear+l.text)
+	return err
 }
