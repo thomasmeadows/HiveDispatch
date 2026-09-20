@@ -33,8 +33,7 @@ const Starter = `# HiveDispatch worker configuration.
 # Setup order:
 #   1. Fill in agent_id, jira.*, and repos below.
 #   2. export HIVE_JIRA_TOKEN, then run:  hivedispatch init -jira
-#      It creates the two claim fields in Jira and prints their ids; paste them
-#      under jira.fields.
+#      It creates the two claim fields in Jira (see jira.fields below).
 #   3. hivedispatch check -jira   (also reports where the GitHub token came from)
 #   4. hivedispatch run -once
 # Full walkthrough: docs/setup.md in the repository.
@@ -53,11 +52,18 @@ jira:
   # Which tickets the worker may take. Using a label as well as a status means a
   # human opts each ticket in.
   jql: 'project = KEY AND status = "Ready" AND labels = hive'
-  # Custom field ids for the claim protocol. Leave empty until "hivedispatch init -jira"
-  # prints them.
-  fields:
-    agent_id: ""
-    claimed_at: ""
+  # Claim fields. HiveDispatch marks a ticket it is working on by writing two custom
+  # fields on the issue:
+  #   agent_id    which worker holds the ticket ("HiveDispatch Agent")
+  #   claimed_at  when that worker last checked in ("HiveDispatch Claimed At");
+  #               a claim older than claim_timeout is treated as abandoned and
+  #               another worker may take the ticket over.
+  # "hivedispatch init -jira" creates both fields. Leave the ids empty and the worker
+  # finds the fields by name; set them (customfield_NNNNN) only if you renamed the
+  # fields or use several Jira sites.
+  # fields:
+  #   agent_id: ""
+  #   claimed_at: ""
   # Workflow status names in your Jira project. Defaults shown; change to match yours.
   # statuses:
   #   ready: Ready

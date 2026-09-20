@@ -145,11 +145,6 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "config already exists at %s\nNext: export HIVE_JIRA_TOKEN and run `hivedispatch init -jira`\n", *cfgPath)
 		return 0
 	}
-	// The claim field IDs are what init produces, so they are not required yet.
-	if err := os.Setenv("HIVE_INIT", "1"); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "%v\n\nEdit %s and run `hivedispatch init -jira` again.\n", err, *cfgPath)
@@ -165,7 +160,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "init failed:", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "jira fields ready. Put this in %s:\n\njira:\n  fields:\n    agent_id: %s\n    claimed_at: %s\n\nThen run `hivedispatch check -jira`.\n", *cfgPath, ids.AgentID, ids.ClaimedAt)
+	fmt.Fprintf(stdout, "jira claim fields ready:\n  %s = %s  (which worker holds a ticket)\n  %s = %s  (that worker's last heartbeat)\n\nThe worker finds them by name, so nothing needs pasting into %s.\nNext: hivedispatch check -jira\n", jira.FieldNameAgent, ids.AgentID, jira.FieldNameClaimedAt, ids.ClaimedAt, *cfgPath)
 	return 0
 }
 
@@ -188,6 +183,10 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
 	tr, err := jira.New(cfg.Jira)
 	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if err := tr.ResolveFields(context.Background()); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}

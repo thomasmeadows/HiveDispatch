@@ -121,3 +121,7 @@ Decided: `internal/claudecli` owns process supervision and stream parsing for bo
 ## 2026-09-19 — GitHub token is optional and discovered
 
 Decided: the PR token is looked up as `HIVE_GITHUB_TOKEN` → `gh auth token` → git credential helper; with none found the worker degrades to "push the branch, ask a human to open the PR" rather than refusing to run. Rejected: making the token required (the first-run experience asked for a credential most users already have somewhere), and skipping PRs silently. Clarified: GitHub requires authentication to create a pull request even on public repositories, so "not needed for public repos" is true only for cloning and reading, not for opening PRs.
+
+## 2026-09-19 — Claim field ids are resolved by name
+
+Decided: `jira.fields.*` are optional; at startup the worker looks up "HiveDispatch Agent" and "HiveDispatch Claimed At" by name and uses their ids. Rejected: requiring the user to paste `customfield_NNNNN` ids after `init -jira`. Why: the ids are an API detail with no meaning to a person setting the tool up; the first-run feedback was that the field was unexplained. Explicit ids remain as an override for renamed fields or multiple sites.

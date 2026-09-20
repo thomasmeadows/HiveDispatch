@@ -9,7 +9,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 )
@@ -46,6 +45,9 @@ type JiraConfig struct {
 }
 
 // JiraFields holds the custom field IDs (customfield_NNNNN) used for claims.
+// Both are optional: empty values are resolved by field name at startup
+// ("HiveDispatch Agent" and "HiveDispatch Claimed At", as created by
+// `hivedispatch init -jira`).
 type JiraFields struct {
 	AgentID   string `yaml:"agent_id"`
 	ClaimedAt string `yaml:"claimed_at"`
@@ -155,9 +157,8 @@ func (c *Config) applyDefaults() {
 // Validate returns an error listing every missing or inconsistent field,
 // each with a hint about where the value comes from.
 //
-// When HIVE_INIT=1 only what `hivedispatch init -jira` needs is required:
-// the claim field IDs are what it produces. A GitHub token is never
-// required here; without one, branches are pushed but no PR is opened.
+// The claim field ids are optional: when empty they are resolved by name at
+// startup.
 func (c *Config) Validate() error {
 	var problems []string
 	need := func(v, name, hint string) {
@@ -165,7 +166,6 @@ func (c *Config) Validate() error {
 			problems = append(problems, name+" is required — "+hint)
 		}
 	}
-	initOnly := os.Getenv("HIVE_INIT") == "1"
 	placeholder := func(v, name string) {
 		for _, ph := range starterPlaceholders {
 			if strings.Contains(v, ph) {
@@ -181,9 +181,10 @@ func (c *Config) Validate() error {
 	placeholder(c.Jira.BaseURL, "jira.base_url")
 	placeholder(c.Jira.Email, "jira.email")
 	placeholder(c.Jira.JQL, "jira.jql")
-	if !initOnly {
-		need(c.Jira.Fields.AgentID, "jira.fields.agent_id", "a customfield_NNNNN id; run `hivedispatch init -jira` to create both fields and print the ids")
-		need(c.Jira.Fields.ClaimedAt, "jira.fields.claimed_at", "a customfield_NNNNN id; run `hivedispatch init -jira` to create both fields and print the ids")
+	for _, f := range []struct{ v, name string }{{c.Jira.Fields.AgentID, "jira.fields.agent_id"}, {c.Jira.Fields.ClaimedAt, "jira.fields.claimed_at"}} {
+		if f.v != "" && !strings.HasPrefix(f.v, "customfield_") {
+			problems = append(problems, f.name+" must be a Jira custom field id like customfield_10042 (or leave it empty to look the field up by name)")
+		}
 	}
 	if c.Jira.Token == "" {
 		problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required — create an API token at https://id.atlassian.com/manage-profile/security/api-tokens and `export HIVE_JIRA_TOKEN=...`")

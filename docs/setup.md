@@ -20,17 +20,26 @@ export HIVE_JIRA_TOKEN=...
 
 Put `base_url` and `email` in the worker config. The token never goes in YAML.
 
-## 2. Custom fields
+## 2. Claim fields
 
-Two fields hold the claim: who holds the ticket and when they last heartbeat.
+When a worker takes a ticket it has to tell every other worker — and every human looking at the board — that the ticket is taken and that the worker is still alive. HiveDispatch does that with two custom fields on the issue:
+
+| Field in Jira | Config key | Meaning |
+|---|---|---|
+| **HiveDispatch Agent** | `jira.fields.agent_id` | the `agent_id` of the worker that holds the ticket; empty when unclaimed |
+| **HiveDispatch Claimed At** | `jira.fields.claimed_at` | when that worker last checked in (its heartbeat, refreshed every `heartbeat_interval`). A claim older than `claim_timeout` is treated as abandoned — the worker probably crashed — and another worker may take the ticket over |
+
+Two workers racing for one ticket both write the Agent field and then read it back; only the one whose name survives the read-back proceeds. That is the whole coordination mechanism, and it is why these are Jira fields rather than something in git.
+
+Create them with:
 
 ```sh
 hivedispatch init -jira
 ```
 
-creates `HiveDispatch Agent` (text) and `HiveDispatch Claimed At` (datetime) if missing, adds them to the default screen, and prints the IDs to paste into `jira.fields`.
+which adds both fields (if missing) and puts them on the default screen so they are writable. You do **not** need to copy anything into the config: the worker looks the fields up by name at startup. Set `jira.fields.agent_id` / `claimed_at` to explicit `customfield_NNNNN` ids only if you renamed the fields or run against several sites.
 
-**Manual alternative:** Settings → Issues → Custom fields → Create. Then add both to the edit screen of every project HiveDispatch works in. If a claim fails with "Field cannot be set. It is not on the appropriate screen", this step was missed.
+**Manual alternative:** Settings → Issues → Custom fields → Create a *Text field (single line)* named `HiveDispatch Agent` and a *Date time picker* named `HiveDispatch Claimed At`. Then add both to the edit screen of every project HiveDispatch works in. If a claim fails with "Field cannot be set. It is not on the appropriate screen", this step was missed.
 
 **Team-managed projects** manage fields per project: add the two fields under Project settings → Issue types.
 

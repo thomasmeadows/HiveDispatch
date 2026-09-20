@@ -91,7 +91,7 @@ func TestValidateReportsEveryMissingField(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	for _, want := range []string{"agent_id", "jira.base_url", "jira.email", "jira.jql", "jira.fields.agent_id", "jira.fields.claimed_at", "repos"} {
+	for _, want := range []string{"agent_id", "jira.base_url", "jira.email", "jira.jql", "repos"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err, want)
 		}
@@ -108,13 +108,15 @@ func TestValidateRejectsClaimTimeoutShorterThanHeartbeat(t *testing.T) {
 	}
 }
 
-func TestValidateSkipsFieldsDuringInit(t *testing.T) {
+func TestClaimFieldIDsAreOptionalButChecked(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
-	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
-	t.Setenv("HIVE_INIT", "1")
 	body := strings.ReplaceAll(validYAML, "    agent_id: customfield_10042\n    claimed_at: customfield_10043\n", "")
 	if _, err := Load(writeTemp(t, body)); err != nil {
-		t.Fatalf("Load during init: %v", err)
+		t.Fatalf("empty field ids must be allowed: %v", err)
+	}
+	bad := strings.ReplaceAll(validYAML, "customfield_10043", "HiveDispatch Claimed At")
+	if _, err := Load(writeTemp(t, bad)); err == nil || !strings.Contains(err.Error(), "customfield_") {
+		t.Fatalf("a name instead of an id should be rejected with a hint: %v", err)
 	}
 }
 
@@ -219,7 +221,7 @@ func TestValidateMessagesSayWhereToGetValues(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	for _, want := range []string{"id.atlassian.com", "customfield_", "docs/setup.md"} {
+	for _, want := range []string{"id.atlassian.com", "docs/setup.md"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q:\n%s", want, err)
 		}
@@ -228,7 +230,6 @@ func TestValidateMessagesSayWhereToGetValues(t *testing.T) {
 
 func TestStarterConfigIsRejectedUntilEdited(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
-	t.Setenv("HIVE_INIT", "1")
 	p := writeTemp(t, Starter)
 	_, err := Load(p)
 	if err == nil {
@@ -239,10 +240,10 @@ func TestStarterConfigIsRejectedUntilEdited(t *testing.T) {
 			t.Errorf("err should mention %q:\n%s", want, err)
 		}
 	}
-	// Edited starter validates (fields empty is fine under HIVE_INIT).
+	// Edited starter validates (empty field ids are resolved by name later).
 	edited := strings.NewReplacer("YOURTEAM", "acme", "you@example.com", "me@acme.com", "project = KEY", "project = ACME",
 		"yourorg/yourrepo", "acme/app", "yourorg", "acme", "yourrepo", "app", "jira_project: KEY", "jira_project: ACME").Replace(Starter)
 	if _, err := Load(writeTemp(t, edited)); err != nil {
-		t.Fatalf("edited starter should validate during init: %v", err)
+		t.Fatalf("edited starter should validate: %v", err)
 	}
 }

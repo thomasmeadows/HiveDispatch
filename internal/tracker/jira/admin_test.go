@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/thomasmeadows/hivedispatch/internal/config"
 )
 
 func adminMux(fields []map[string]any, created *[]map[string]any, addedToScreen *[]string) *http.ServeMux {
@@ -90,5 +94,49 @@ func TestEnsureFieldsCreatesOnlyMissing(t *testing.T) {
 	}
 	if len(added) != 1 || added[0] != "customfield_20001" {
 		t.Errorf("added to screen = %v", added)
+	}
+}
+
+func TestResolveFieldsByNameWhenUnset(t *testing.T) {
+	fields := []map[string]any{
+		{"id": "customfield_10042", "name": "HiveDispatch Agent"},
+		{"id": "customfield_10043", "name": "HiveDispatch Claimed At"},
+	}
+	var created []map[string]any
+	var added []string
+	srv := httptest.NewServer(adminMux(fields, &created, &added))
+	t.Cleanup(srv.Close)
+	cfg := testCfg(srv.URL)
+	cfg.Fields = config.JiraFields{} // nothing configured
+	c, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ResolveFields(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if c.cfg.Fields.AgentID != "customfield_10042" || c.cfg.Fields.ClaimedAt != "customfield_10043" {
+		t.Errorf("resolved = %+v", c.cfg.Fields)
+	}
+	if got := c.fields(); got[6] != "customfield_10042" {
+		t.Errorf("poll field list not updated: %v", got)
+	}
+}
+
+func TestResolveFieldsKeepsExplicitIDsAndErrorsWhenMissing(t *testing.T) {
+	var created []map[string]any
+	var added []string
+	srv := httptest.NewServer(adminMux(nil, &created, &added))
+	t.Cleanup(srv.Close)
+	cfg := testCfg(srv.URL) // explicit ids
+	c, _ := New(cfg)
+	if err := c.ResolveFields(context.Background()); err != nil {
+		t.Fatalf("explicit ids must not need a lookup: %v", err)
+	}
+	cfg.Fields = config.JiraFields{}
+	c, _ = New(cfg)
+	err := c.ResolveFields(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "init -jira") {
+		t.Fatalf("err = %v, want a hint to run init -jira", err)
 	}
 }

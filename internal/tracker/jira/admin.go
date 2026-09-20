@@ -8,10 +8,11 @@ import (
 	"strings"
 )
 
-// Field names HiveDispatch creates when asked to set up a site.
+// Names of the custom fields HiveDispatch creates for the claim protocol
+// and, when no ids are configured, looks up by name.
 const (
-	fieldNameAgent     = "HiveDispatch Agent"
-	fieldNameClaimedAt = "HiveDispatch Claimed At"
+	FieldNameAgent     = "HiveDispatch Agent"      // which worker holds the ticket
+	FieldNameClaimedAt = "HiveDispatch Claimed At" // that worker's last heartbeat
 )
 
 // CheckReport is the result of a live configuration check.
@@ -49,12 +50,20 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 		return rep, err
 	}
 	have := map[string]bool{}
+	byName := map[string]string{}
 	for _, f := range fields {
 		have[f.ID] = true
+		byName[f.Name] = f.ID
 	}
-	for _, id := range []string{c.cfg.Fields.AgentID, c.cfg.Fields.ClaimedAt} {
-		if !have[id] {
-			rep.MissingFields = append(rep.MissingFields, id)
+	// Unset ids are resolved by name; set ids must exist.
+	for _, want := range []struct{ id, name string }{{c.cfg.Fields.AgentID, FieldNameAgent}, {c.cfg.Fields.ClaimedAt, FieldNameClaimedAt}} {
+		switch {
+		case want.id == "":
+			if _, ok := byName[want.name]; !ok {
+				rep.MissingFields = append(rep.MissingFields, want.name)
+			}
+		case !have[want.id]:
+			rep.MissingFields = append(rep.MissingFields, want.id)
 		}
 	}
 
@@ -86,6 +95,42 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 	return rep, nil
 }
 
+// ResolveFields fills in any claim field ID that the config left empty by
+// looking the field up by the name EnsureFields gives it. Explicit IDs in
+// the config are kept, which allows renamed fields or several sites.
+func (c *Client) ResolveFields(ctx context.Context) error {
+	if c.cfg.Fields.AgentID != "" && c.cfg.Fields.ClaimedAt != "" {
+		return nil
+	}
+	fields, err := c.listFields(ctx)
+	if err != nil {
+		return err
+	}
+	byName := map[string]string{}
+	for _, f := range fields {
+		byName[f.Name] = f.ID
+	}
+	var missing []string
+	if c.cfg.Fields.AgentID == "" {
+		if id, ok := byName[FieldNameAgent]; ok {
+			c.cfg.Fields.AgentID = id
+		} else {
+			missing = append(missing, FieldNameAgent)
+		}
+	}
+	if c.cfg.Fields.ClaimedAt == "" {
+		if id, ok := byName[FieldNameClaimedAt]; ok {
+			c.cfg.Fields.ClaimedAt = id
+		} else {
+			missing = append(missing, FieldNameClaimedAt)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("jira: custom field(s) %q not found — run `hivedispatch init -jira` to create them, or set jira.fields to their customfield_NNNNN ids", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
 // EnsuredFields are the custom field IDs after EnsureFields.
 type EnsuredFields struct {
 	AgentID   string
@@ -104,13 +149,13 @@ func (c *Client) EnsureFields(ctx context.Context) (EnsuredFields, error) {
 		byName[f.Name] = f.ID
 	}
 	var out EnsuredFields
-	out.AgentID, err = c.ensureField(ctx, byName, fieldNameAgent,
+	out.AgentID, err = c.ensureField(ctx, byName, FieldNameAgent,
 		"com.atlassian.jira.plugin.system.customfieldtypes:textfield",
 		"com.atlassian.jira.plugin.system.customfieldtypes:textsearcher")
 	if err != nil {
 		return out, err
 	}
-	out.ClaimedAt, err = c.ensureField(ctx, byName, fieldNameClaimedAt,
+	out.ClaimedAt, err = c.ensureField(ctx, byName, FieldNameClaimedAt,
 		"com.atlassian.jira.plugin.system.customfieldtypes:datetime",
 		"com.atlassian.jira.plugin.system.customfieldtypes:datetimerange")
 	return out, err
