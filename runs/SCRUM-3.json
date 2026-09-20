@@ -3,9 +3,9 @@
   "agent": "worker-1",
   "branch": "hive/SCRUM-3",
   "attempts": 2,
-  "phase": "claimed",
-  "lastStatus": "completed",
+  "phase": "blocked",
+  "lastStatus": "needs_input",
   "resumeToken": "4492632f-0070-4622-92dd-b22af5201b50",
-  "questionAt": "0001-01-01T00:00:00Z",
-  "updatedAt": "2026-09-20T05:33:03.465612559Z"
+  "questionAt": "2026-09-20T01:33:02.305246296-04:00",
+  "updatedAt": "2026-09-20T05:33:29.121085401Z"
 }
