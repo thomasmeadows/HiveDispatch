@@ -19,9 +19,11 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 | `step_budget` | `200` | Tool calls per executor run before it is stopped |
 | `max_attempts` | `3` | Failed attempts before a ticket goes to Needs Human |
 | `retention_days` | `30` | Raw run logs and finished run records older than this are pruned at startup; `-1` never prunes |
-| `executor` | `claude` | `claude` or `fake` (no agent; useful for trying the pipeline) |
+| `executor` | `claude` | `claude`, `codex`, or `fake` (no agent; useful for trying the pipeline) |
 | `claude.binary` | `claude` | The Claude Code CLI to run |
 | `claude.model` | *(CLI default)* | Model for the executor when the repo policy sets none |
+| `codex.binary` | `codex` | The Codex CLI to run (`executor: codex`) |
+| `codex.model` | *(CLI default)* | Model for the codex executor when the repo policy sets none |
 | `triage.kind` | `claude` | `claude` (read-only model triage) or `passthrough` (dispatch everything) |
 | `triage.step_budget` | `40` | Tool calls the triager may make |
 | `triage.timeout` | `5m` | Wall-clock limit for triage |
@@ -48,13 +50,18 @@ Read from the ticket's worktree, so it is versioned with the code and can differ
 
 | Key | Default | Meaning |
 |---|---|---|
-| `executor.model` | worker `claude.model` | Model for runs in this repo |
+| `executor.model` | worker `claude.model` | Model for Claude Code runs in this repo |
 | `executor.permission_mode` | `dontAsk` | Claude Code permission mode: `acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan`. `dontAsk` fails closed |
-| `executor.tools` | `[default]` | Built-in tool set, or a list to restrict |
-| `executor.allowed_tools` | *(none)* | Pre-approved patterns for `dontAsk`, e.g. `Edit`, `"Bash(go test:*)"` |
-| `executor.max_budget_usd` | *(none)* | Per-run spend cap (API-billed accounts) |
-| `executor.path` | *(none)* | Directories prepended to the agent's `PATH` (`~` and `$VAR` expand), e.g. `["~/go/bin"]` so `golangci-lint` resolves |
-| `guidance` | *(none)* | Text appended to every prompt for this repo: conventions, required checks, where decisions are recorded |
+| `executor.tools` | `[default]` | Claude Code built-in tool set, or a list to restrict |
+| `executor.allowed_tools` | *(none)* | Claude Code pre-approved patterns for `dontAsk`, e.g. `Edit`, `"Bash(go test:*)"` |
+| `executor.max_budget_usd` | *(none)* | Claude Code per-run spend cap (API-billed accounts) |
+| `executor.path` | *(none)* | Directories prepended to the agent's `PATH` (`~` and `$VAR` expand), e.g. `["~/go/bin"]` so `golangci-lint` resolves. Applies to every executor |
+| `executor.codex.model` | worker `codex.model` | Model for Codex runs in this repo |
+| `executor.codex.sandbox` | `workspace-write` | Codex sandbox for runs: `read-only`, `workspace-write`, `danger-full-access`. Approvals are always off (`approval_policy=never`); a command the sandbox refuses fails |
+| `executor.codex.network` | `false` | Allow outbound network inside `workspace-write` (e.g. for `go mod download`) |
+| `guidance` | *(none)* | Text appended to every prompt for this repo: conventions, required checks, where decisions are recorded. Applies to every executor |
+
+The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budget_usd` keys are Claude Code vocabulary and are ignored by the codex executor; `executor.codex.*` is ignored by the claude executor. A repo can carry both so any worker can run it.
 
 ## Environment
 

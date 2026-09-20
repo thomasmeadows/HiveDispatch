@@ -116,7 +116,10 @@ repos:
 # run_timeout: 45m
 # step_budget: 200         # tool calls per run
 # max_attempts: 3
-# executor: claude         # or fake (no agent; useful for trying the pipeline)
+# executor: claude         # or codex, or fake (no agent; useful for trying the pipeline)
+# codex:
+#   binary: codex
+#   model: gpt-5-codex     # optional; default is the CLI's default
 # state_store: branch      # or local
 # triage:
 #   kind: claude           # or passthrough

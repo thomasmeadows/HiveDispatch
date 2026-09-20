@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"01a0bc3f-24b5-79e1-92de-a5550233345e"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"bash -lc 'cat note.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"bash -lc 'cat note.txt'","aggregated_output":"hello\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"reasoning","text":"The note says hello."}}
+{"type":"item.started","item":{"id":"item_2","type":"file_change","changes":[{"path":"/work/HIVE-1/cmd/app/main.go","kind":"update"}],"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"file_change","changes":[{"path":"/work/HIVE-1/cmd/app/main.go","kind":"update"},{"path":"/work/HIVE-1/cmd/app/main.go","kind":"update"}],"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"hello"}}
+{"type":"turn.completed","usage":{"input_tokens":1200,"cached_input_tokens":800,"output_tokens":90}}

@@ -1,6 +1,6 @@
 # Setup
 
-HiveDispatch needs: a Jira Cloud site (API token, two custom fields for the claim protocol, five workflow statuses), a GitHub token for opening pull requests, git credentials that can clone and push the repositories it works in, and a logged-in Claude Code CLI.
+HiveDispatch needs: a Jira Cloud site (API token, two custom fields for the claim protocol, five workflow statuses), a GitHub token for opening pull requests, git credentials that can clone and push the repositories it works in, and a logged-in Claude Code CLI (or Codex CLI, with `executor: codex`).
 
 ## 0. Start here
 
@@ -210,6 +210,25 @@ guidance: |
 Allowlist patterns match whole tokens by prefix, so `Bash(golangci-lint:*)` allows `golangci-lint run ./...` but not `/home/me/go/bin/golangci-lint run` — put tool directories on the agent's `PATH` with `executor.path` instead of allowing absolute paths.
 
 The run log for each attempt is saved to the state branch under `logs/<KEY>/<timestamp>.log`.
+
+### Codex instead of Claude Code
+
+Set `executor: codex` in the worker config to run tickets with the Codex CLI (`codex exec`). Log in once as the user that runs the worker (`codex login`). Optional worker keys: `codex.binary` (default `codex`) and `codex.model`.
+
+Per-repo policy for Codex is its own block, because the keys above are Claude Code vocabulary:
+
+```yaml
+executor:
+  codex:
+    model: gpt-5-codex          # optional; default is the worker's codex.model, then the CLI default
+    sandbox: workspace-write    # read-only | workspace-write | danger-full-access
+    network: false              # allow outbound network inside workspace-write
+  path: ["~/go/bin"]            # shared with Claude Code
+guidance: |                     # shared with Claude Code
+  ...
+```
+
+Approvals are always off (`approval_policy=never`, there is nobody to answer); a command the sandbox refuses simply fails and the agent must work around it or ask. `workspace-write` blocks network by default, so set `network: true` if the required checks download modules. The session's thread id is stored as the resume token and later runs continue it with `codex exec resume`. Triage still uses Claude Code unless `triage.kind: passthrough`.
 
 ### Triage
 

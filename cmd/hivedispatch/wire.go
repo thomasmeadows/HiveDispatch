@@ -12,6 +12,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/claudecode"
+	"github.com/thomasmeadows/hivedispatch/internal/executor/codex"
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
 	"github.com/thomasmeadows/hivedispatch/internal/githost"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
@@ -141,6 +142,8 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 		ex = f
 	case "claude":
 		ex = claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary, Model: cfg.Claude.Model})
+	case "codex":
+		ex = codex.New(codex.Config{Binary: cfg.Codex.Binary, Model: cfg.Codex.Model})
 	default:
 		return nil, fmt.Errorf("unknown executor %q", name)
 	}

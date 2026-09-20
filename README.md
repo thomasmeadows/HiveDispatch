@@ -2,7 +2,7 @@
 
 Ticket-driven orchestration for autonomous coding agents.
 
-HiveDispatch turns tickets into pull requests. It polls an issue tracker (Jira Cloud or GitHub Issues), triages each ticket, claims it, branches, runs a coding-agent CLI (Claude Code first) in an isolated worktree, commits, opens a PR, and reports back on the ticket — so steering development work needs nothing but a ticket and a comment thread, including from a phone.
+HiveDispatch turns tickets into pull requests. It polls an issue tracker (Jira Cloud or GitHub Issues), triages each ticket, claims it, branches, runs a coding-agent CLI (Claude Code or Codex) in an isolated worktree, commits, opens a PR, and reports back on the ticket — so steering development work needs nothing but a ticket and a comment thread, including from a phone.
 
 **v0.1.0 — alpha.** The single-worker MVP is complete and has run end to end on a real Jira project, GitHub repository, and Claude Code — including this repository's own tickets: a Jira ticket is triaged by Claude Code (dispatch / ask / reject), claimed, implemented by Claude Code in an isolated worktree, pushed, and opened as a GitHub PR — with questions posted back to the ticket and the run resumed when a human answers.
 
@@ -12,7 +12,7 @@ HiveDispatch turns tickets into pull requests. It polls an issue tracker (Jira C
 2. **Claim** — it writes its agent id to the ticket and reads it back; two workers racing resolve to one winner.
 3. **Triage** — Claude Code, read-only, inspects the repo and decides: dispatch with notes, ask one question, or reject.
 4. **Branch** — a git worktree on `hive/<KEY>`, resumed if it already exists.
-5. **Run** — Claude Code implements the ticket under the repo's `.hivedispatch.yaml` policy, with a step budget and a wall-clock timeout.
+5. **Run** — Claude Code (or Codex, with `executor: codex`) implements the ticket under the repo's `.hivedispatch.yaml` policy, with a step budget and a wall-clock timeout.
 6. **Commit and push** — the agent commits as it goes; the worker safety-commits anything left and pushes.
 7. **PR and report** — a pull request is opened (or found), and the ticket gets a comment and a status change. Every stop, including budget and timeout, leaves the ticket in a state a human understands.
 

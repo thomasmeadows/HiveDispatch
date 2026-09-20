@@ -35,7 +35,7 @@ commands:
   init  [-config P]           write a commented starter config (never overwrites)
   init  -jira [-config P]     create the claim custom fields in Jira
   init  -github [-config P]   create the hive:* state labels in each GitHub repository
-  run   [-config P] [-once] [-executor claude|fake] [-triage claude|passthrough]
+  run   [-config P] [-once] [-executor claude|codex|fake] [-triage claude|passthrough]
         [-placeholder] [-skip-preflight]
                               verify Jira setup, then poll and dispatch; -executor and -triage override the config
                               (-placeholder makes the fake executor write a file so
@@ -305,7 +305,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	once := fs.Bool("once", false, "poll once and exit")
-	executorFlag := fs.String("executor", "", "override config executor: claude or fake")
+	executorFlag := fs.String("executor", "", "override config executor: claude, codex or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying Jira fields, statuses, and projects")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
@@ -454,7 +454,7 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("once", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
-	executorFlag := fs.String("executor", "", "override config executor: claude or fake")
+	executorFlag := fs.String("executor", "", "override config executor: claude, codex or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying Jira fields, statuses, and projects")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
