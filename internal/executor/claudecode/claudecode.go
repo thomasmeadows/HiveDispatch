@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/thomasmeadows/hivedispatch/internal/claudecli"
@@ -47,6 +48,7 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 		Binary: e.cfg.Binary, Dir: t.Workspace,
 		Args:  buildArgs(e.cfg, rc.Executor, t.ResumeToken, false),
 		Stdin: promptText, StepBudget: t.StepBudget,
+		Env: pathEnv(rc.Executor.ExtraPath()),
 	})
 	if err != nil {
 		return executor.Result{}, err
@@ -68,6 +70,7 @@ func (e *Executor) Plan(ctx context.Context, t executor.Task) (executor.Footprin
 		Binary: e.cfg.Binary, Dir: t.Workspace,
 		Args:  buildArgs(e.cfg, rc.Executor, "", true),
 		Stdin: planPrompt,
+		Env:   pathEnv(rc.Executor.ExtraPath()),
 	})
 	out, err := cmd.Output()
 	if err != nil {
@@ -91,4 +94,13 @@ func (e *Executor) Plan(ctx context.Context, t executor.Task) (executor.Footprin
 		return executor.Footprint{}, fmt.Errorf("plan: parse footprint: %w", err)
 	}
 	return executor.Footprint{Files: fp.Files}, nil
+}
+
+// pathEnv returns a PATH entry with dirs prepended, or nil when there is
+// nothing to add.
+func pathEnv(dirs []string) []string {
+	if len(dirs) == 0 {
+		return nil
+	}
+	return []string{"PATH=" + strings.Join(dirs, string(os.PathListSeparator)) + string(os.PathListSeparator) + os.Getenv("PATH")}
 }

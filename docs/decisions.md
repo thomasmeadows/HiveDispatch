@@ -159,3 +159,17 @@ Decided: with `tracker: github`, one `hive:*` label at a time carries the lifecy
 ## 2026-09-20 — AGENTS.md is the agent instruction file; CLAUDE.md imports it
 
 Decided: `AGENTS.md` at the repo root is the single instruction set for coding agents, and `CLAUDE.md` is a one-line `@AGENTS.md` import so Claude Code loads the same text. It points at `CONTRIBUTING.md` for conventions rather than restating them, and makes the pre-commit / pre-push check (`go vet`, `go test -race`, `golangci-lint run`, scoped to touched packages per commit and module-wide before push) an explicit required step. Rejected: two copies of the same content (they drift), a symlink (not portable across every checkout), and `CLAUDE.md` as the canonical file (`AGENTS.md` is the vendor-neutral name other agent CLIs read).
+
+## 2026-09-20 — The session-limit scenario, live
+
+The first GitHub Issues run hit the Claude session limit mid-work. What held: the run stopped with `cause=budget`, the comment carried the reset time, the claim was released, and after the reset the next attempt resumed the same session and pushed. What did not: while the quota was exhausted the loop kept claiming and re-triaging every poll (four times in four minutes, each a wasted CLI call), and after the push the PR failed on a token without pull-request write, which sent the ticket back through triage — which, reading the failure comment, sensibly asked a human rather than re-running the agent.
+
+Decided:
+- A budget stop from the executor or the triager pauses the whole worker until the provider's reset time plus a minute (15 minutes when no reset time is known). A rate limit is a fleet condition, not a ticket condition. Rejected: per-ticket backoff (every other ticket would hit the same wall).
+- `Result.RetryAfter` and `claudecli.BudgetError` carry the reset time as data; `LooksLikeBudget` is the one place that decides what counts as a budget stop, and now includes "session limit".
+- A run that completed and pushed but has no PR is finished on the next poll without triage or the agent: the artifacts say exactly where it stopped, as the spec argues. The run stays at phase `pushed` when the PR fails so this path is taken.
+- `check -live` and the run preflight probe pull-request write access with a POST whose head branch does not exist (422 with permission, 403 without). GitHub exposes no read-only way to learn a fine-grained token's permissions.
+
+## 2026-09-20 — Repo policy can extend the agent's PATH
+
+Decided: `executor.path` in `.hivedispatch.yaml` prepends directories to the agent's `PATH`. Rejected: allowing absolute tool paths in `allowed_tools` (Claude Code matches whole tokens by prefix, so `Bash(golangci-lint:*)` never matches `/home/me/go/bin/golangci-lint`), and the `go run …@latest` fallback (its command token is `github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`, which the allowlist entry did not match either, and it recompiles the linter every run). Observed on PR #4: the agent tried all three, was denied each time, and stopped rather than routing around the policy — the right behaviour, and the reason the fix belongs in the environment.

@@ -117,6 +117,9 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 		}
 		tr = jc
 	}
+	if opts.preflight && cfg.GitHub.Token != "" && !prPreflight(ctx, cfg, stdout, stderr) {
+		return nil, fmt.Errorf("not starting: fix the above, or pass -skip-preflight")
+	}
 	sched, err := schedule.Parse(cfg.RunWindows)
 	if err != nil {
 		return nil, err

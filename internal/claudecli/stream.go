@@ -11,6 +11,43 @@ import (
 	"time"
 )
 
+// BudgetError reports that the provider refused work for quota reasons.
+// ResetsAt is zero when the reset time is unknown.
+type BudgetError struct {
+	Message  string
+	ResetsAt time.Time
+}
+
+func (e *BudgetError) Error() string {
+	if e.ResetsAt.IsZero() {
+		return "budget: " + e.Message
+	}
+	return "budget: " + e.Message + " (resets " + e.ResetsAt.UTC().Format("2006-01-02 15:04 UTC") + ")"
+}
+
+// LooksLikeBudget reports whether a finished transcript indicates a quota
+// or rate-limit stop, and the reset time if the stream carried one.
+func LooksLikeBudget(tr Transcript) (bool, time.Time) {
+	var reset time.Time
+	if tr.RateLimit != nil && !tr.RateLimit.ResetsAt.IsZero() {
+		reset = tr.RateLimit.ResetsAt
+	}
+	r := tr.Result
+	if r != nil && r.APIErrorStatus != nil && *r.APIErrorStatus == 429 {
+		return true, reset
+	}
+	if tr.RateLimit != nil && tr.RateLimit.Status != "" && tr.RateLimit.Status != "allowed" {
+		return true, reset
+	}
+	if r != nil {
+		low := strings.ToLower(r.Result)
+		if strings.Contains(low, "usage limit") || strings.Contains(low, "rate limit") || strings.Contains(low, "session limit") {
+			return true, reset
+		}
+	}
+	return false, reset
+}
+
 // RateLimit is the last rate_limit_event seen on the stream.
 type RateLimit struct {
 	Status   string

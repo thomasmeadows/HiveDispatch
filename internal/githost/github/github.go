@@ -138,3 +138,22 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	}
 	return json.Unmarshal(raw, out)
 }
+
+// ProbePRWrite checks that the token may open pull requests on repo without
+// creating one: a POST with a head branch that does not exist is answered
+// 422 when the token is permitted and 403 when it is not.
+func (c *Client) ProbePRWrite(ctx context.Context, repo, base string) error {
+	body := map[string]any{"title": "hivedispatch permission probe", "head": "hivedispatch-permission-probe", "base": base}
+	err := c.do(ctx, http.MethodPost, "/repos/"+repo+"/pulls", body, nil)
+	if err == nil {
+		return nil // should not happen; treat as permitted
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, ": 422:"):
+		return nil
+	case strings.Contains(msg, ": 403:") || strings.Contains(msg, ": 404:"):
+		return fmt.Errorf("the GitHub token cannot open pull requests on %s — grant it Pull requests: Read and write (fine-grained) or the repo scope (classic): %w", repo, err)
+	}
+	return err
+}

@@ -79,6 +79,9 @@ func (t *Triager) Decide(ctx context.Context, in triage.Input) (triage.Decision,
 	case tr.Result == nil:
 		return triage.Decision{}, fmt.Errorf("triage %s: no result (%w): %s", in.Ticket.Key, exit.ExitErr, exit.Stderr)
 	case tr.Result.IsError:
+		if budget, reset := claudecli.LooksLikeBudget(tr); budget {
+			return triage.Decision{}, fmt.Errorf("triage %s: %w", in.Ticket.Key, &claudecli.BudgetError{Message: tr.Result.Result, ResetsAt: reset})
+		}
 		return triage.Decision{}, fmt.Errorf("triage %s: %s", in.Ticket.Key, tr.Result.Result)
 	}
 	raw := []byte(tr.Result.Result)

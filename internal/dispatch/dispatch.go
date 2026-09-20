@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
@@ -61,10 +62,45 @@ type Dispatcher struct {
 	Schedule   *schedule.Schedule // nil = always open
 	Now        func() time.Time   // nil = time.Now
 	Log        *slog.Logger       // nil = slog.Default()
+
+	pauseMu     sync.Mutex
+	pausedUntil time.Time // no new work is started before this
+
 	// Polled is called after each successful poll with the time it happened.
 	// The CLI uses it for its status line; nil = no-op. Polling itself is
 	// deliberately not logged: it happens every few seconds and says nothing.
 	Polled func(at time.Time)
+}
+
+// pauseMargin is added to a provider's reset time so the first poll after
+// a quota reset does not land a few seconds early.
+const pauseMargin = time.Minute
+
+// defaultBudgetBackoff is the pause when the provider gave no reset time.
+const defaultBudgetBackoff = 15 * time.Minute
+
+// pauseFor stops new work until until, keeping the later of any existing
+// pause. A zero until means "unknown reset": use the default backoff.
+func (d *Dispatcher) pauseFor(until time.Time) {
+	if until.IsZero() {
+		until = d.now().Add(defaultBudgetBackoff)
+	} else {
+		until = until.Add(pauseMargin)
+	}
+	d.pauseMu.Lock()
+	defer d.pauseMu.Unlock()
+	if until.After(d.pausedUntil) {
+		d.pausedUntil = until
+		d.log().Warn("budget exhausted; not starting new work", "until", until.UTC().Format(time.RFC3339))
+	}
+}
+
+// PausedUntil reports when polling resumes after a budget stop; zero when
+// not paused.
+func (d *Dispatcher) PausedUntil() time.Time {
+	d.pauseMu.Lock()
+	defer d.pauseMu.Unlock()
+	return d.pausedUntil
 }
 
 // Outcome summarises what Handle did with a ticket.
@@ -114,6 +150,10 @@ func (d *Dispatcher) repoFor(key string) (config.RepoConfig, bool) {
 func (d *Dispatcher) Once(ctx context.Context) (int, error) {
 	if !d.Schedule.Open(d.now()) {
 		d.log().Debug("outside run window; not polling")
+		return 0, nil
+	}
+	if until := d.PausedUntil(); d.now().Before(until) {
+		d.log().Debug("paused after budget stop; not polling", "until", until)
 		return 0, nil
 	}
 	tickets, err := d.Tracker.Poll(ctx)

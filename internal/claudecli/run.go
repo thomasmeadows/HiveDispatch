@@ -27,8 +27,9 @@ type Cmd struct {
 	Dir        string
 	Args       []string
 	Stdin      string
-	StepBudget int // 0 = unlimited
-	MaxLog     int // 0 = defaultMaxLog
+	StepBudget int      // 0 = unlimited
+	MaxLog     int      // 0 = defaultMaxLog
+	Env        []string // extra KEY=VALUE entries appended to the environment (later wins)
 }
 
 // Exit describes how the process ended.
@@ -70,6 +71,7 @@ func Command(ctx context.Context, c Cmd) *exec.Cmd {
 	cmd.Dir = c.Dir
 	cmd.Stdin = strings.NewReader(c.Stdin)
 	cmd.Env = append(os.Environ(), "CLAUDECODE=") // never inherit a parent session marker
+	cmd.Env = append(cmd.Env, c.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		// Kill the whole group so tool subprocesses die with the agent.

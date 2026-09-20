@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -28,6 +29,25 @@ type ExecutorConfig struct {
 	Tools          []string `yaml:"tools"`
 	AllowedTools   []string `yaml:"allowed_tools"`
 	MaxBudgetUSD   float64  `yaml:"max_budget_usd"`
+	// Path lists directories prepended to PATH for the agent, so tools the
+	// policy allows by name (e.g. golangci-lint) resolve. ~ and $VAR expand.
+	Path []string `yaml:"path"`
+}
+
+// ExtraPath returns Path with ~ and environment variables expanded.
+func (e ExecutorConfig) ExtraPath() []string {
+	var out []string
+	home, _ := os.UserHomeDir()
+	for _, p := range e.Path {
+		p = os.ExpandEnv(p)
+		if p == "~" || strings.HasPrefix(p, "~/") {
+			p = filepath.Join(home, strings.TrimPrefix(p, "~"))
+		}
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 var permissionModes = map[string]bool{"acceptEdits": true, "auto": true, "bypassPermissions": true, "manual": true, "dontAsk": true, "plan": true}

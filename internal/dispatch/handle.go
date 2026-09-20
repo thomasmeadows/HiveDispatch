@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/thomasmeadows/hivedispatch/internal/claudecli"
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/githost"
@@ -46,6 +47,7 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 	if err != nil {
 		return OutcomeSkipped, fmt.Errorf("load run %s: %w", t.Key, err)
 	}
+	priorPhase := run.Phase // where the last run stopped, before we overwrite it
 	run.Agent = d.Cfg.AgentID
 	run.Branch = gitops.BranchName(t.Key)
 	d.setPhase(ctx, run, state.PhaseClaimed)
@@ -63,6 +65,13 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 		return d.finishFailed(ctx, t, run, res, false), nil
 	}
 
+	// A run that completed and pushed but never got its PR died between
+	// pushed and pr_opened: finish it, do not redo the work.
+	if run.LastStatus == string(executor.StatusCompleted) && priorPhase == state.PhasePushed && run.PRURL == "" {
+		d.event(ctx, run, "finish", "pushed branch without a PR")
+		return d.finishCompleted(d.background(ctx), t, repo, run, executor.Result{Status: executor.StatusCompleted, Summary: "Finished a previous run: the branch was pushed but the pull request had not been opened."}, true)
+	}
+
 	// Resume after a human reply, or triage afresh.
 	var taskPrompt string
 	if d.canResume(t, run) {
@@ -74,6 +83,10 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 			Attempts: run.Attempts, LastStopCause: run.StopCause,
 		})
 		if err != nil {
+			var budget *claudecli.BudgetError
+			if errors.As(err, &budget) {
+				d.pauseFor(budget.ResetsAt)
+			}
 			return OutcomeSkipped, fmt.Errorf("triage %s: %w", t.Key, err)
 		}
 		switch dec.Kind {
@@ -196,8 +209,39 @@ func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.
 		d.event(bg, run, "needs_input", res.Question)
 		return d.finished("work needs info", t.Key, OutcomeNeedsInput, res.Question), nil
 	default:
+		if res.StopCause == executor.CauseBudget {
+			d.pauseFor(res.RetryAfter)
+		}
 		return d.finishFailed(bg, t, run, res, pushed), nil
 	}
+}
+
+// finishCompleted opens (or finds) the PR for a pushed branch and reports.
+// On a PR failure the ticket returns to Ready and the run stays at phase
+// pushed, so the next attempt only retries this step.
+func (d *Dispatcher) finishCompleted(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, run *state.Run, res executor.Result, pushed bool) (Outcome, error) {
+	var pr *githost.PR
+	if pushed {
+		var err error
+		pr, err = d.ensurePR(ctx, repo, t, run)
+		if err != nil {
+			run.LastStatus = string(executor.StatusCompleted)
+			d.setPhase(ctx, run, state.PhasePushed)
+			d.comment(ctx, t.Key, reportPRFailed(err, run.Branch))
+			d.transition(ctx, t.Key, tracker.StateReady)
+			d.event(ctx, run, "pr_failed", err.Error())
+			return OutcomeFailed, fmt.Errorf("open PR for %s: %w", t.Key, err)
+		}
+		if pr != nil {
+			run.PRURL = pr.URL
+			d.setPhase(ctx, run, state.PhasePROpened)
+		}
+	}
+	d.comment(ctx, t.Key, reportCompleted(res, pr, run.Branch, pushed))
+	d.transition(ctx, t.Key, tracker.StateInReview)
+	d.setPhase(ctx, run, state.PhaseDone)
+	d.event(ctx, run, "completed", res.Summary)
+	return OutcomeCompleted, nil
 }
 
 func (d *Dispatcher) finishFailed(ctx context.Context, t tracker.Ticket, run *state.Run, res executor.Result, pushed bool) Outcome {

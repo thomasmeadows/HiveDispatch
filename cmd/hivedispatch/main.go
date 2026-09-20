@@ -108,10 +108,33 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	if !*live && !*liveJira {
 		return 0
 	}
-	if !trackerPreflight(ctx, cfg, stdout, stderr) {
+	ok := trackerPreflight(ctx, cfg, stdout, stderr)
+	if cfg.GitHub.Token != "" && !prPreflight(ctx, cfg, stdout, stderr) {
+		ok = false
+	}
+	if !ok {
 		return 1
 	}
 	return 0
+}
+
+// prPreflight verifies the token can open pull requests on every repo.
+func prPreflight(ctx context.Context, cfg *config.Config, stdout, stderr io.Writer) bool {
+	host, err := github.New(cfg.GitHub)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return false
+	}
+	ok := true
+	for _, repo := range cfg.Repos {
+		if err := host.ProbePRWrite(ctx, repo.Name, repo.DefaultBranch); err != nil {
+			fmt.Fprintln(stderr, err)
+			ok = false
+			continue
+		}
+		fmt.Fprintf(stdout, "token can open pull requests on %s\n", repo.Name)
+	}
+	return ok
 }
 
 // trackerPreflight runs the live check for whichever tracker is configured.

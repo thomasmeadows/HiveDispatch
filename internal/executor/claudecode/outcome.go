@@ -36,21 +36,6 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-func looksLikeBudget(tr claudecli.Transcript) bool {
-	r := tr.Result
-	if r != nil && r.APIErrorStatus != nil && *r.APIErrorStatus == 429 {
-		return true
-	}
-	if tr.RateLimit != nil && tr.RateLimit.Status != "" && tr.RateLimit.Status != "allowed" {
-		return true
-	}
-	if r != nil {
-		low := strings.ToLower(r.Result)
-		return strings.Contains(low, "usage limit") || strings.Contains(low, "rate limit")
-	}
-	return false
-}
-
 // mapOutcome turns what was parsed plus how the process ended into a Result.
 func mapOutcome(tr claudecli.Transcript, exit claudecli.Exit) executor.Result {
 	res := executor.Result{ResumeToken: tr.SessionID, ChangedFiles: tr.EditedFiles}
@@ -84,9 +69,10 @@ func mapOutcome(tr claudecli.Transcript, exit claudecli.Exit) executor.Result {
 		}
 		return fail(executor.CauseError, summary)
 	case tr.Result.IsError:
-		if looksLikeBudget(tr) {
-			if tr.RateLimit != nil && !tr.RateLimit.ResetsAt.IsZero() {
-				text += "\n\nQuota resets at " + tr.RateLimit.ResetsAt.UTC().Format("2006-01-02 15:04 UTC") + "."
+		if budget, reset := claudecli.LooksLikeBudget(tr); budget {
+			if !reset.IsZero() {
+				text += "\n\nQuota resets at " + reset.UTC().Format("2006-01-02 15:04 UTC") + "."
+				res.RetryAfter = reset
 			}
 			return fail(executor.CauseBudget, text)
 		}
