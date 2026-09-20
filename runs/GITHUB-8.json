@@ -1,0 +1,10 @@
+{
+  "ticket": "GITHUB-8",
+  "url": "https://github.com/thomasmeadows/HiveDispatch/issues/8",
+  "agent": "worker-1",
+  "branch": "hive/GITHUB-8",
+  "attempts": 0,
+  "phase": "claimed",
+  "questionAt": "0001-01-01T00:00:00Z",
+  "updatedAt": "2026-09-20T07:05:42.483170428Z"
+}
