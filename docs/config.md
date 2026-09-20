@@ -61,7 +61,7 @@ Read from the ticket's worktree, so it is versioned with the code and can differ
 | Variable | Required | Meaning |
 |---|---|---|
 | `HIVE_JIRA_TOKEN` | yes | Atlassian API token for `jira.email` |
-| `HIVE_GITHUB_TOKEN` | with `tracker: github` | Token for opening PRs and, with `tracker: github`, for reading and writing issues. If unset, `gh auth token` and the git credential helper are tried; with none and Jira, branches are pushed and the ticket asks a human to open the PR |
+| `HIVE_GITHUB_TOKEN` | with `tracker: github` | Token for opening PRs and, with `tracker: github`, for reading and writing issues. Classic or fine-grained, interchangeably — see the token table in `docs/setup.md` §5 for which permissions each needs; a user-owned Projects board requires a classic token. If unset, `gh auth token` and the git credential helper are tried; with none and Jira, branches are pushed and the ticket asks a human to open the PR |
 
 ## Commands
 

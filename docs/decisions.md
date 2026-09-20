@@ -177,3 +177,7 @@ Decided: `executor.path` in `.hivedispatch.yaml` prepends directories to the age
 ## 2026-09-20 — Ticket keys are the identity; reused worktrees fast-forward
 
 Observed: the GitHub repo was configured with `project: SCRUM`, so issue #5 became `SCRUM-5` — the same key as the Jira ticket whose PR #1 had merged the night before. The dispatcher reused that ticket's worktree (cut from a main that predated the GitHub Issues tracker) and its run record, and triage correctly rejected the issue against code that no longer existed. Decided: `Prepare` fast-forwards an existing worktree to the default branch when the branch has no commits of its own (a merged branch), and never touches a diverged one; config rejects two repos sharing a project key; docs say to pick a distinct prefix per tracker. Rejected: namespacing keys by tracker automatically — the key is meant to be what a human reads on the branch and the PR, and the collision is a configuration choice they can see.
+
+## 2026-09-20 — Token kinds are interchangeable to the code; not to GitHub's permission model
+
+Both classic and fine-grained personal access tokens are sent as `Authorization: Bearer` and nothing inspects the prefix, so either works everywhere HiveDispatch talks to GitHub. Learned while wiring the Projects board: fine-grained tokens have no account-level Projects permission, so a **user-owned** board needs a classic token with `project` (organisation boards accept either). Documented as a table by need rather than by token kind, because that is the question people actually have.
