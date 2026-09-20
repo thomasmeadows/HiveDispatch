@@ -5,7 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
+	"github.com/thomasmeadows/hivedispatch/internal/statusline"
 )
 
 func TestVersion(t *testing.T) {
@@ -85,6 +90,60 @@ func TestInitOnExistingConfigIsANoop(t *testing.T) {
 	if !strings.Contains(out.String(), "already exists") {
 		t.Errorf("stdout = %q", out.String())
 	}
+}
+
+func TestPollStatusText(t *testing.T) {
+	at := time.Date(2026, 9, 20, 2, 42, 15, 0, time.Local)
+	cases := []struct {
+		last, now time.Time
+		want      string
+	}{
+		{time.Time{}, at, "waiting for first poll"},
+		{at, at, "last poll 2026-09-20 02:42:15 (0s ago)"},
+		{at, at.Add(12*time.Second + 700*time.Millisecond), "last poll 2026-09-20 02:42:15 (12s ago)"},
+		{at, at.Add(3*time.Minute + 5*time.Second), "last poll 2026-09-20 02:42:15 (3m5s ago)"},
+	}
+	for _, c := range cases {
+		if got := pollStatus(c.last, c.now); got != c.want {
+			t.Errorf("pollStatus(%v, %v) = %q, want %q", c.last, c.now, got, c.want)
+		}
+	}
+}
+
+func TestShowLastPollDrawsAndClears(t *testing.T) {
+	var out syncBuffer
+	line := statusline.New(&out)
+	d := &dispatch.Dispatcher{}
+	stop := showLastPoll(d, line)
+	if d.Polled == nil {
+		t.Fatal("showLastPoll must install the Polled hook")
+	}
+	d.Polled(time.Date(2026, 9, 20, 2, 42, 15, 0, time.Local))
+	stop()
+	got := out.String()
+	if !strings.Contains(got, "last poll 2026-09-20 02:42:15") {
+		t.Errorf("status line never drawn: %q", got)
+	}
+	if !strings.HasSuffix(got, "\r\x1b[2K") {
+		t.Errorf("stop must erase the line: %q", got)
+	}
+}
+
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 func TestRunRequiresConfig(t *testing.T) {
