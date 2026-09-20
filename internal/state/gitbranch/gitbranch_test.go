@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/gitops/git/gittest"
 	"github.com/thomasmeadows/hivedispatch/internal/state"
@@ -120,5 +121,36 @@ func TestSaveFailsLoudlyWhenOurFileWasModified(t *testing.T) {
 	// a is unaffected and keeps writing.
 	if err := a.Save(ctx, &state.Run{Ticket: "HIVE-1", Agent: "a", Attempts: 2}); err != nil {
 		t.Fatalf("a err = %v", err)
+	}
+}
+
+func TestListAndPruneCommitAndPush(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	ctx := context.Background()
+	base, dir := worker(t, remote)
+	s, err := Open(ctx, base, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return old }
+	if err := s.Save(ctx, &state.Run{Ticket: "HIVE-1", Phase: state.PhaseDone}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.WriteLog(ctx, "HIVE-1", "run-old", "x"); err != nil {
+		t.Fatal(err)
+	}
+	s.Now = func() time.Time { return old.Add(72 * time.Hour) }
+	if err := s.Save(ctx, &state.Run{Ticket: "HIVE-2", Phase: state.PhaseWorking}); err != nil {
+		t.Fatal(err)
+	}
+	if runs, err := s.List(ctx); err != nil || len(runs) != 2 {
+		t.Fatalf("list = %v, %v", runs, err)
+	}
+	if n, err := s.Prune(ctx, old.Add(24*time.Hour)); err != nil || n != 2 {
+		t.Fatalf("pruned %d, %v", n, err)
+	}
+	if got := gittest.Git(t, remote, "ls-tree", "-r", "--name-only", Branch); strings.Contains(got, "run-old.log") || strings.Contains(got, "runs/HIVE-1.json") || !strings.Contains(got, "runs/HIVE-2.json") {
+		t.Errorf("remote tree after prune:\n%s", got)
 	}
 }

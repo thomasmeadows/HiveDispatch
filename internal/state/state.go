@@ -59,4 +59,10 @@ type RunStore interface {
 	AppendLog(ctx context.Context, key string, e LogEntry) error
 	// WriteLog stores a raw log under name and returns its path.
 	WriteLog(ctx context.Context, key, name, content string) (string, error)
+	// List returns every run record.
+	List(ctx context.Context) ([]Run, error)
+	// Prune deletes raw logs older than before and finished runs
+	// (PhaseDone) not updated since before. events.jsonl is kept. It
+	// returns how many files were removed.
+	Prune(ctx context.Context, before time.Time) (int, error)
 }

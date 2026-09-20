@@ -105,5 +105,25 @@ func (s *Store) WriteLog(_ context.Context, key, name, content string) (string, 
 		return "", err
 	}
 	p := filepath.Join(dir, name+".log")
-	return p, os.WriteFile(p, []byte(content), 0o644)
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	// Raw logs are aged by mtime; pin it to the store clock.
+	now := s.Now()
+	return p, os.Chtimes(p, now, now)
+}
+
+// List implements state.RunStore.
+func (s *Store) List(_ context.Context) ([]state.Run, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return ListRuns(s.Dir)
+}
+
+// Prune implements state.RunStore.
+func (s *Store) Prune(_ context.Context, before time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, _, err := PruneTree(s.Dir, before)
+	return n, err
 }

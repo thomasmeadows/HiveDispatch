@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/state"
+	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
 )
 
 // Branch is the orphan branch name.
@@ -156,7 +157,29 @@ func (s *Store) WriteLog(ctx context.Context, key, name, content string) (string
 	if err := s.write(rel, []byte(content)); err != nil {
 		return "", err
 	}
+	// Raw logs are aged by mtime. git does not preserve mtimes, so on a fresh
+	// clone every log looks new and is kept — the safe side.
+	now := s.Now()
+	_ = os.Chtimes(filepath.Join(s.Dir, rel), now, now)
 	return filepath.Join(s.Dir, rel), s.commitAndPush(ctx, fmt.Sprintf("hive: %s log %s", key, name), []string{rel})
+}
+
+// List implements state.RunStore from the local worktree.
+func (s *Store) List(_ context.Context) ([]state.Run, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return localdir.ListRuns(s.Dir)
+}
+
+// Prune implements state.RunStore and pushes the deletions.
+func (s *Store) Prune(ctx context.Context, before time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, removed, err := localdir.PruneTree(s.Dir, before)
+	if err != nil || n == 0 {
+		return n, err
+	}
+	return n, s.commitAndPush(ctx, fmt.Sprintf("hive: prune %d file(s) before %s", n, before.UTC().Format("2006-01-02")), removed)
 }
 
 func (s *Store) write(rel string, raw []byte) error {

@@ -70,3 +70,41 @@ func TestAppendLogAndWriteLog(t *testing.T) {
 		t.Errorf("path = %s", p)
 	}
 }
+
+func TestListAndPrune(t *testing.T) {
+	s := New(t.TempDir())
+	ctx := context.Background()
+	old := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return old }
+	if err := s.Save(ctx, &state.Run{Ticket: "HIVE-1", Phase: state.PhaseDone}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.WriteLog(ctx, "HIVE-1", "run-old", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AppendLog(ctx, "HIVE-1", state.LogEntry{Event: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	s.Now = func() time.Time { return old.Add(48 * time.Hour) }
+	if err := s.Save(ctx, &state.Run{Ticket: "HIVE-2", Phase: state.PhaseWorking}); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := s.List(ctx)
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("list = %v, %v", runs, err)
+	}
+	n, err := s.Prune(ctx, old.Add(24*time.Hour))
+	if err != nil || n != 2 { // one log file + one finished run
+		t.Fatalf("pruned %d, %v", n, err)
+	}
+	runs, _ = s.List(ctx)
+	if len(runs) != 1 || runs[0].Ticket != "HIVE-2" {
+		t.Errorf("after prune = %+v", runs)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, "logs", "HIVE-1", "events.jsonl")); err != nil {
+		t.Error("events.jsonl must survive pruning")
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, "logs", "HIVE-1", "run-old.log")); err == nil {
+		t.Error("old raw log should be gone")
+	}
+}

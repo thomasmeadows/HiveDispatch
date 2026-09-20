@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/state"
 )
@@ -60,4 +61,30 @@ func (s *Store) WriteLog(ctx context.Context, key, name, content string) (string
 		return "", err
 	}
 	return st.WriteLog(ctx, key, name, content)
+}
+
+// List implements state.RunStore by concatenating every store.
+func (s *Store) List(ctx context.Context) ([]state.Run, error) {
+	var out []state.Run
+	for _, st := range s.Stores {
+		runs, err := st.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, runs...)
+	}
+	return out, nil
+}
+
+// Prune implements state.RunStore across every store.
+func (s *Store) Prune(ctx context.Context, before time.Time) (int, error) {
+	total := 0
+	for _, st := range s.Stores {
+		n, err := st.Prune(ctx, before)
+		total += n
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
 }
