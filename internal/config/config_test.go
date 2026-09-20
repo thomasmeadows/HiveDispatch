@@ -321,3 +321,12 @@ func TestTrackerUnknownRejected(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestValidateRejectsDuplicateProjects(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	body := validYAML + "  - name: o/two\n    url: git@github.com:o/two.git\n    jira_project: HIVE\n"
+	_, err := Load(writeTemp(t, body))
+	if err == nil || !strings.Contains(err.Error(), "also used by") {
+		t.Fatalf("err = %v", err)
+	}
+}

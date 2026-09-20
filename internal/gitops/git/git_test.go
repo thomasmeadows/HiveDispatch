@@ -92,3 +92,62 @@ func TestFinalizeCommitsDirtyTreeAndPushes(t *testing.T) {
 		t.Fatalf("no-op finalize: pushed=%v err=%v", pushed, err)
 	}
 }
+
+func TestPrepareFastForwardsMergedBranch(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	w := New(t.TempDir())
+	ctx := context.Background()
+	ws, err := w.Prepare(ctx, repoCfg(remote), "HIVE-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Someone else advances main (as after merging this ticket's PR).
+	other := gittest.Clone(t, remote)
+	if err := os.WriteFile(filepath.Join(other, "later.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Git(t, other, "add", "later.txt")
+	gittest.Git(t, other, "commit", "-q", "-m", "later")
+	gittest.Git(t, other, "push", "-q", "origin", "main")
+
+	again, err := w.Prepare(ctx, repoCfg(remote), "HIVE-4")
+	if err != nil || again.Path != ws.Path {
+		t.Fatalf("second prepare: %+v %v", again, err)
+	}
+	if _, err := os.Stat(filepath.Join(ws.Path, "later.txt")); err != nil {
+		t.Error("a branch with no commits of its own should fast-forward to the default branch")
+	}
+}
+
+func TestPrepareKeepsDivergedBranch(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	w := New(t.TempDir())
+	ctx := context.Background()
+	ws, err := w.Prepare(ctx, repoCfg(remote), "HIVE-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws.Path, "mine.txt"), []byte("y"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Finalize(ctx, ws, "hive: WIP (timeout)"); err != nil {
+		t.Fatal(err)
+	}
+	other := gittest.Clone(t, remote)
+	if err := os.WriteFile(filepath.Join(other, "later.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Git(t, other, "add", "later.txt")
+	gittest.Git(t, other, "commit", "-q", "-m", "later")
+	gittest.Git(t, other, "push", "-q", "origin", "main")
+
+	if _, err := w.Prepare(ctx, repoCfg(remote), "HIVE-5"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(ws.Path, "mine.txt")); err != nil {
+		t.Error("unmerged work must be kept")
+	}
+	if _, err := os.Stat(filepath.Join(ws.Path, "later.txt")); err == nil {
+		t.Error("a diverged branch must not be rewritten under the agent")
+	}
+}

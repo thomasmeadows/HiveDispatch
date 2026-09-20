@@ -74,6 +74,11 @@ func (w *Workspaces) Prepare(ctx context.Context, repo config.RepoConfig, key st
 		Base:   "origin/" + repo.DefaultBranch,
 	}
 	if _, err := os.Stat(filepath.Join(ws.Path, ".git")); err == nil {
+		// An existing worktree is reused as is, except that a branch with
+		// nothing of its own (typically one whose PR was merged) is
+		// fast-forwarded so the agent sees the current default branch.
+		// A diverged branch is left alone: that is the review loop.
+		_, _ = run(ctx, ws.Path, "merge", "-q", "--ff-only", ws.Base) // no-op when diverged
 		return ws, nil
 	}
 	if _, err := run(ctx, base, "worktree", "prune"); err != nil {

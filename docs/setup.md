@@ -144,6 +144,8 @@ To queue an issue, add the **`hive:ready`** label (one tap in the GitHub mobile 
 
 Label names are configurable under `github.labels`.
 
+Choose a `project` that no Jira project on the same worker uses. Ticket keys are the identity for branches, run records and worktrees; `SCRUM-5` from Jira and issue #5 in a repo with `project: SCRUM` would share all three.
+
 ## 9. Claude Code
 
 The worker shells out to the `claude` CLI. Log in once as the user that runs the worker (`claude` then `/login`) — headless runs reuse the stored credentials. Do not set `--bare` anywhere; it skips credential loading.

@@ -229,7 +229,15 @@ func (c *Config) Validate() error {
 		problems = append(problems, fmt.Sprintf("tracker: want jira or github, got %q", c.Tracker))
 	}
 	if len(c.Repos) == 0 {
-		problems = append(problems, "repos must list at least one repository — name (owner/repo), url (clone URL), jira_project (the ticket key prefix)")
+		problems = append(problems, "repos must list at least one repository — name (owner/repo), url (clone URL), project (the ticket key prefix)")
+	}
+	seen := map[string]int{}
+	for i, r := range c.Repos {
+		key := strings.ToUpper(r.Project)
+		if j, dup := seen[key]; dup && key != "" {
+			problems = append(problems, fmt.Sprintf("repos[%d].project %q is also used by repos[%d] — ticket keys must map to one repository", i, r.Project, j))
+		}
+		seen[key] = i
 	}
 	for i, r := range c.Repos {
 		need(r.Name, fmt.Sprintf("repos[%d].name", i), "owner/repo as shown on GitHub")
