@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"01a0bc3f-0000-7000-8000-000000000e01"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"file_change","changes":[{"path":"/work/HIVE-2/cmd/app/main.go","kind":"update"},{"path":"/work/HIVE-2/README.md","kind":"add"}],"status":"completed"}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"bash -lc 'go test ./...'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"error","message":"You've hit your usage limit. Try again later."}
+{"type":"turn.failed","error":{"message":"You've hit your usage limit. Try again later."}}

@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"q-thread"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I looked at the code.\n\nHIVE_NEEDS_INPUT: Should the flag print semver or the git SHA?"}}
+{"type":"turn.completed","usage":{"input_tokens":300,"cached_input_tokens":0,"output_tokens":40}}
