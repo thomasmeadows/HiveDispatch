@@ -1,0 +1,9 @@
+{
+  "ticket": "SCRUM-3",
+  "agent": "worker-1",
+  "branch": "hive/SCRUM-3",
+  "attempts": 0,
+  "phase": "claimed",
+  "questionAt": "0001-01-01T00:00:00Z",
+  "updatedAt": "2026-09-20T04:06:58.444801181Z"
+}
