@@ -35,6 +35,9 @@ Decide:
 - "needs_info": underspecified. Put ONE clear question for the ticket author in "question".
 - "reject": out of scope for automation (too large, architectural, or not in this repo). Explain in "reason".
 
+Prefer "needs_info" over "reject" when the request is vague but plausibly small once
+clarified; "reject" is for work that should not be automated even after clarification.
+
 Set "complexity" from 1 (trivial) to 5 (large). Do not modify anything.
 
 `)

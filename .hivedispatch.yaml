@@ -12,6 +12,8 @@ executor:
     - "Bash(go test:*)"
     - "Bash(go vet:*)"
     - "Bash(gofmt:*)"
+    - "Bash(golangci-lint:*)"
+    - "Bash(go run github.com/golangci/golangci-lint:*)"
     - "Bash(git add:*)"
     - "Bash(git commit:*)"
     - "Bash(git status:*)"
@@ -19,7 +21,12 @@ executor:
     - "Bash(git log:*)"
 guidance: |
   Go 1.27, stdlib only plus gopkg.in/yaml.v3. Every external system sits behind an
-  interface in internal/ with a fake; unit tests never touch the network. Run
-  `go vet ./... && go test -race ./...` before finishing. Record design decisions in
-  docs/decisions.md with the alternative rejected. Commit messages use conventional
-  prefixes (feat:, fix:, test:, docs:, chore:).
+  interface in internal/ with a fake; unit tests never touch the network.
+  Before finishing, all three must pass — CI runs them and a PR with failures is not done:
+    go vet ./... && go test -race ./... && golangci-lint run ./...
+  If golangci-lint is not on PATH, use:
+    go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...
+  errcheck is on: never discard an error, including from io.WriteString and Close
+  (use `_ = f()` deliberately if the error is truly irrelevant).
+  Record design decisions in docs/decisions.md with the alternative rejected.
+  Commit messages use conventional prefixes (feat:, fix:, test:, docs:, chore:).

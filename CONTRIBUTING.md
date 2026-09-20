@@ -3,7 +3,7 @@
 ## Dev setup
 
 - Go 1.27+
-- `golangci-lint` v2 (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`)
+- `golangci-lint` v2: `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`, and make sure `$(go env GOPATH)/bin` is on your `PATH` — the coding agent inherits the worker's environment, so if you cannot run `golangci-lint` in your shell, neither can it
 
 ## Build and test locally
 
