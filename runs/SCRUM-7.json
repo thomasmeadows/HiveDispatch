@@ -4,6 +4,7 @@
   "branch": "hive/SCRUM-7",
   "attempts": 0,
   "phase": "claimed",
-  "questionAt": "0001-01-01T00:00:00Z",
-  "updatedAt": "2026-09-20T02:37:10.54519987Z"
+  "lastStatus": "needs_input",
+  "questionAt": "2026-09-19T22:37:09.725983543-04:00",
+  "updatedAt": "2026-09-20T02:37:44.486099213Z"
 }
