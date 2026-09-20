@@ -162,7 +162,14 @@ github:
       needs_human: Needs Human
 ```
 
-Every option must already exist on the board; `hivedispatch check -live` lists the ones that do not. Projects has no REST API, so the token additionally needs the **`project`** scope — `gh auth refresh -s project` for a GitHub CLI token, or **Projects: read and write** on a fine-grained token. On each transition the worker adds the issue to the board if it is not there yet and sets the field; labels remain the queue and the source of truth, so a board that cannot be reached is logged and never blocks a run.
+Every option must already exist on the board; `hivedispatch check -live` lists the ones that do not. Projects has no REST API, so the token additionally needs project access, and **which token works depends on who owns the board**:
+
+| Board | Token |
+|---|---|
+| User-owned (`github.com/users/OWNER/projects/N`) | A **classic** PAT with the `project` scope, or `gh auth refresh -s project` (the GitHub CLI token is classic). Fine-grained tokens cannot access user-owned Projects at all — there is no account-level permission for them |
+| Organisation-owned (`github.com/orgs/ORG/projects/N`) | Either a classic PAT with `project`, or a fine-grained token granted **Projects: read and write** for the organisation |
+
+On each transition the worker adds the issue to the board if it is not there yet and sets the field; labels remain the queue and the source of truth, so a board that cannot be reached is logged and never blocks a run.
 
 Choose a `project` that no Jira project on the same worker uses. Ticket keys are the identity for branches, run records and worktrees; `SCRUM-5` from Jira and issue #5 in a repo with `project: SCRUM` would share all three.
 

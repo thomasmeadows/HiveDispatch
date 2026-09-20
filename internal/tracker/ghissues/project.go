@@ -70,7 +70,7 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 		}
 		err := fmt.Errorf("github graphql: %s", strings.Join(msgs, "; "))
 		if scope {
-			err = fmt.Errorf("%w — the token needs the project scope: `gh auth refresh -s project`, or for a fine-grained token grant Projects: read and write", err)
+			err = fmt.Errorf("%w — the token needs project access: `gh auth refresh -s project` or a classic PAT with the project scope (fine-grained tokens cannot reach user-owned Projects; for an organisation board, Projects: read and write works)", err)
 		}
 		return err
 	}

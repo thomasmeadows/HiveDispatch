@@ -47,8 +47,10 @@ tracker: jira
 # GitHub Issues only. Optional: also move each issue's card on a GitHub Projects board
 # as its state changes. Labels stay the source of truth; the board mirrors them. Take
 # owner and number from the board's URL: github.com/users/OWNER/projects/N (or
-# github.com/orgs/OWNER/projects/N). The token then also needs the project scope
-# ("gh auth refresh -s project", or Projects: read and write on a fine-grained token).
+# github.com/orgs/OWNER/projects/N). The token then also needs project access: for a
+# user-owned board that means a classic PAT with the project scope (or
+# "gh auth refresh -s project") — fine-grained tokens cannot reach user-owned Projects;
+# for an organisation board a fine-grained token with Projects: read and write also works.
 # github:
 #   project:
 #     owner: OWNER
