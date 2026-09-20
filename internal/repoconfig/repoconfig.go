@@ -22,7 +22,10 @@ type Config struct {
 	Guidance string         `yaml:"guidance"`
 }
 
-// ExecutorConfig controls how the coding agent is invoked.
+// ExecutorConfig controls how the coding agent is invoked. Model,
+// PermissionMode, Tools, AllowedTools and MaxBudgetUSD are Claude Code
+// vocabulary and only the claude executor reads them; Codex has its own
+// section. Path applies to every executor.
 type ExecutorConfig struct {
 	Model          string   `yaml:"model"`
 	PermissionMode string   `yaml:"permission_mode"`
@@ -31,7 +34,15 @@ type ExecutorConfig struct {
 	MaxBudgetUSD   float64  `yaml:"max_budget_usd"`
 	// Path lists directories prepended to PATH for the agent, so tools the
 	// policy allows by name (e.g. golangci-lint) resolve. ~ and $VAR expand.
-	Path []string `yaml:"path"`
+	Path  []string    `yaml:"path"`
+	Codex CodexConfig `yaml:"codex"`
+}
+
+// CodexConfig is the per-repo policy for the codex executor.
+type CodexConfig struct {
+	Model   string `yaml:"model"`   // default: the worker's codex.model, then the CLI default
+	Sandbox string `yaml:"sandbox"` // read-only | workspace-write (default) | danger-full-access
+	Network bool   `yaml:"network"` // allow outbound network inside workspace-write
 }
 
 // ExtraPath returns Path with ~ and environment variables expanded.
@@ -51,6 +62,8 @@ func (e ExecutorConfig) ExtraPath() []string {
 }
 
 var permissionModes = map[string]bool{"acceptEdits": true, "auto": true, "bypassPermissions": true, "manual": true, "dontAsk": true, "plan": true}
+
+var codexSandboxes = map[string]bool{"read-only": true, "workspace-write": true, "danger-full-access": true}
 
 // Load reads dir/.hivedispatch.yaml; a missing file yields defaults.
 func Load(dir string) (Config, error) {
@@ -72,6 +85,12 @@ func Load(dir string) (Config, error) {
 	}
 	if !permissionModes[c.Executor.PermissionMode] {
 		return c, fmt.Errorf("%s: executor.permission_mode %q is not a Claude Code permission mode", FileName, c.Executor.PermissionMode)
+	}
+	if c.Executor.Codex.Sandbox == "" {
+		c.Executor.Codex.Sandbox = "workspace-write"
+	}
+	if !codexSandboxes[c.Executor.Codex.Sandbox] {
+		return c, fmt.Errorf("%s: executor.codex.sandbox %q is not a Codex sandbox mode (read-only, workspace-write, danger-full-access)", FileName, c.Executor.Codex.Sandbox)
 	}
 	return c, nil
 }

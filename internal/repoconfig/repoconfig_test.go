@@ -3,6 +3,7 @@ package repoconfig
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -34,6 +35,34 @@ func TestLoadParsesAndValidates(t *testing.T) {
 	}
 	if _, err := Load(dir); err == nil {
 		t.Error("invalid permission mode should error")
+	}
+}
+
+func TestLoadCodexSection(t *testing.T) {
+	c, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Executor.Codex.Sandbox != "workspace-write" || c.Executor.Codex.Network || c.Executor.Codex.Model != "" {
+		t.Errorf("codex defaults = %+v", c.Executor.Codex)
+	}
+	dir := t.TempDir()
+	body := "executor:\n  model: sonnet\n  codex:\n    model: gpt-5-codex\n    sandbox: danger-full-access\n    network: true\n"
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err = Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Executor.Model != "sonnet" || c.Executor.Codex.Model != "gpt-5-codex" || c.Executor.Codex.Sandbox != "danger-full-access" || !c.Executor.Codex.Network {
+		t.Errorf("c = %+v", c.Executor)
+	}
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte("executor:\n  codex:\n    sandbox: yolo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "executor.codex.sandbox") {
+		t.Errorf("invalid sandbox should error, got %v", err)
 	}
 }
 
