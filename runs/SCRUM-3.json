@@ -3,10 +3,9 @@
   "agent": "worker-1",
   "branch": "hive/SCRUM-3",
   "attempts": 2,
-  "phase": "working",
-  "lastStatus": "failed",
-  "stopCause": "budget",
+  "phase": "pushed",
+  "lastStatus": "completed",
   "resumeToken": "4492632f-0070-4622-92dd-b22af5201b50",
   "questionAt": "0001-01-01T00:00:00Z",
-  "updatedAt": "2026-09-20T05:30:50.105294597Z"
+  "updatedAt": "2026-09-20T05:31:48.06875296Z"
 }
