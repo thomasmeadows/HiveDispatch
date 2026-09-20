@@ -17,6 +17,7 @@ const maxPages = 5
 
 type issueJSON struct {
 	Number      int    `json:"number"`
+	NodeID      string `json:"node_id"` // GraphQL id, needed for the project board
 	Title       string `json:"title"`
 	Body        string `json:"body"`
 	HTMLURL     string `json:"html_url"`
@@ -182,7 +183,10 @@ func (c *Client) Comment(ctx context.Context, key, body string) error {
 }
 
 // Transition swaps the issue's state label: every other state label is
-// removed, then the target is added. Non-state labels are untouched.
+// removed, then the target is added. Non-state labels are untouched. With a
+// project board configured, the issue's card is then moved to the column
+// for the new state; the label is already set when that fails, so the
+// error only reports the board.
 func (c *Client) Transition(ctx context.Context, key string, to tracker.State) error {
 	target, ok := c.stateLabels()[to]
 	if !ok || target == "" {
@@ -203,8 +207,16 @@ func (c *Client) Transition(ctx context.Context, key string, to tracker.State) e
 			}
 		}
 	}
-	_, err = c.do(ctx, http.MethodPost, issuePath(repo, n, "/labels"), map[string][]string{"labels": {target}}, nil)
-	return err
+	if _, err := c.do(ctx, http.MethodPost, issuePath(repo, n, "/labels"), map[string][]string{"labels": {target}}, nil); err != nil {
+		return err
+	}
+	if !c.cfg.Project.Enabled() {
+		return nil
+	}
+	if err := c.moveProjectItem(ctx, is.NodeID, to); err != nil {
+		return fmt.Errorf("%s labelled %s, but the project board was not updated: %w", key, target, err)
+	}
+	return nil
 }
 
 func parseTime(s string) time.Time {

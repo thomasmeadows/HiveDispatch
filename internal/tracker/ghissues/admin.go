@@ -20,11 +20,16 @@ type CheckReport struct {
 	SampleTickets int
 	SampleIssue   string // issue used to probe write access
 	NotWritable   string // SampleIssue when the token cannot edit issues
+
+	Project        string   // title of the configured project board, when it was found
+	ProjectError   string   // why the board could not be used; empty when none is configured
+	MissingColumns []string // configured column names the board's field does not have
 }
 
 // OK reports whether nothing blocks a run.
 func (r CheckReport) OK() bool {
-	return len(r.MissingRepos) == 0 && len(r.MissingLabels) == 0 && r.NotWritable == ""
+	return len(r.MissingRepos) == 0 && len(r.MissingLabels) == 0 && r.NotWritable == "" &&
+		r.ProjectError == "" && len(r.MissingColumns) == 0
 }
 
 // labelColours give each state a distinct, muted colour on the issue list.
@@ -58,8 +63,8 @@ func (c *Client) existingLabels(ctx context.Context, repo string) (map[string]bo
 	return have, err
 }
 
-// Check verifies the token, each repo, and the state labels; it performs
-// only reads.
+// Check verifies the token, each repo, the state labels and, when one is
+// configured, the project board and its columns; it performs only reads.
 func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 	rep := CheckReport{MissingLabels: map[string][]string{}}
 	var me struct {
@@ -69,6 +74,9 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 		return rep, fmt.Errorf("authentication failed: %w", err)
 	}
 	rep.User = me.Login
+	if c.cfg.Project.Enabled() {
+		c.checkProject(ctx, &rep)
+	}
 	for _, repo := range c.repos {
 		var info struct {
 			HasIssues bool `json:"has_issues"`
@@ -124,6 +132,22 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 		}
 	}
 	return rep, nil
+}
+
+// checkProject resolves the board and lists the configured columns it lacks.
+func (c *Client) checkProject(ctx context.Context, rep *CheckReport) {
+	ref, err := c.project(ctx, true)
+	if err != nil {
+		rep.ProjectError = err.Error()
+		return
+	}
+	rep.Project = ref.Title
+	for _, col := range c.projectColumns() {
+		if _, ok := ref.Options[strings.ToLower(col)]; !ok {
+			rep.MissingColumns = append(rep.MissingColumns, col)
+		}
+	}
+	sort.Strings(rep.MissingColumns)
 }
 
 // EnsureLabels creates any missing state label in every repo and returns

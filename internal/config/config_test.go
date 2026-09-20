@@ -300,6 +300,44 @@ func TestTrackerGithubSkipsJiraValidation(t *testing.T) {
 	}
 }
 
+func TestGitHubProjectIsOptionalWithDefaults(t *testing.T) {
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	cfg, err := Load(writeTemp(t, githubYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GitHub.Project.Enabled() {
+		t.Errorf("no project block must mean disabled: %+v", cfg.GitHub.Project)
+	}
+	cfg, err = Load(writeTemp(t, githubYAML+"github:\n  project:\n    owner: thomasmeadows\n    number: 2\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := cfg.GitHub.Project
+	if !p.Enabled() || p.Owner != "thomasmeadows" || p.Number != 2 || p.Field != "Status" {
+		t.Errorf("project = %+v", p)
+	}
+	if p.Columns.Ready != "Ready" || p.Columns.InProgress != "In Progress" || p.Columns.NeedsHuman != "Needs Human" {
+		t.Errorf("column defaults = %+v", p.Columns)
+	}
+}
+
+func TestGitHubProjectNeedsOwnerAndNumber(t *testing.T) {
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	_, err := Load(writeTemp(t, githubYAML+"github:\n  project:\n    number: 2\n"))
+	if err == nil || !strings.Contains(err.Error(), "github.project.owner") {
+		t.Errorf("missing owner: %v", err)
+	}
+	_, err = Load(writeTemp(t, githubYAML+"github:\n  project:\n    owner: thomasmeadows\n"))
+	if err == nil || !strings.Contains(err.Error(), "github.project.number") {
+		t.Errorf("missing number: %v", err)
+	}
+	_, err = Load(writeTemp(t, githubYAML+"github:\n  project:\n    owner: thomasmeadows\n    number: 2\n    columns:\n      ready: \"\"\n"))
+	if err != nil {
+		t.Errorf("an empty column falls back to the default: %v", err)
+	}
+}
+
 func TestJiraProjectAliasPopulatesProject(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
 	cfg, err := Load(writeTemp(t, validYAML)) // uses jira_project

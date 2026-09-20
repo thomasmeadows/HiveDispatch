@@ -83,9 +83,10 @@ type TriageConfig struct {
 // GitHubConfig covers the pull-request API and, with tracker: github, the
 // issues API; git itself uses the user's own credentials.
 type GitHubConfig struct {
-	APIURL string       `yaml:"api_url"` // default https://api.github.com
-	Token  string       `yaml:"-"`       // HIVE_GITHUB_TOKEN, or discovered from gh / git credentials at startup
-	Labels GitHubLabels `yaml:"labels"`  // state labels when tracker is github
+	APIURL  string        `yaml:"api_url"` // default https://api.github.com
+	Token   string        `yaml:"-"`       // HIVE_GITHUB_TOKEN, or discovered from gh / git credentials at startup
+	Labels  GitHubLabels  `yaml:"labels"`  // state labels when tracker is github
+	Project GitHubProject `yaml:"project"` // optional Projects (v2) board that mirrors the state labels
 }
 
 // GitHubLabels are the issue labels that carry HiveDispatch state when the
@@ -97,6 +98,30 @@ type GitHubLabels struct {
 	InReview   string `yaml:"in_review"`
 	NeedsHuman string `yaml:"needs_human"`
 }
+
+// GitHubProject names a GitHub Projects (v2) board. When set, every state
+// change also moves the issue's card: the issue is added to the project if
+// it is not on it yet, and the single-select Field is set to the column
+// configured for the new state. Labels stay the source of truth; the board
+// is a mirror of them.
+type GitHubProject struct {
+	Owner   string               `yaml:"owner"`   // user or organisation login: OWNER in github.com/users/OWNER/projects/N
+	Number  int                  `yaml:"number"`  // N in that URL
+	Field   string               `yaml:"field"`   // single-select field to set; default "Status"
+	Columns GitHubProjectColumns `yaml:"columns"` // option names of that field, one per state
+}
+
+// GitHubProjectColumns are the Status options (board columns) per state.
+type GitHubProjectColumns struct {
+	Ready      string `yaml:"ready"`
+	InProgress string `yaml:"in_progress"`
+	NeedsInfo  string `yaml:"needs_info"`
+	InReview   string `yaml:"in_review"`
+	NeedsHuman string `yaml:"needs_human"`
+}
+
+// Enabled reports whether a project board is configured at all.
+func (p GitHubProject) Enabled() bool { return p.Owner != "" || p.Number != 0 }
 
 // RepoConfig is one repository the worker may dispatch work into.
 type RepoConfig struct {
@@ -182,6 +207,13 @@ func (c *Config) applyDefaults() {
 	def(&l.NeedsInfo, "hive:needs-info")
 	def(&l.InReview, "hive:in-review")
 	def(&l.NeedsHuman, "hive:needs-human")
+	p := &c.GitHub.Project
+	def(&p.Field, "Status")
+	def(&p.Columns.Ready, "Ready")
+	def(&p.Columns.InProgress, "In Progress")
+	def(&p.Columns.NeedsInfo, "Needs Info")
+	def(&p.Columns.InReview, "In Review")
+	def(&p.Columns.NeedsHuman, "Needs Human")
 }
 
 // Validate returns an error listing every missing or inconsistent field,
@@ -224,6 +256,12 @@ func (c *Config) Validate() error {
 	case "github":
 		if c.GitHub.Token == "" {
 			problems = append(problems, "tracker: github needs a GitHub token with Issues read/write — `export HIVE_GITHUB_TOKEN=...`, or run `gh auth login` (the GitHub CLI token is picked up automatically)")
+		}
+		if p := c.GitHub.Project; p.Enabled() {
+			need(p.Owner, "github.project.owner", "the user or organisation that owns the board: OWNER in github.com/users/OWNER/projects/N")
+			if p.Number <= 0 {
+				problems = append(problems, "github.project.number is required — N in github.com/users/OWNER/projects/N")
+			}
 		}
 	default:
 		problems = append(problems, fmt.Sprintf("tracker: want jira or github, got %q", c.Tracker))

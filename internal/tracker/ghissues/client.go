@@ -4,7 +4,9 @@
 // by one hive:* label at a time and the claim by a hidden HTML comment at
 // the end of the issue body. Ticket keys are "<PROJECT>-<number>", where
 // PROJECT is the repo's configured project key, so the rest of HiveDispatch
-// sees the same key shape as with Jira.
+// sees the same key shape as with Jira. Optionally a GitHub Projects (v2)
+// board mirrors the labels: each transition also moves the issue's card to
+// the column configured for the new state (see project.go).
 package ghissues
 
 import (
@@ -17,6 +19,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
@@ -30,6 +33,9 @@ type Client struct {
 	api   *url.URL
 	http  *http.Client
 	now   func() time.Time
+
+	projMu sync.Mutex
+	proj   *projectRef // resolved Projects v2 board, when cfg.Project is set
 
 	beforeReadBack func(key string)
 }
