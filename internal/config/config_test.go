@@ -191,11 +191,18 @@ func TestLoadExecutorDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Executor != "claude" || cfg.Claude.Binary != "claude" {
+	if cfg.Executor != "claude" || cfg.Claude.Binary != "claude" || cfg.Codex.Binary != "codex" {
 		t.Errorf("cfg = %+v", cfg)
 	}
 	if _, err := Load(writeTemp(t, validYAML+"executor: gpt\n")); err == nil || !strings.Contains(err.Error(), "executor") {
 		t.Errorf("err = %v", err)
+	}
+	cfg, err = Load(writeTemp(t, validYAML+"executor: codex\ncodex:\n  binary: /opt/codex\n  model: gpt-5-codex\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Executor != "codex" || cfg.Codex.Binary != "/opt/codex" || cfg.Codex.Model != "gpt-5-codex" {
+		t.Errorf("cfg = %+v", cfg)
 	}
 }
 
