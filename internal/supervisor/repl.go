@@ -28,6 +28,9 @@ type REPL struct {
 	interactive bool
 	now         func() time.Time
 	lines       *lineReader
+
+	checkOutput string // hivedispatch check output, captured once per turn (see turn)
+	spinnerStop func() // stops the spinner started for the in-flight model call, if any
 }
 
 // lineReader reads stdin on a goroutine so the loop can select between a
@@ -96,19 +99,30 @@ func (r *REPL) Confirm(prompt string) bool {
 }
 
 // system builds the system prompt fresh from the current config, notes and
-// check output.
+// check output. Agent.System is called before every model call, so
+// CheckOutput itself is not re-run here: turn captures it once per turn,
+// with the turn's own context, and system just reads that cached value.
 func (r *REPL) system() string {
 	notes, n := r.mem.NotesForPrompt()
 	_, statErr := os.Stat(r.configPath)
 	return BuildSystem(PromptInput{
 		ConfigPath: r.configPath, ConfigExists: statErr == nil, ModelName: r.modelName,
-		Notes: notes, NoteLines: n, CheckOutput: CheckOutput(context.Background(), r.exe, r.configPath),
+		Notes: notes, NoteLines: n, CheckOutput: r.checkOutput,
 	})
 }
 
-// onEvent prints agent progress (tool calls, budget) to stderr as it runs.
+// onEvent prints agent progress (tool calls, budget) to stderr as it runs,
+// and starts/stops the spinner so it only runs while a model call is in
+// flight — never across a tool's own confirmation prompt.
 func (r *REPL) onEvent(e Event) {
 	switch e.Kind {
+	case "model_start":
+		r.spinnerStop = r.spinner()
+	case "model_done":
+		if r.spinnerStop != nil {
+			r.spinnerStop()
+			r.spinnerStop = nil
+		}
 	case "tool_start":
 		args := string(e.Args)
 		if len(args) > 60 {
@@ -199,6 +213,7 @@ func (r *REPL) Run(ctx context.Context) error {
 		stop := watchInterrupt(sig, cancel)
 		err := r.turn(turnCtx, line)
 		interrupted := stop()
+		drainSignal(sig)
 		cancel()
 		switch {
 		case errors.Is(err, context.Canceled) || interrupted:
@@ -249,12 +264,26 @@ func watchInterrupt(sig <-chan os.Signal, cancel func()) (stop func() bool) {
 	}
 }
 
+// drainSignal discards a pending signal on sig without blocking. A second
+// Ctrl-C pressed while a turn is running can land on sig just as
+// watchInterrupt's watch ends, after it has already been read as this
+// turn's interruption; left undrained, it would sit in the buffered
+// channel and be mistaken for a fresh interrupt at the next prompt,
+// silently exiting the REPL.
+func drainSignal(sig <-chan os.Signal) {
+	select {
+	case <-sig:
+	default:
+	}
+}
+
 // turn runs one user message through the agent, prints the reply and saves
-// the session.
+// the session. hivedispatch check is captured once here, with the turn's
+// own context (so Ctrl-C interrupts a slow check), rather than by
+// Agent.System on every model call within the turn.
 func (r *REPL) turn(ctx context.Context, msg string) error {
-	stop := r.spinner()
+	r.checkOutput = CheckOutput(ctx, r.exe, r.configPath)
 	reply, err := r.agent.Turn(ctx, msg)
-	stop()
 	if err != nil {
 		return err
 	}
@@ -266,6 +295,9 @@ func (r *REPL) turn(ctx context.Context, msg string) error {
 }
 
 // spinner shows "thinking…" on stderr until the returned stop is called.
+// Nothing is printed until the first 500ms tick, so a model call that
+// answers quickly (the common case, and every call in tests) never prints
+// anything for stop to have to erase.
 func (r *REPL) spinner() (stop func()) {
 	if !r.interactive {
 		return func() {}
@@ -277,15 +309,18 @@ func (r *REPL) spinner() (stop func()) {
 		t := time.NewTicker(500 * time.Millisecond)
 		defer t.Stop()
 		dots := 0
-		fmt.Fprint(r.stderr, "thinking")
+		printed := false
 		for {
 			select {
 			case <-done:
-				fmt.Fprint(r.stderr, "\r\033[K")
+				if printed {
+					fmt.Fprint(r.stderr, "\r\033[K")
+				}
 				return
 			case <-t.C:
 				dots = (dots + 1) % 4
 				fmt.Fprintf(r.stderr, "\r\033[Kthinking%s", strings.Repeat(".", dots))
+				printed = true
 			}
 		}
 	}()
