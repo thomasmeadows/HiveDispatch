@@ -17,7 +17,7 @@ export ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY, HF_TOKEN, or a running Oll
 hivedispatch supervisor
 ```
 
-opens a chat with an assistant built into the binary. It has read these docs, sees the current `hivedispatch check` output, and can write the config for you (you approve every diff), run `init -jira` / `init -github` / `check -live` / a fake-executor dry run (you approve every one), and remembers what it learned in `~/.config/hivedispatch/supervisor/memory.md` for next time. It never runs the real executor. `echo "why does check fail?" | hivedispatch supervisor` asks one question and exits. Which model answers is in [`docs/config.md` — Supervisor config](config.md#supervisor-config--confighivedispatchsupervisorconfigyaml).
+opens a chat with an assistant built into the binary. It has read these docs, sees the current `hivedispatch check` output, and can write the config for you (you approve every diff), run `check -live` on its own, and run `init -jira` / `init -github` / a fake-executor dry run (you approve each of those), and remembers what it learned in `~/.config/hivedispatch/supervisor/memory.md` for next time. It never runs the real executor. `echo "why does check fail?" | hivedispatch supervisor` asks one question and exits. Which model answers is in [`docs/config.md` — Supervisor config](config.md#supervisor-config--confighivedispatchsupervisorconfigyaml).
 
 ## 1. API token
 

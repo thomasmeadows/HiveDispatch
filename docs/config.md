@@ -1,6 +1,6 @@
 # Configuration reference
 
-Two files and two environment variables.
+Three files and a handful of environment variables.
 
 ## Worker config — `~/.config/hivedispatch/config.yaml`
 
@@ -69,6 +69,7 @@ The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budg
 |---|---|---|
 | `HIVE_JIRA_TOKEN` | yes | Atlassian API token for `jira.email` |
 | `HIVE_GITHUB_TOKEN` | with `tracker: github` | Token for opening PRs and, with `tracker: github`, for reading and writing issues. Classic or fine-grained, interchangeably — see the token table in `docs/setup.md` §5 for which permissions each needs; a user-owned Projects board requires a classic token. If unset, `gh auth token` and the git credential helper are tried; with none and Jira, branches are pushed and the ticket asks a human to open the PR |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `HF_TOKEN` | with `hivedispatch supervisor` | the supervisor's model key; which one is read is `api_key_env` in the supervisor config (see below) |
 
 ## Commands
 
