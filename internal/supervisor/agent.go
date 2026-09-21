@@ -16,7 +16,7 @@ type Tool interface {
 
 // Event is what the loop reports as it goes, for the REPL to print.
 type Event struct {
-	Kind   string // "tool_start" | "tool_done" | "budget"
+	Kind   string // "model_start" | "model_done" | "tool_start" | "tool_done" | "budget"
 	Tool   string
 	Args   json.RawMessage
 	Result string
@@ -28,7 +28,7 @@ type Event struct {
 type Agent struct {
 	Model      model.Model
 	Tools      []Tool
-	System     func() string // rebuilt every turn so config and check state are fresh
+	System     func() string // called before every model call; callers cache what is expensive
 	StepBudget int           // tool calls per user turn
 	MaxTokens  int
 	Events     func(Event)
@@ -71,21 +71,28 @@ func (a *Agent) tool(name string) Tool {
 
 // Turn sends one user message and runs tool calls until the model replies
 // in text. On a model error the history is exactly as it was before the
-// failing call, so the caller can retry or carry on.
+// failing call, so the caller can retry or carry on. When ctx is
+// cancelled partway through a batch of tool calls, the remaining calls in
+// that batch are recorded as cancelled without being invoked, and Turn
+// returns ctx.Err() once the batch is fully accounted for.
 func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
 	a.history = append(a.history, model.Message{Role: model.RoleUser, Content: user})
 	steps := 0
 	lastText := ""
 	for {
+		a.emit(Event{Kind: "model_start"})
 		resp, err := a.Model.Chat(ctx, model.Request{
 			System: a.System(), Messages: a.history, Tools: a.defs(), MaxTokens: a.MaxTokens,
 		})
+		a.emit(Event{Kind: "model_done"})
 		if err != nil {
 			return "", err
 		}
 		msg := resp.Message
 		msg.Role = model.RoleAssistant
-		a.history = append(a.history, msg)
+		if msg.Content != "" || len(msg.ToolCalls) > 0 {
+			a.history = append(a.history, msg)
+		}
 		if msg.Content != "" {
 			lastText = msg.Content
 		}
@@ -97,7 +104,14 @@ func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
 		}
 		for _, tc := range msg.ToolCalls {
 			steps++
+			if ctx.Err() != nil {
+				a.history = append(a.history, a.cancelled(ctx, tc))
+				continue
+			}
 			a.history = append(a.history, a.call(ctx, tc))
+		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
 		}
 		if steps >= a.StepBudget {
 			a.emit(Event{Kind: "budget"})
@@ -124,5 +138,14 @@ func (a *Agent) call(ctx context.Context, tc model.ToolCall) model.Message {
 		res.Content = out
 	}
 	a.emit(Event{Kind: "tool_done", Tool: tc.Name, Args: tc.Args, Result: res.Content, Err: err})
+	return res
+}
+
+// cancelled records a tool call that was never invoked because ctx was
+// already done when its turn in the batch came up, keeping history
+// consistent (every tool_use gets a matching result).
+func (a *Agent) cancelled(ctx context.Context, tc model.ToolCall) model.Message {
+	res := model.Message{Role: model.RoleTool, ToolCallID: tc.ID, IsError: true, Content: "cancelled"}
+	a.emit(Event{Kind: "tool_done", Tool: tc.Name, Args: tc.Args, Result: res.Content, Err: ctx.Err()})
 	return res
 }

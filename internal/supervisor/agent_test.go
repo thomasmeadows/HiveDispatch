@@ -62,8 +62,17 @@ func TestTurnToolRoundTrip(t *testing.T) {
 	if len(m.Calls[1].Tools) != 1 || m.Calls[1].Tools[0].Name != "echo" {
 		t.Errorf("tools not sent: %+v", m.Calls[1].Tools)
 	}
-	if len(*events) != 2 || (*events)[0].Kind != "tool_start" || (*events)[1].Kind != "tool_done" || (*events)[1].Result != `echo:{"x":1}` {
-		t.Errorf("events = %+v", *events)
+	want := []string{"model_start", "model_done", "tool_start", "tool_done", "model_start", "model_done"}
+	if len(*events) != len(want) {
+		t.Fatalf("events = %+v", *events)
+	}
+	for i, k := range want {
+		if (*events)[i].Kind != k {
+			t.Errorf("events[%d] = %q, want %q", i, (*events)[i].Kind, k)
+		}
+	}
+	if (*events)[3].Result != `echo:{"x":1}` {
+		t.Errorf("tool_done result = %+v", (*events)[3])
 	}
 }
 
@@ -127,5 +136,69 @@ func TestTurnEmptyReply(t *testing.T) {
 	out, err := a.Turn(context.Background(), "hi")
 	if err != nil || out != "(no reply)" {
 		t.Errorf("out = %q, err = %v", out, err)
+	}
+	// A reply with neither text nor tool calls is not recorded: the
+	// Anthropic wire format would serialise it as content: null and the
+	// next turn would 400.
+	if h := a.History(); len(h) != 1 {
+		t.Errorf("history = %+v, want only the user message", h)
+	}
+}
+
+// cancelOnCallTool cancels its context as a side effect of being invoked,
+// simulating a Ctrl-C landing mid-batch, and records how many times it ran.
+type cancelOnCallTool struct {
+	cancel  func()
+	invoked *int
+}
+
+func (cancelOnCallTool) Def() model.ToolDef {
+	return model.ToolDef{Name: "cancel", Description: "cancels the turn context", Schema: []byte(`{"type":"object"}`)}
+}
+
+func (c cancelOnCallTool) Call(context.Context, json.RawMessage) (string, error) {
+	*c.invoked++
+	c.cancel()
+	return "ok", nil
+}
+
+func TestTurnCancelStopsRemainingBatch(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	invoked := 0
+	batch := model.Response{
+		Message: model.Message{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{
+			{ID: "c1", Name: "cancel", Args: []byte(`{}`)},
+			{ID: "c2", Name: "cancel", Args: []byte(`{}`)},
+		}},
+		StopReason: model.StopToolUse,
+	}
+	m := fake.New(batch)
+	a, events := newAgent(m, cancelOnCallTool{cancel: cancel, invoked: &invoked})
+	_, err := a.Turn(ctx, "go")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	if invoked != 1 {
+		t.Errorf("invoked = %d, want 1 (second call must not run)", invoked)
+	}
+	h := a.History()
+	if len(h) != 4 {
+		t.Fatalf("history = %+v", h)
+	}
+	if h[2].ToolCallID != "c1" || h[2].IsError || h[2].Content != "ok" {
+		t.Errorf("first call result = %+v", h[2])
+	}
+	if h[3].ToolCallID != "c2" || !h[3].IsError || h[3].Content != "cancelled" {
+		t.Errorf("second call result = %+v, want cancelled", h[3])
+	}
+	// events: model_start, model_done, tool_start+tool_done for c1, tool_done for c2 (no tool_start: never invoked)
+	wantKinds := []string{"model_start", "model_done", "tool_start", "tool_done", "tool_done"}
+	if len(*events) != len(wantKinds) {
+		t.Fatalf("events = %+v", *events)
+	}
+	for i, k := range wantKinds {
+		if (*events)[i].Kind != k {
+			t.Errorf("events[%d] = %q, want %q", i, (*events)[i].Kind, k)
+		}
 	}
 }
