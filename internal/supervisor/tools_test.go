@@ -132,6 +132,9 @@ func TestReadRepoFile(t *testing.T) {
 	if out, err := call(t, tool, `{"repo":"o/r","name":".hivedispatch.yaml"}`); err != nil || out != "executor: {}\n" {
 		t.Errorf("out = %q, err = %v", out, err)
 	}
+	if out, err := call(t, tool, `{"repo":"O/R","name":".hivedispatch.yaml"}`); err != nil || out != "executor: {}\n" {
+		t.Errorf("case-insensitive repo: out = %q, err = %v", out, err)
+	}
 	if _, err := call(t, tool, `{"repo":"o/r","name":"AGENTS.md"}`); err == nil || !strings.Contains(err.Error(), "no AGENTS.md") {
 		t.Errorf("missing file: %v", err)
 	}

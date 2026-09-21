@@ -237,16 +237,16 @@ func (r readRepoFile) Call(_ context.Context, args json.RawMessage) (string, err
 	if err != nil {
 		return "", err
 	}
-	known := false
+	matched := ""
 	for _, n := range names {
 		if strings.EqualFold(n, in.Repo) {
-			known = true
+			matched = n
 		}
 	}
-	if !known {
+	if matched == "" {
 		return "", fmt.Errorf("%q is not in repos[] of %s (configured: %s)", in.Repo, r.workerConfigPath, strings.Join(names, ", "))
 	}
-	base := filepath.Join(workroot, "repos", strings.ReplaceAll(in.Repo, "/", "__"), "repo")
+	base := filepath.Join(workroot, "repos", strings.ReplaceAll(matched, "/", "__"), "repo")
 	raw, err := os.ReadFile(filepath.Join(base, in.Name))
 	if errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("no %s in %s (the checkout appears after the first run clones the repo)", in.Name, base)
