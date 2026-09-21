@@ -177,7 +177,7 @@ The diff shown for `write_config` is produced by a small line-based LCS in the p
 Everything lives beside the config file: `<dir>/supervisor/memory.md` and `<dir>/supervisor/sessions/<UTC timestamp>.json`.
 
 - **Notes.** Read at startup and included in the system prompt under "Notes from earlier sessions". The prompt copy is capped at 16 KiB, dropping the oldest lines; the file is never truncated. `remember` appends and the next turn's system prompt includes it (the prompt is rebuilt every turn).
-- **Transcripts.** The history (`[]model.Message`, no system prompt) is written after every completed turn, atomically. `-resume` loads the newest session file; `-resume PATH` a specific one. The system prompt is rebuilt, so a resumed session sees the current config, not the one from last time.
+- **Transcripts.** The history (`[]model.Message`, no system prompt) is written after every completed turn, atomically. `-resume` loads the newest session file; `-session FILE` a specific one. The system prompt is rebuilt, so a resumed session sees the current config, not the one from last time.
 
 ### System prompt
 
@@ -247,7 +247,7 @@ Default models are best-effort names at the time of writing; the docs say to che
 
 **Provider from the environment.** With `provider` empty (and no `-provider` flag): `ANTHROPIC_API_KEY` set → anthropic; else `OPENAI_API_KEY` → openai; else `HF_TOKEN` → huggingface; else ollama. If ollama is chosen by default and `GET {base_url}/models` fails at startup, the command exits with a message listing the three env vars and the Ollama URL it tried.
 
-Flags: `-config` (the worker config path, as for every other command), `-provider`, `-model`, `-resume [PATH]`. `docs/config.md` gains a "Supervisor config" section with the keys and the provider table; `docs/setup.md` gains a "Getting help from the supervisor" section near the top; `README.md` gets one line in the quick start. The worker starter config is not touched.
+Flags: `-config` (the worker config path, as for every other command), `-provider`, `-model`, `-resume` (newest session) or `-session FILE` (Go's flag package has no optional values). `docs/config.md` gains a "Supervisor config" section with the keys and the provider table; `docs/setup.md` gains a "Getting help from the supervisor" section near the top; `README.md` gets one line in the quick start. The worker starter config is not touched.
 
 ## Decisions to record
 
