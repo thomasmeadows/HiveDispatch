@@ -137,3 +137,60 @@ func TestNewRequiresFields(t *testing.T) {
 		t.Error("missing model accepted")
 	}
 }
+
+func TestToolCallWithEmptyArgs(t *testing.T) {
+	srv, got := server(t, 200, `{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}`)
+	_, err := client(t, srv.URL).Chat(context.Background(), model.Request{
+		Messages: []model.Message{
+			{Role: model.RoleUser, Content: "call it"},
+			{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: "t1", Name: "fn", Args: nil}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs := (*got)["messages"].([]any)
+	asst := msgs[1].(map[string]any)["content"].([]any)
+	toolUse := asst[0].(map[string]any)
+	if toolUse["type"] != "tool_use" || toolUse["id"] != "t1" {
+		t.Errorf("tool use = %v", toolUse)
+	}
+	input := toolUse["input"].(map[string]any)
+	if len(input) != 0 {
+		t.Errorf("input = %v, want empty object {}", input)
+	}
+}
+
+func TestEmptyToolResultAndUserMessage(t *testing.T) {
+	srv, got := server(t, 200, `{"content":[{"type":"text","text":"done"}],"stop_reason":"end_turn"}`)
+	_, err := client(t, srv.URL).Chat(context.Background(), model.Request{
+		Messages: []model.Message{
+			{Role: model.RoleUser, Content: "start"},
+			{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: "t1", Name: "fn", Args: []byte(`{}`)}}, Content: "trying"},
+			{Role: model.RoleTool, ToolCallID: "t1", Content: ""},
+			{Role: model.RoleUser, Content: ""},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs := (*got)["messages"].([]any)
+	if len(msgs) != 3 {
+		t.Fatalf("want 3 messages, got %d", len(msgs))
+	}
+	merged := msgs[2].(map[string]any)
+	if merged["role"] != "user" {
+		t.Errorf("merged role = %v", merged["role"])
+	}
+	blocks := merged["content"].([]any)
+	if len(blocks) != 1 {
+		t.Fatalf("want 1 block (tool_result only), got %d: %v", len(blocks), blocks)
+	}
+	toolResult := blocks[0].(map[string]any)
+	if toolResult["type"] != "tool_result" || toolResult["tool_use_id"] != "t1" {
+		t.Errorf("tool result = %v", toolResult)
+	}
+	if _, hasContent := toolResult["content"]; hasContent {
+		t.Errorf("tool result should not have content key when empty, but got %v", toolResult)
+	}
+}

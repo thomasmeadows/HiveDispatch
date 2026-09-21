@@ -127,7 +127,9 @@ func toWire(req model.Request) wireRequest {
 			}
 			push("assistant", blocks...)
 		default:
-			push("user", block{Type: "text", Text: m.Content})
+			if m.Content != "" {
+				push("user", block{Type: "text", Text: m.Content})
+			}
 		}
 	}
 	for _, t := range req.Tools {
