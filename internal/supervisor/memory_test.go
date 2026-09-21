@@ -82,6 +82,25 @@ func TestSessions(t *testing.T) {
 	}
 }
 
+func TestSaveSessionHonoursPathLikeLoadSession(t *testing.T) {
+	m := NewMemory(filepath.Join(t.TempDir(), "supervisor"))
+	p := filepath.Join(t.TempDir(), "sub", "abs.json")
+	h := []model.Message{{Role: model.RoleUser, Content: "hi"}}
+	if err := m.SaveSession(p, h); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("file not written at path: %v", err)
+	}
+	got, err := m.LoadSession(p)
+	if err != nil || len(got) != 1 || got[0].Content != "hi" {
+		t.Errorf("loaded = %+v, err = %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(m.sessionsDir(), "abs.json")); err == nil {
+		t.Error("session was also written under sessionsDir")
+	}
+}
+
 func TestRememberTool(t *testing.T) {
 	m := NewMemory(filepath.Join(t.TempDir(), "supervisor"))
 	out, err := call(t, NewRemember(m, func() time.Time { return at }), `{"note":"jira site is x.atlassian.net"}`)

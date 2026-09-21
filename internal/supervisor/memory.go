@@ -95,16 +95,28 @@ func (m *Memory) NewSessionName(now time.Time) string {
 	return now.UTC().Format("20060102T150405Z") + ".json"
 }
 
-// SaveSession writes the transcript atomically.
+// sessionPath resolves name to a session file: a name containing a path
+// separator is used as-is, otherwise it is looked up under sessionsDir.
+func (m *Memory) sessionPath(name string) string {
+	if strings.ContainsRune(name, filepath.Separator) {
+		return name
+	}
+	return filepath.Join(m.sessionsDir(), name)
+}
+
+// SaveSession writes the transcript atomically, honouring the same rule as
+// LoadSession: a name containing a path separator is used as-is (its
+// directory is created if needed), otherwise it is written under
+// sessionsDir.
 func (m *Memory) SaveSession(name string, h []model.Message) error {
-	if err := os.MkdirAll(m.sessionsDir(), 0o755); err != nil {
+	p := m.sessionPath(name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
 	raw, err := json.Marshal(h)
 	if err != nil {
 		return err
 	}
-	p := filepath.Join(m.sessionsDir(), name)
 	if err := os.WriteFile(p+".tmp", raw, 0o600); err != nil {
 		return err
 	}
@@ -114,10 +126,7 @@ func (m *Memory) SaveSession(name string, h []model.Message) error {
 // LoadSession reads a transcript by name, or by path when name contains a
 // separator.
 func (m *Memory) LoadSession(name string) ([]model.Message, error) {
-	p := name
-	if !strings.ContainsRune(name, filepath.Separator) {
-		p = filepath.Join(m.sessionsDir(), name)
-	}
+	p := m.sessionPath(name)
 	raw, err := os.ReadFile(p)
 	if err != nil {
 		return nil, fmt.Errorf("load session: %w", err)

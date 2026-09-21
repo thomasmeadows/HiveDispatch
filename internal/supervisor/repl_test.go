@@ -120,6 +120,29 @@ func TestResumeLoadsNewest(t *testing.T) {
 	}
 }
 
+func TestSessionPathRoundTrips(t *testing.T) {
+	o, _, _ := opts(t, "hello\n", false)
+	p := filepath.Join(t.TempDir(), "abs.json")
+	mem := NewMemory(Dir(o.WorkerConfigPath))
+	if err := mem.SaveSession(p, historyOf("earlier")); err != nil {
+		t.Fatal(err)
+	}
+	o.Session = p
+	r, err := New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(p); statErr != nil {
+		t.Errorf("session file missing at %s: %v", p, statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(mem.sessionsDir(), filepath.Base(p))); statErr == nil {
+		t.Error("session was also written under sessions/ instead of at the given path")
+	}
+}
+
 func TestConfirmReadsLine(t *testing.T) {
 	o, _, errb := opts(t, "y\nn\n", true)
 	r, err := New(context.Background(), o)
