@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -255,4 +256,40 @@ func (r readRepoFile) Call(_ context.Context, args json.RawMessage) (string, err
 		return "", err
 	}
 	return string(raw), nil
+}
+
+// --- remember ---
+
+type remember struct {
+	mem *Memory
+	now func() time.Time
+}
+
+// NewRemember returns the tool that appends to the notes file.
+func NewRemember(mem *Memory, now func() time.Time) Tool { return remember{mem: mem, now: now} }
+
+// Def describes the remember tool.
+func (remember) Def() model.ToolDef {
+	return model.ToolDef{
+		Name:        "remember",
+		Description: "Append a short note to your persistent memory, shown to you at the start of every session. Use it for facts about this operator's setup that will matter next time (which tracker, where the token comes from, what was fixed).",
+		Schema:      []byte(`{"type":"object","properties":{"note":{"type":"string"}},"required":["note"]}`),
+	}
+}
+
+// Call appends a note to the persistent memory file.
+func (r remember) Call(_ context.Context, args json.RawMessage) (string, error) {
+	var in struct {
+		Note string `json:"note"`
+	}
+	if err := decode(args, &in); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(in.Note) == "" {
+		return "", errors.New("note is empty")
+	}
+	if err := r.mem.Append(r.now(), in.Note); err != nil {
+		return "", err
+	}
+	return "remembered in " + r.mem.NotesPath(), nil
 }
