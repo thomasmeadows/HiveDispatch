@@ -321,3 +321,27 @@ func TestCheckGithubTrackerNeedsToken(t *testing.T) {
 		t.Errorf("stderr = %q", errb.String())
 	}
 }
+
+func TestSupervisorOneShotFake(t *testing.T) {
+	dir := t.TempDir()
+	var out, errb bytes.Buffer
+	stdin := strings.NewReader("what is wrong?\n")
+	code := runSupervisor([]string{"-config", filepath.Join(dir, "config.yaml"), "-provider", "fake"}, stdin, &out, &errb)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "(fake supervisor") {
+		t.Errorf("stdout = %q", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "supervisor", "sessions")); err != nil {
+		t.Error("session dir not created beside the config")
+	}
+}
+
+func TestUsageListsSupervisor(t *testing.T) {
+	var out, errb bytes.Buffer
+	run(nil, &out, &errb)
+	if !strings.Contains(errb.String(), "supervisor") {
+		t.Error("usage lacks supervisor")
+	}
+}

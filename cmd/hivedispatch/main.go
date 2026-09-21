@@ -43,6 +43,9 @@ commands:
   once  KEY [same flags as run]
                               handle one ticket by key, ignoring the trigger query and run windows
   status [-config P] [-json]  list run records from the state branch(es)
+  supervisor [-config P] [-provider anthropic|openai|huggingface|ollama] [-model M] [-resume | -session FILE]
+                              chat with the built-in assistant that helps configure and run HiveDispatch;
+                              piped stdin asks one question and exits
 `
 
 func main() {
@@ -68,6 +71,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runOnce(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
+	case "supervisor":
+		return runSupervisor(args[1:], os.Stdin, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
