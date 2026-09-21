@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/thomasmeadows/hivedispatch/internal/supervisor/model"
 )
@@ -42,6 +43,13 @@ var effects = map[string]string{
 func Allowed(args []string) (canonical string, mutating bool, ok bool) {
 	if len(args) == 0 {
 		return "", false, false
+	}
+	// Refuse any argv element that is empty or contains whitespace, so that
+	// space-joining the args is injective over element sequences.
+	for _, a := range args {
+		if a == "" || strings.ContainsFunc(a, unicode.IsSpace) {
+			return "", false, false
+		}
 	}
 	key := args[0] + " " + sortedFlags(args[1:])
 	for _, a := range Allowlist {

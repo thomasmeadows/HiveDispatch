@@ -26,6 +26,10 @@ func TestAllowed(t *testing.T) {
 		{[]string{"once", "X-1"}, "", false, false},
 		{[]string{"check", "-config", "/etc/passwd"}, "", false, false},
 		{nil, "", false, false},
+		{[]string{"run", "-once", "-executor fake"}, "", false, false},
+		{[]string{"run", "-once", "-executor", "fake", ""}, "", false, false},
+		{[]string{"check ", "-live"}, "", false, false},
+		{[]string{"run", "fake", "-once", "-executor"}, "", false, false},
 	}
 	for _, tc := range cases {
 		got, mut, ok := Allowed(tc.args)
