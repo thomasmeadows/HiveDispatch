@@ -84,10 +84,15 @@ type wireToolDef struct {
 }
 
 type wireRequest struct {
-	Model     string        `json:"model"`
-	Messages  []wireMessage `json:"messages"`
-	Tools     []wireTool    `json:"tools,omitempty"`
-	MaxTokens int           `json:"max_tokens,omitempty"`
+	Model    string        `json:"model"`
+	Messages []wireMessage `json:"messages"`
+	Tools    []wireTool    `json:"tools,omitempty"`
+	// MaxTokens is what every OpenAI-compatible server other than OpenAI
+	// itself wants (the router, Ollama, vLLM, Groq); MaxCompletionTokens is
+	// what OpenAI's current reasoning models want instead — it rejects
+	// max_tokens outright. Exactly one of the two is set, by vendor.
+	MaxTokens           int `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
 }
 
 type wireResponse struct {
@@ -103,8 +108,13 @@ type wireResponse struct {
 
 func str(s string) *string { return &s }
 
-func toWire(req model.Request) wireRequest {
-	w := wireRequest{Model: "", MaxTokens: req.MaxTokens}
+func toWire(req model.Request, vendor string) wireRequest {
+	w := wireRequest{Model: ""}
+	if vendor == "openai" {
+		w.MaxCompletionTokens = req.MaxTokens
+	} else {
+		w.MaxTokens = req.MaxTokens
+	}
 	if req.System != "" {
 		w.Messages = append(w.Messages, wireMessage{Role: "system", Content: str(req.System)})
 	}
@@ -129,7 +139,7 @@ func toWire(req model.Request) wireRequest {
 
 // Chat implements model.Model.
 func (c *Client) Chat(ctx context.Context, req model.Request) (model.Response, error) {
-	w := toWire(req)
+	w := toWire(req, c.cfg.Vendor)
 	w.Model = c.cfg.Model
 	body, err := json.Marshal(w)
 	if err != nil {

@@ -36,7 +36,12 @@ func server(t *testing.T, status int, body string) (*httptest.Server, *map[strin
 
 func client(t *testing.T, url string) *Client {
 	t.Helper()
-	c, err := New(Config{BaseURL: url + "/v1/", Model: "m", APIKey: "k", Vendor: "test"})
+	return clientVendor(t, url, "test")
+}
+
+func clientVendor(t *testing.T, url, vendor string) *Client {
+	t.Helper()
+	c, err := New(Config{BaseURL: url + "/v1/", Model: "m", APIKey: "k", Vendor: vendor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,6 +129,32 @@ func TestChatErrors(t *testing.T) {
 	var rl *model.RateLimited
 	if !errors.As(err, &rl) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestChatMaxTokensFieldByVendor(t *testing.T) {
+	srv, got := server(t, 200, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`)
+	c := clientVendor(t, srv.URL, "openai")
+	if _, err := c.Chat(context.Background(), model.Request{MaxTokens: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := (*got)["max_completion_tokens"]; !ok || v != float64(10) {
+		t.Errorf("max_completion_tokens = %v, ok=%v", v, ok)
+	}
+	if _, ok := (*got)["max_tokens"]; ok {
+		t.Errorf("max_tokens must be absent for vendor openai: %v", *got)
+	}
+
+	srv2, got2 := server(t, 200, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`)
+	c2 := clientVendor(t, srv2.URL, "ollama")
+	if _, err := c2.Chat(context.Background(), model.Request{MaxTokens: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := (*got2)["max_tokens"]; !ok || v != float64(10) {
+		t.Errorf("max_tokens = %v, ok=%v", v, ok)
+	}
+	if _, ok := (*got2)["max_completion_tokens"]; ok {
+		t.Errorf("max_completion_tokens must be absent for vendor ollama: %v", *got2)
 	}
 }
 
