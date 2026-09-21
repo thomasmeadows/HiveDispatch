@@ -110,8 +110,13 @@ func (r runHivedispatch) Call(ctx context.Context, args json.RawMessage) (string
 	if !ok {
 		return "", fmt.Errorf("refused: %q is not allowed; allowed: %s", strings.Join(in.Args, " "), strings.Join(Allowlist, "; "))
 	}
-	if mutating && !r.confirm(fmt.Sprintf("Run `hivedispatch %s`? It %s.", canonical, effects[canonical])) {
-		return "declined by user; nothing was run", nil
+	if mutating {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if !r.confirm(fmt.Sprintf("Run `hivedispatch %s`? It %s.", canonical, effects[canonical])) {
+			return "declined by user; nothing was run", nil
+		}
 	}
 	argv := append([]string{in.Args[0], "-config", r.configPath}, in.Args[1:]...)
 	ctx, cancel := context.WithTimeout(ctx, runTimeout)
@@ -128,7 +133,10 @@ func (r runHivedispatch) Call(ctx context.Context, args json.RawMessage) (string
 	case err != nil:
 		return "", fmt.Errorf("start hivedispatch %s: %w", canonical, err)
 	}
-	if ctx.Err() != nil {
+	switch {
+	case errors.Is(ctx.Err(), context.Canceled):
+		return "", fmt.Errorf("hivedispatch %s: cancelled", canonical)
+	case ctx.Err() != nil:
 		return "", fmt.Errorf("hivedispatch %s: timed out after %s", canonical, runTimeout)
 	}
 	return fmt.Sprintf("exit %d\n--- stdout ---\n%s\n--- stderr ---\n%s", code, tail(stdout.String()), tail(stderr.String())), nil

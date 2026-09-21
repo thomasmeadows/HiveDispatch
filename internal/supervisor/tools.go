@@ -77,7 +77,7 @@ func (w writeConfig) Def() model.ToolDef {
 
 // Call validates content as the new worker config, shows the operator a
 // diff (and any validation problems) to confirm, then writes it.
-func (w writeConfig) Call(_ context.Context, args json.RawMessage) (string, error) {
+func (w writeConfig) Call(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		Content string `json:"content"`
 	}
@@ -112,6 +112,9 @@ func (w writeConfig) Call(_ context.Context, args json.RawMessage) (string, erro
 		prompt += "\nThe config still has problems:\n" + problems + "\n"
 	}
 	prompt += "\nApply to " + w.path + "?"
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 	if !w.confirm(prompt) {
 		return "declined by user; the config is unchanged", nil
 	}

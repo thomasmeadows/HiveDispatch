@@ -3,6 +3,7 @@ package supervisor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +77,24 @@ func TestWriteConfigAsksShowsDiffAndBacksUp(t *testing.T) {
 	bak, _ := os.ReadFile(p + ".bak")
 	if string(bak) != "agent_id: old\n" {
 		t.Errorf("bak = %q", bak)
+	}
+}
+
+func TestWriteConfigPreCancelledSkipsConfirm(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	asked := false
+	tool := NewWriteConfig(p, func(string) bool { asked = true; return true })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := tool.Call(ctx, json.RawMessage(`{"content":"agent_id: w\n"}`))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	if asked {
+		t.Error("confirm was called with a pre-cancelled context")
+	}
+	if _, statErr := os.Stat(p); statErr == nil {
+		t.Error("file was written")
 	}
 }
 
