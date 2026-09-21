@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -195,20 +196,14 @@ func (r *REPL) Run(ctx context.Context) error {
 			continue
 		}
 		turnCtx, cancel := context.WithCancel(ctx)
-		done := make(chan struct{})
-		go func() {
-			select {
-			case <-sig:
-				cancel()
-			case <-done:
-			}
-		}()
+		stop := watchInterrupt(sig, cancel)
 		err := r.turn(turnCtx, line)
-		close(done)
+		interrupted := stop()
 		cancel()
-		if errors.Is(err, context.Canceled) {
+		switch {
+		case errors.Is(err, context.Canceled) || interrupted:
 			fmt.Fprintln(r.stderr, "\r\033[Kinterrupted")
-		} else if err != nil {
+		case err != nil:
 			fmt.Fprintln(r.stderr, "\r\033[Kerror:", err)
 		}
 	}
@@ -227,6 +222,31 @@ func (r *REPL) lineOrEOF() <-chan lineResult {
 type lineResult struct {
 	s  string
 	ok bool
+}
+
+// watchInterrupt watches sig for the duration of one turn. A signal calls
+// cancel exactly once. The returned stop ends the watch and reports whether
+// a signal was seen — even one that arrived after the turn itself already
+// returned, so a Ctrl-C landing right at the end of a reply is still
+// reported instead of being silently absorbed by a moot cancel.
+func watchInterrupt(sig <-chan os.Signal, cancel func()) (stop func() bool) {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	var interrupted atomic.Bool
+	go func() {
+		defer close(finished)
+		select {
+		case <-sig:
+			interrupted.Store(true)
+			cancel()
+		case <-done:
+		}
+	}()
+	return func() bool {
+		close(done)
+		<-finished
+		return interrupted.Load()
+	}
 }
 
 // turn runs one user message through the agent, prints the reply and saves

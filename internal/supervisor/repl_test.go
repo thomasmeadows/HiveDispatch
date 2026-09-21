@@ -32,6 +32,31 @@ func historyOf(user string) []model.Message {
 	return []model.Message{{Role: model.RoleUser, Content: user}}
 }
 
+func TestWatchInterrupt(t *testing.T) {
+	t.Run("signal seen", func(t *testing.T) {
+		sig := make(chan os.Signal, 1)
+		canceled := make(chan struct{})
+		stop := watchInterrupt(sig, func() { close(canceled) })
+		sig <- os.Interrupt
+		select {
+		case <-canceled:
+		case <-time.After(2 * time.Second):
+			t.Fatal("cancel was not called")
+		}
+		if !stop() {
+			t.Error("stop() = false, want true after a signal")
+		}
+	})
+
+	t.Run("no signal", func(t *testing.T) {
+		sig := make(chan os.Signal, 1)
+		stop := watchInterrupt(sig, func() { t.Error("cancel must not be called") })
+		if stop() {
+			t.Error("stop() = true, want false with no signal")
+		}
+	})
+}
+
 func TestOneShot(t *testing.T) {
 	o, out, _ := opts(t, "why does check fail?\n", false)
 	r, err := New(context.Background(), o)
