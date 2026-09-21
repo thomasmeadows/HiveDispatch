@@ -223,3 +223,15 @@ Decided: the supervisor keeps a plain-text `memory.md` it appends to via a `reme
 ## 2026-09-21 — Segregated: one directory, its own config file
 
 Decided: the supervisor's settings live in `<config dir>/supervisor/config.yaml`, alongside its `memory.md` and `sessions/`, entirely separate from the worker config it edits; the default models in that file's table are best-effort names, and the docs tell the operator to check the provider's catalogue and set them explicitly. Rejected: a `supervisor:` block inside the worker config. Why: that would put the assistant's own settings inside the file it is meant to write and diff for the operator, and would spread supervisor code through `config`, `starter`, and the docs table for no benefit.
+
+## 2026-09-21 — Supervisor: what diverged from the spec during the build
+
+Decided: `write_config` writes a config that parses but is still incomplete and reports the loader's remaining problems back through the tool result, rather than refusing anything short of a fully valid config. Rejected: requiring a complete, `config.Load`-clean file before writing. Why: a Jira config needs `HIVE_JIRA_TOKEN` set before it validates, and that token often does not exist yet at the point the operator wants the rest of the file saved; the operator would otherwise be stuck unable to save partial progress.
+
+Decided: `run_hivedispatch`'s output cap is 32 KiB per stream (stdout and stderr each), not the 64 KiB combined the design spec's tool table describes. Rejected: reconciling the two by shrinking the cap or rewriting the spec's table. Why: 32 KiB per stream was what the plan built and shipped with; this entry is the record of the divergence rather than a silent edit to either the spec or the code.
+
+Decided (this wave): the spinner is scoped to the model call in flight — started on `Agent.Turn`'s `model_start` event, stopped on `model_done` — instead of wrapping the whole turn. Rejected: leaving it wrapping the turn. Why: a tool's own `[y/N]` confirmation prompt happens inside a turn, and the ticker was overwriting it mid-wait.
+
+Decided (this wave): `hivedispatch check` is captured once per turn, in `REPL.turn`, with the turn's own context, rather than re-run by `Agent.System` before every model call in the turn. Rejected: leaving it in `System`. Why: a 20-step turn re-executed the binary up to 21 times, and each `check` shells out to `gh`/the git credential helper with its own timeouts when no GitHub token is configured.
+
+Decided (this wave): in `internal/supervisor/model/openai`, vendor `openai` sends `max_completion_tokens` instead of `max_tokens`. Rejected: sending both, or always sending `max_tokens`. Why: OpenAI's current models reject `max_tokens` outright, while the router, Ollama and vLLM want `max_tokens` and do not recognise `max_completion_tokens`.

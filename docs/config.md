@@ -82,6 +82,7 @@ The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budg
 | `run [-once]` | Preflight, then poll and dispatch (once, or until Ctrl-C: first drains, second interrupts) |
 | `once KEY` | Handle one ticket by key, ignoring the trigger query and run windows |
 | `status [-json]` | List run records from the state branch(es) |
+| `supervisor [-config P] [-provider anthropic\|openai\|huggingface\|ollama] [-model M] [-resume \| -session FILE]` | Run the built-in assistant that helps configure and run HiveDispatch. `-session` takes either a file name looked up under `sessions/` in the supervisor directory, or a path to use as-is |
 | `version` | Print the version |
 
 ## Supervisor config — `~/.config/hivedispatch/supervisor/config.yaml`
