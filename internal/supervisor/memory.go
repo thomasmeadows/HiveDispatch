@@ -47,11 +47,30 @@ func (m *Memory) NotesForPrompt() (string, int) {
 	}
 	lines := strings.Split(strings.TrimSuffix(n, "\n"), "\n")
 	total := len(lines)
-	for len(n) > notesPromptCap && len(lines) > 1 {
-		lines = lines[1:]
-		n = strings.Join(lines, "\n") + "\n"
+
+	// If the whole notes file fits, return it as-is.
+	if len(n) <= notesPromptCap {
+		return n, total
 	}
-	return n, total
+
+	// Find the cutoff point by walking from the end, accumulating size.
+	// Keep newest lines; stop when adding the next line would exceed the cap.
+	var accum int
+	var kept int
+	for i := len(lines) - 1; i >= 0; i-- {
+		lineLen := len(lines[i]) + 1 // +1 for the newline
+		if accum+lineLen > notesPromptCap && kept > 0 {
+			// This line would exceed the cap, and we have at least one line already.
+			break
+		}
+		accum += lineLen
+		kept++
+	}
+
+	// Slice and join once.
+	cutoff := len(lines) - kept
+	result := strings.Join(lines[cutoff:], "\n") + "\n"
+	return result, total
 }
 
 // Append adds one dated note.

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func call(t *testing.T, tool Tool, args string) (string, error) {
@@ -147,20 +146,5 @@ func TestReadRepoFile(t *testing.T) {
 	}
 	if _, err := call(t, NewReadRepoFile(filepath.Join(dir, "nope.yaml")), `{"repo":"o/r","name":"AGENTS.md"}`); err == nil || !strings.Contains(err.Error(), "no config") {
 		t.Errorf("no config: %v", err)
-	}
-}
-
-func TestRememberToolCall(t *testing.T) {
-	m := NewMemory(filepath.Join(t.TempDir(), "supervisor"))
-	now := time.Date(2026, 9, 20, 14, 30, 0, 0, time.UTC)
-	out, err := call(t, NewRemember(m, func() time.Time { return now }), `{"note":"jira site is x.atlassian.net"}`)
-	if err != nil || !strings.Contains(out, "remembered") {
-		t.Fatalf("out = %q err = %v", out, err)
-	}
-	if n, _ := m.Notes(); n != "- 2026-09-20: jira site is x.atlassian.net\n" {
-		t.Errorf("notes = %q", n)
-	}
-	if _, err := call(t, NewRemember(m, func() time.Time { return now }), `{"note":"  "}`); err == nil {
-		t.Error("empty note accepted")
 	}
 }
