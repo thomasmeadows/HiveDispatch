@@ -82,3 +82,18 @@ The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budg
 | `once KEY` | Handle one ticket by key, ignoring the trigger query and run windows |
 | `status [-json]` | List run records from the state branch(es) |
 | `version` | Print the version |
+
+## Supervisor config — `~/.config/hivedispatch/supervisor/config.yaml`
+
+Settings for `hivedispatch supervisor`, the built-in assistant. Optional: with no file, the provider is chosen from the environment (`ANTHROPIC_API_KEY` → anthropic, else `OPENAI_API_KEY` → openai, else `HF_TOKEN` → huggingface, else a local Ollama). The file lives beside the worker config, so `-config PATH` moves it to `<dir of PATH>/supervisor/config.yaml`; the assistant's notes (`memory.md`) and session transcripts (`sessions/`) are in the same directory.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `provider` | *(from environment)* | `anthropic`, `openai`, `huggingface` or `ollama`. The last three share the OpenAI-style `chat/completions` API |
+| `model` | *(per provider)* | `claude-sonnet-5` · `gpt-5-mini` · `Qwen/Qwen3-32B` · `qwen3`. Best-effort names: check your provider's catalogue and set this explicitly |
+| `base_url` | *(per provider)* | `https://api.anthropic.com` · `https://api.openai.com/v1` · `https://router.huggingface.co/v1` · `http://localhost:11434/v1`. Any OpenAI-compatible server works under `openai` |
+| `api_key_env` | *(per provider)* | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `HF_TOKEN` · none for Ollama. The variable that holds the key; the key itself never goes in YAML |
+| `max_tokens` | `4096` | Reply length limit per model call |
+| `step_budget` | `20` | Tool calls the assistant may make per message before it stops and asks to continue |
+
+`-provider` and `-model` on the command line override the file for one session.

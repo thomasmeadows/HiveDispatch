@@ -34,6 +34,7 @@ The control plane is deterministic. Model discretion is confined to two places: 
 go install github.com/thomasmeadows/hivedispatch/cmd/hivedispatch@latest
 
 hivedispatch init                 # writes ~/.config/hivedispatch/config.yaml, fully commented
+hivedispatch supervisor           # or: chat with the built-in assistant, which edits the config and runs the checks for you
 $EDITOR ~/.config/hivedispatch/config.yaml
 
 export HIVE_JIRA_TOKEN=...        # Jira: https://id.atlassian.com/manage-profile/security/api-tokens

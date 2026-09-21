@@ -10,6 +10,15 @@ hivedispatch init
 
 writes a commented starter config to `~/.config/hivedispatch/config.yaml` (or `-config PATH`) and never overwrites a non-empty file. Every field in it says where its value comes from. The sections below follow the same order as the comments in that file. If a later command reports `invalid config`, each line names the field and where to get it.
 
+## 0b. Or let the supervisor walk you through it
+
+```sh
+export ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY, HF_TOKEN, or a running Ollama
+hivedispatch supervisor
+```
+
+opens a chat with an assistant built into the binary. It has read these docs, sees the current `hivedispatch check` output, and can write the config for you (you approve every diff), run `init -jira` / `init -github` / `check -live` / a fake-executor dry run (you approve every one), and remembers what it learned in `~/.config/hivedispatch/supervisor/memory.md` for next time. It never runs the real executor. `echo "why does check fail?" | hivedispatch supervisor` asks one question and exits. Which model answers is in [`docs/config.md` — Supervisor config](config.md#supervisor-config--confighivedispatchsupervisorconfigyaml).
+
 ## 1. API token
 
 Create one at https://id.atlassian.com/manage-profile/security/api-tokens. Export it:
