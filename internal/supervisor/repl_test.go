@@ -234,3 +234,18 @@ func TestCheckCapturedOncePerTurn(t *testing.T) {
 		t.Errorf("hivedispatch invoked %d times for one turn (two model calls), want 1: log=%q", len(lines), raw)
 	}
 }
+
+func TestNoModelConfiguredError(t *testing.T) {
+	o := Options{
+		WorkerConfigPath: filepath.Join(t.TempDir(), "config.yaml"),
+		Provider:         "",
+		Getenv:           func(string) string { return "" },
+	}
+	_, err := New(context.Background(), o)
+	if err == nil {
+		t.Skip("ollama running")
+	}
+	if !strings.Contains(err.Error(), "DEEPSEEK_API_KEY") {
+		t.Errorf("error message should contain DEEPSEEK_API_KEY: %v", err)
+	}
+}

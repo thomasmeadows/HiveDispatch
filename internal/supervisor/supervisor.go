@@ -39,7 +39,7 @@ func New(ctx context.Context, o Options) (*REPL, error) {
 	cfg.Override(o.Provider, o.Model)
 	if cfg.Provider == "ollama" && cfg.FromEnv {
 		if err := ProbeOllama(ctx, cfg.BaseURL); err != nil {
-			return nil, fmt.Errorf("no model configured: set ANTHROPIC_API_KEY, OPENAI_API_KEY or HF_TOKEN, run Ollama (tried %s: %w), or write %s", cfg.BaseURL, err, ConfigPath(o.WorkerConfigPath))
+			return nil, fmt.Errorf("no model configured: set ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY or HF_TOKEN, run Ollama (tried %s: %w), or write %s", cfg.BaseURL, err, ConfigPath(o.WorkerConfigPath))
 		}
 	}
 	m, err := NewModel(cfg, o.Getenv)

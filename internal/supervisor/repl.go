@@ -282,7 +282,9 @@ func drainSignal(sig <-chan os.Signal) {
 // own context (so Ctrl-C interrupts a slow check), rather than by
 // Agent.System on every model call within the turn.
 func (r *REPL) turn(ctx context.Context, msg string) error {
+	stop := r.spinner()
 	r.checkOutput = CheckOutput(ctx, r.exe, r.configPath)
+	stop()
 	reply, err := r.agent.Turn(ctx, msg)
 	if err != nil {
 		return err
