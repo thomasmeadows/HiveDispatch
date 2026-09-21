@@ -41,13 +41,14 @@ type preset struct {
 var presets = map[string]preset{
 	"anthropic":   {"claude-sonnet-5", "https://api.anthropic.com", "ANTHROPIC_API_KEY"},
 	"openai":      {"gpt-5-mini", "https://api.openai.com/v1", "OPENAI_API_KEY"},
+	"deepseek":    {"deepseek-flash", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"},
 	"huggingface": {"Qwen/Qwen3-32B", "https://router.huggingface.co/v1", "HF_TOKEN"},
 	"ollama":      {"qwen3", "http://localhost:11434/v1", ""},
 	"fake":        {"fake", "", ""},
 }
 
 // Providers lists the configurable providers, for messages.
-const Providers = "anthropic, openai, huggingface or ollama"
+const Providers = "anthropic, openai, deepseek, huggingface or ollama"
 
 // Dir is the supervisor's directory beside the worker config.
 func Dir(workerConfigPath string) string {
@@ -92,6 +93,8 @@ func providerFromEnv(getenv func(string) string) string {
 		return "anthropic"
 	case getenv("OPENAI_API_KEY") != "":
 		return "openai"
+	case getenv("DEEPSEEK_API_KEY") != "":
+		return "deepseek"
 	case getenv("HF_TOKEN") != "":
 		return "huggingface"
 	default:
@@ -159,7 +162,7 @@ func NewModel(c Config, getenv func(string) string) (model.Model, error) {
 	switch c.Provider {
 	case "anthropic":
 		return anthropic.New(anthropic.Config{Model: c.Model, APIKey: key, BaseURL: c.BaseURL})
-	case "openai", "huggingface", "ollama":
+	case "openai", "deepseek", "huggingface", "ollama":
 		return openai.New(openai.Config{BaseURL: c.BaseURL, Model: c.Model, APIKey: key, Vendor: c.Provider})
 	case "fake":
 		return fake.New(fake.Text("(fake supervisor: no model configured)")), nil

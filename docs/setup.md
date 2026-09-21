@@ -13,7 +13,7 @@ writes a commented starter config to `~/.config/hivedispatch/config.yaml` (or `-
 ## 0b. Or let the supervisor walk you through it
 
 ```sh
-export ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY, HF_TOKEN, or a running Ollama
+export ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY, DEEPSEEK_API_KEY, HF_TOKEN, or a running Ollama
 hivedispatch supervisor
 ```
 

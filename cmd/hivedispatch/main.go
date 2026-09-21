@@ -43,7 +43,7 @@ commands:
   once  KEY [same flags as run]
                               handle one ticket by key, ignoring the trigger query and run windows
   status [-config P] [-json]  list run records from the state branch(es)
-  supervisor [-config P] [-provider anthropic|openai|huggingface|ollama] [-model M] [-resume | -session FILE]
+  supervisor [-config P] [-provider anthropic|openai|deepseek|huggingface|ollama] [-model M] [-resume | -session FILE]
                               chat with the built-in assistant that helps configure and run HiveDispatch;
                               piped stdin asks one question and exits
 `

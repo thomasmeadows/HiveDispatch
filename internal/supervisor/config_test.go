@@ -30,7 +30,8 @@ func TestProviderFromEnvOrder(t *testing.T) {
 		want string
 	}{
 		{map[string]string{"ANTHROPIC_API_KEY": "a", "OPENAI_API_KEY": "o", "HF_TOKEN": "h"}, "anthropic"},
-		{map[string]string{"OPENAI_API_KEY": "o", "HF_TOKEN": "h"}, "openai"},
+		{map[string]string{"OPENAI_API_KEY": "o", "DEEPSEEK_API_KEY": "d", "HF_TOKEN": "h"}, "openai"},
+		{map[string]string{"DEEPSEEK_API_KEY": "d", "HF_TOKEN": "h"}, "deepseek"},
 		{map[string]string{"HF_TOKEN": "h"}, "huggingface"},
 		{map[string]string{}, "ollama"},
 	}
@@ -94,6 +95,13 @@ func TestNewModel(t *testing.T) {
 		t.Fatalf("model = %v, err = %v", m, err)
 	}
 	if _, err := NewModel(c, env(nil)); err == nil || !strings.Contains(err.Error(), "ANTHROPIC_API_KEY is not set") {
+		t.Errorf("err = %v", err)
+	}
+	c.Override("deepseek", "")
+	if m, err := NewModel(c, env(map[string]string{"DEEPSEEK_API_KEY": "k"})); err != nil || m.Name() != "deepseek/deepseek-flash" {
+		t.Errorf("deepseek: model = %v, err = %v", m, err)
+	}
+	if _, err := NewModel(c, env(nil)); err == nil || !strings.Contains(err.Error(), "DEEPSEEK_API_KEY is not set") {
 		t.Errorf("err = %v", err)
 	}
 	c.Override("ollama", "")
