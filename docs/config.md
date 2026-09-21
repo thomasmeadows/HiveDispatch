@@ -1,6 +1,6 @@
 # Configuration reference
 
-Two files and two environment variables.
+Three files and a handful of environment variables.
 
 ## Worker config — `~/.config/hivedispatch/config.yaml`
 
@@ -69,6 +69,7 @@ The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budg
 |---|---|---|
 | `HIVE_JIRA_TOKEN` | yes | Atlassian API token for `jira.email` |
 | `HIVE_GITHUB_TOKEN` | with `tracker: github` | Token for opening PRs and, with `tracker: github`, for reading and writing issues. Classic or fine-grained, interchangeably — see the token table in `docs/setup.md` §5 for which permissions each needs; a user-owned Projects board requires a classic token. If unset, `gh auth token` and the git credential helper are tried; with none and Jira, branches are pushed and the ticket asks a human to open the PR |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` / `HF_TOKEN` | with `hivedispatch supervisor` | the supervisor's model key; which one is read is `api_key_env` in the supervisor config (see below) |
 
 ## Commands
 
@@ -81,4 +82,20 @@ The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budg
 | `run [-once]` | Preflight, then poll and dispatch (once, or until Ctrl-C: first drains, second interrupts) |
 | `once KEY` | Handle one ticket by key, ignoring the trigger query and run windows |
 | `status [-json]` | List run records from the state branch(es) |
+| `supervisor [-config P] [-provider anthropic\|openai\|deepseek\|huggingface\|ollama] [-model M] [-resume \| -session FILE]` | Run the built-in assistant that helps configure and run HiveDispatch. `-session` takes either a file name looked up under `sessions/` in the supervisor directory, or a path to use as-is |
 | `version` | Print the version |
+
+## Supervisor config — `~/.config/hivedispatch/supervisor/config.yaml`
+
+Settings for `hivedispatch supervisor`, the built-in assistant. Optional: with no file, the provider is chosen from the environment (`ANTHROPIC_API_KEY` → anthropic, else `OPENAI_API_KEY` → openai, else `DEEPSEEK_API_KEY` → deepseek, else `HF_TOKEN` → huggingface, else a local Ollama). The file lives beside the worker config, so `-config PATH` moves it to `<dir of PATH>/supervisor/config.yaml`; the assistant's notes (`memory.md`) and session transcripts (`sessions/`) are in the same directory.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `provider` | *(from environment)* | `anthropic`, `openai`, `deepseek`, `huggingface` or `ollama`. The last four share the OpenAI-style `chat/completions` API |
+| `model` | *(per provider)* | `claude-sonnet-5` · `gpt-5-mini` · `deepseek-flash` · `Qwen/Qwen3-32B` · `qwen3`. Best-effort names: check your provider's catalogue and set this explicitly |
+| `base_url` | *(per provider)* | `https://api.anthropic.com` · `https://api.openai.com/v1` · `https://api.deepseek.com/v1` · `https://router.huggingface.co/v1` · `http://localhost:11434/v1`. Any OpenAI-compatible server works under `openai` |
+| `api_key_env` | *(per provider)* | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `DEEPSEEK_API_KEY` · `HF_TOKEN` · none for Ollama. The variable that holds the key; the key itself never goes in YAML |
+| `max_tokens` | `4096` | Reply length limit per model call |
+| `step_budget` | `20` | Tool calls the assistant may make per message before it stops and asks to continue |
+
+`-provider` and `-model` on the command line override the file for one session.

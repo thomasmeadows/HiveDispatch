@@ -199,3 +199,39 @@ Decided: `executor: codex` runs tickets with the Codex CLI through a new `intern
 The repo policy fork: `.hivedispatch.yaml`'s `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budget_usd` are Claude Code vocabulary — permission modes and tool allowlists have no Codex equivalent, Codex has no per-run USD cap, and a model name like `sonnet` would break `codex -m`. Decided: a separate `executor.codex` block (`model`, `sandbox`, `network`), and the codex executor ignores the Claude keys entirely; `executor.path` and `guidance` are shared because they are about the repo, not the agent. Rejected: mapping `permission_mode` onto sandbox modes (`dontAsk` fails closed per tool call while a sandbox denies by capability — the semantics do not line up and a wrong guess would be silent), and making the Claude keys executor-agnostic by renaming them (breaks every existing repo policy for no gain). A repo can carry both blocks so any worker can run it.
 
 Not done: budget stops from Codex carry no reset time (the CLI reports quota only as error text, matched by `codexcli.LooksLikeBudget`), so the worker pauses for the 15-minute default; triage still runs on Claude Code (`triage.kind: passthrough` avoids it) — a Codex triager is a separate ticket. The adapter was verified against the fake CLI and the flag and event names embedded in the installed `codex` binary, not against a live run.
+
+## 2026-09-21 — The supervisor is HiveDispatch's own agent loop
+
+Decided: `hivedispatch supervisor` runs its own agent loop against a model interface (`internal/supervisor`), not a wrapper around Claude Code or Codex in interactive mode. Rejected: `claude --append-system-prompt` wrapping the CLI — less code, but the point is an agent HiveDispatch owns, with memory and tools it controls, that can grow into the fleet-level decisions the design spec reserves for a supervisor.
+
+## 2026-09-21 — OpenAI-compatible chat/completions is the second provider shape
+
+Decided: one `internal/supervisor/model/openai` adapter speaks the OpenAI `chat/completions` wire format, reused for Hugging Face's router, Ollama, OpenAI itself, Groq and vLLM; Anthropic gets its own adapter for its `messages` API. Rejected: a per-vendor adapter each. Why: the wire format is shared across every OpenAI-compatible provider — only the base URL, key, and vendor label differ.
+
+## 2026-09-21 — Tool subcommands re-exec the binary
+
+Decided: the supervisor's `run_hivedispatch` tool re-execs `os.Executable()` with an allowlisted argv (`check`, `init -jira`, `status -json`, `run -once -executor fake`, …) rather than calling `check`/`init` as a library. Rejected: moving those subcommands into an internal package `main.go` could call directly. Why: that refactor buys no user-visible gain, and re-exec shows the operator exactly the output they would see running the command themselves; the allowlist is a list of argv shapes, easy to read and to extend.
+
+## 2026-09-21 — Confirm before mutate, in code
+
+Decided: every supervisor tool that changes something outside its own notes file — writing the config, `init`, `init -jira`/`-github`, `run -once` — shows the change and asks `[y/N]` in the terminal before acting, enforced by the tool's Go code. Rejected: trusting the system prompt to ask first, as with triage and the executor allowlist. Why: the guardrail has to be code the model cannot talk its way around.
+
+## 2026-09-21 — Notes file plus transcripts, no compaction
+
+Decided: the supervisor keeps a plain-text `memory.md` it appends to via a `remember` tool, plus one JSON transcript per session — `-resume` reloads the newest, `-session FILE` a specific one — and rebuilds the system prompt every turn from the current notes and config rather than replaying history. Rejected: replaying every past transcript into context (grows without bound) and a model-written summary between sessions (an extra call whose failure mode is silent, undetectable loss).
+
+## 2026-09-21 — Segregated: one directory, its own config file
+
+Decided: the supervisor's settings live in `<config dir>/supervisor/config.yaml`, alongside its `memory.md` and `sessions/`, entirely separate from the worker config it edits; the default models in that file's table are best-effort names, and the docs tell the operator to check the provider's catalogue and set them explicitly. Rejected: a `supervisor:` block inside the worker config. Why: that would put the assistant's own settings inside the file it is meant to write and diff for the operator, and would spread supervisor code through `config`, `starter`, and the docs table for no benefit.
+
+## 2026-09-21 — Supervisor: what diverged from the spec during the build
+
+Decided: `write_config` writes a config that parses but is still incomplete and reports the loader's remaining problems back through the tool result, rather than refusing anything short of a fully valid config. Rejected: requiring a complete, `config.Load`-clean file before writing. Why: a Jira config needs `HIVE_JIRA_TOKEN` set before it validates, and that token often does not exist yet at the point the operator wants the rest of the file saved; the operator would otherwise be stuck unable to save partial progress.
+
+Decided: `run_hivedispatch`'s output cap is 32 KiB per stream (stdout and stderr each), not the 64 KiB combined the design spec's tool table describes. Rejected: reconciling the two by shrinking the cap or rewriting the spec's table. Why: 32 KiB per stream was what the plan built and shipped with; this entry is the record of the divergence rather than a silent edit to either the spec or the code.
+
+Decided (this wave): the spinner is scoped to the model call in flight — started on `Agent.Turn`'s `model_start` event, stopped on `model_done` — instead of wrapping the whole turn. Rejected: leaving it wrapping the turn. Why: a tool's own `[y/N]` confirmation prompt happens inside a turn, and the ticker was overwriting it mid-wait.
+
+Decided (this wave): `hivedispatch check` is captured once per turn, in `REPL.turn`, with the turn's own context, rather than re-run by `Agent.System` before every model call in the turn. Rejected: leaving it in `System`. Why: a 20-step turn re-executed the binary up to 21 times, and each `check` shells out to `gh`/the git credential helper with its own timeouts when no GitHub token is configured.
+
+Decided (this wave): in `internal/supervisor/model/openai`, vendor `openai` sends `max_completion_tokens` instead of `max_tokens`. Rejected: sending both, or always sending `max_tokens`. Why: OpenAI's current models reject `max_tokens` outright, while the router, Ollama and vLLM want `max_tokens` and do not recognise `max_completion_tokens`.

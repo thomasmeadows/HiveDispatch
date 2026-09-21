@@ -1,0 +1,161 @@
+package supervisor
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/thomasmeadows/hivedispatch/internal/supervisor/model"
+)
+
+const notesPromptCap = 16 << 10
+
+// Memory is what the supervisor keeps between sessions: a notes file it
+// appends to, and one transcript per session.
+type Memory struct {
+	Dir string
+}
+
+// NewMemory returns a Memory rooted at dir (created on first write).
+func NewMemory(dir string) *Memory { return &Memory{Dir: dir} }
+
+// NotesPath is the notes file.
+func (m *Memory) NotesPath() string { return filepath.Join(m.Dir, "memory.md") }
+
+func (m *Memory) sessionsDir() string { return filepath.Join(m.Dir, "sessions") }
+
+// Notes returns the whole notes file, or "" when there is none.
+func (m *Memory) Notes() (string, error) {
+	raw, err := os.ReadFile(m.NotesPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	return string(raw), err
+}
+
+// NotesForPrompt returns the notes capped for the system prompt, keeping
+// the newest lines, and the total number of lines in the file.
+func (m *Memory) NotesForPrompt() (string, int) {
+	n, err := m.Notes()
+	if err != nil || n == "" {
+		return "", 0
+	}
+	lines := strings.Split(strings.TrimSuffix(n, "\n"), "\n")
+	total := len(lines)
+
+	// If the whole notes file fits, return it as-is.
+	if len(n) <= notesPromptCap {
+		return n, total
+	}
+
+	// Find the cutoff point by walking from the end, accumulating size.
+	// Keep newest lines; stop when adding the next line would exceed the cap.
+	var accum int
+	var kept int
+	for i := len(lines) - 1; i >= 0; i-- {
+		lineLen := len(lines[i]) + 1 // +1 for the newline
+		if accum+lineLen > notesPromptCap && kept > 0 {
+			// This line would exceed the cap, and we have at least one line already.
+			break
+		}
+		accum += lineLen
+		kept++
+	}
+
+	// Slice and join once.
+	cutoff := len(lines) - kept
+	result := strings.Join(lines[cutoff:], "\n") + "\n"
+	return result, total
+}
+
+// Append adds one dated note.
+func (m *Memory) Append(now time.Time, note string) error {
+	if err := os.MkdirAll(m.Dir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(m.NotesPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	line := fmt.Sprintf("- %s: %s\n", now.UTC().Format("2006-01-02"), strings.TrimSpace(note))
+	if _, err := f.WriteString(line); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// NewSessionName names a session file by its start time.
+func (m *Memory) NewSessionName(now time.Time) string {
+	return now.UTC().Format("20060102T150405Z") + ".json"
+}
+
+// sessionPath resolves name to a session file: a name containing a path
+// separator is used as-is, otherwise it is looked up under sessionsDir.
+func (m *Memory) sessionPath(name string) string {
+	if strings.ContainsRune(name, filepath.Separator) {
+		return name
+	}
+	return filepath.Join(m.sessionsDir(), name)
+}
+
+// SaveSession writes the transcript atomically, honouring the same rule as
+// LoadSession: a name containing a path separator is used as-is (its
+// directory is created if needed), otherwise it is written under
+// sessionsDir.
+func (m *Memory) SaveSession(name string, h []model.Message) error {
+	p := m.sessionPath(name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(h)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(p+".tmp", raw, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(p+".tmp", p)
+}
+
+// LoadSession reads a transcript by name, or by path when name contains a
+// separator.
+func (m *Memory) LoadSession(name string) ([]model.Message, error) {
+	p := m.sessionPath(name)
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return nil, fmt.Errorf("load session: %w", err)
+	}
+	var h []model.Message
+	if err := json.Unmarshal(raw, &h); err != nil {
+		return nil, fmt.Errorf("parse session %s: %w", p, err)
+	}
+	return h, nil
+}
+
+// NewestSession returns the most recent session file name, or "".
+func (m *Memory) NewestSession() (string, error) {
+	entries, err := os.ReadDir(m.sessionsDir())
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var names []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".json") {
+			names = append(names, e.Name())
+		}
+	}
+	if len(names) == 0 {
+		return "", nil
+	}
+	sort.Strings(names)
+	return names[len(names)-1], nil
+}

@@ -242,6 +242,8 @@ The principle: **agency is placed where the decision space is too large to enume
 
 Building the supervisor before the deterministic version has run means a model making decisions you can't evaluate, because there's no baseline to compare against. Run the rules-based fleet first. Log every point where the rule chose badly. Build the supervisor against those real examples, and use them as its evals.
 
+**2026-09-20 amendment.** The supervisor exists, starting at a narrower job than fleet decisions: an interactive assistant (`hivedispatch supervisor`) with its own agent loop, tools bounded to the worker config and the allowlisted subcommands, and a notes file. The fleet-level questions above remain the goal and the reason it has its own loop rather than wrapping a coding agent. Design: `docs/superpowers/specs/2026-09-20-supervisor-agent-design.md`.
+
 ## State in git
 
 Run state lives on an orphan branch, `hive/state`. No database, no infrastructure, and the audit trail is free.
