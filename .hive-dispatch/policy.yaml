@@ -1,4 +1,4 @@
-# HiveDispatch policy for this repository. Read by the worker from the ticket worktree.
+# HiveDispatch agent policy for this repository. Read by the worker from the ticket worktree.
 executor:
   # golangci-lint is installed with `go install`; make sure the agent can find it.
   path: ["~/go/bin", "$HOME/go/bin"]

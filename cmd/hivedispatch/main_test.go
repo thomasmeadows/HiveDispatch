@@ -211,6 +211,19 @@ func TestInitGitHubOnFreshMachineWritesStarters(t *testing.T) {
 	}
 }
 
+func TestInitRelativeDirIsMadeAbsolute(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := t.TempDir()
+	t.Chdir(repo)
+	var out, errb bytes.Buffer
+	if code := run([]string{"init", "-github", "."}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "- path: "+repo) || !strings.Contains(out.String(), "code_dirs: ["+filepath.Dir(repo)+"]") {
+		t.Errorf("hints should use absolute paths:\n%s", out.String())
+	}
+}
+
 func TestInitRejectsTrackerMismatch(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

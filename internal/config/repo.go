@@ -168,12 +168,21 @@ func (c *Config) Enrolled(dir string) bool {
 			return true
 		}
 	}
+	dir = resolved(dir)
 	for _, root := range c.CodeDirs {
-		if rel, err := filepath.Rel(root, dir); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
+		if rel, err := filepath.Rel(resolved(root), dir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return true
 		}
 	}
 	return false
+}
+
+// resolved is p with symlinks evaluated, or p when that fails.
+func resolved(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return p
 }
 
 func absPath(p string) string {

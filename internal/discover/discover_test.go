@@ -134,3 +134,40 @@ func TestOrigin(t *testing.T) {
 		t.Errorf("branch = %q, err %v", branch, err)
 	}
 }
+
+func TestScanFindsSymlinkedRepos(t *testing.T) {
+	root, elsewhere := t.TempDir(), t.TempDir()
+	mkdir(t, elsewhere, "real", ".git")
+	mkdir(t, elsewhere, "group", "inner", ".git")
+	for name, target := range map[string]string{"linked": "real", "linkedgroup": "group"} {
+		if err := os.Symlink(filepath.Join(elsewhere, target), filepath.Join(root, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(root, filepath.Join(root, "loop")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Scan([]string{root}, 4, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A symlink to a repository is found; symlinks are never descended into.
+	if len(got) != 1 || got[0].Path != filepath.Join(root, "linked") {
+		t.Errorf("Scan = %+v", got)
+	}
+}
+
+func TestScanFollowsASymlinkedRoot(t *testing.T) {
+	real, link := t.TempDir(), filepath.Join(t.TempDir(), "code")
+	mkdir(t, real, "r", ".git")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Scan([]string{link}, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || filepath.Base(got[0].Path) != "r" {
+		t.Errorf("Scan = %+v", got)
+	}
+}

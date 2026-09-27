@@ -27,7 +27,8 @@ type Found struct {
 var skipDirs = map[string]bool{"node_modules": true, "vendor": true}
 
 // Scan walks each root up to depth directory levels below it and returns
-// every git repository found, sorted by path. It does not descend into a
+// every git repository found, sorted by path. A symlink to a repository
+// counts; symlinks are never followed further. It does not descend into a
 // repository, a hidden directory, node_modules, vendor, or any path under
 // exclude (the worker's own workroot holds clones of enrolled repos).
 // Duplicate and overlapping roots are reported once.
@@ -39,6 +40,9 @@ func Scan(roots []string, depth int, exclude []string) ([]Found, error) {
 		if _, err := os.Stat(root); err != nil {
 			return nil, fmt.Errorf("scan %s: %w", root, err)
 		}
+		if resolved, err := filepath.EvalSymlinks(root); err == nil {
+			root = resolved // WalkDir does not follow a symlinked root
+		}
 		base := strings.Count(root, string(filepath.Separator))
 		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -46,6 +50,15 @@ func Scan(roots []string, depth int, exclude []string) ([]Found, error) {
 					return err
 				}
 				return fs.SkipDir // unreadable directory: skip, keep scanning
+			}
+			if d.Type()&fs.ModeSymlink != 0 {
+				// A symlinked checkout is found, but never walked through:
+				// a link can point back up the tree.
+				if p != root && !strings.HasPrefix(d.Name(), ".") && isDir(p) && exists(filepath.Join(p, ".git")) && !seen[p] {
+					seen[p] = true
+					out = append(out, inspect(p))
+				}
+				return nil
 			}
 			if !d.IsDir() {
 				return nil
@@ -92,6 +105,11 @@ func under(p string, dirs []string) bool {
 		}
 	}
 	return false
+}
+
+func isDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }
 
 func exists(p string) bool {

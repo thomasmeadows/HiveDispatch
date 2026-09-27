@@ -294,6 +294,10 @@ func initRepo(dir, kind, cfgPath string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	}
+	if dir, err = filepath.Abs(dir); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	file := filepath.Join(dir, config.RepoDir, config.RepoFileName)
 	written, err := config.WriteRepoStarter(dir, kind)
 	if err != nil {
