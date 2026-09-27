@@ -1,0 +1,145 @@
+// Form layouts for each config file. Keys are dotted YAML paths; a field
+// left empty is removed from the file so the loader's default applies.
+// Anything not listed here (run_windows, for one) is edited on the YAML tab.
+//
+// Field types: text, number, select, bool, list (one item per line),
+// pathlist (repos: - path:), textarea.
+
+const states = [
+  ['ready', 'Ready'],
+  ['in_progress', 'In progress'],
+  ['needs_info', 'Needs info'],
+  ['in_review', 'In review'],
+  ['needs_human', 'Needs human'],
+]
+
+export const workerSchema = [
+  {
+    title: 'This worker',
+    fields: [
+      { key: 'agent_id', label: 'Agent ID', type: 'text', help: 'Names this machine on claims and comments.' },
+      { key: 'workroot', label: 'Work root', type: 'text', placeholder: '~/.local/share/hivedispatch', help: 'Where clones, worktrees and local state live.' },
+      { key: 'max_concurrent', label: 'Tickets at once', type: 'number', placeholder: '1' },
+      { key: 'executor', label: 'Executor', type: 'select', options: ['', 'claude', 'codex', 'fake'], placeholder: 'claude' },
+      { key: 'state_store', label: 'State store', type: 'select', options: ['', 'branch', 'local'], placeholder: 'branch' },
+      { key: 'retention_days', label: 'Retention (days)', type: 'number', placeholder: '30', help: 'Prune logs and finished runs older than this.' },
+    ],
+  },
+  {
+    title: 'Repositories',
+    fields: [
+      { key: 'code_dirs', label: 'Code directories', type: 'list', help: 'Scanned for git repositories with .hive-dispatch/repo.yaml. One per line.' },
+      { key: 'scan_depth', label: 'Scan depth', type: 'number', placeholder: '4' },
+      { key: 'repos', label: 'Extra repositories', type: 'pathlist', help: 'Explicit checkouts outside the code directories. One path per line.' },
+    ],
+  },
+  {
+    title: 'Timing',
+    fields: [
+      { key: 'poll_interval', label: 'Poll interval', type: 'text', placeholder: '1m0s' },
+      { key: 'poll_jitter', label: 'Poll jitter', type: 'text', placeholder: '10s' },
+      { key: 'heartbeat_interval', label: 'Heartbeat interval', type: 'text', placeholder: '1m0s' },
+      { key: 'claim_timeout', label: 'Claim timeout', type: 'text', placeholder: '2h0m0s' },
+      { key: 'run_timeout', label: 'Run timeout', type: 'text', placeholder: '45m0s' },
+      { key: 'step_budget', label: 'Step budget', type: 'number', placeholder: '200' },
+      { key: 'max_attempts', label: 'Max attempts', type: 'number', placeholder: '3' },
+    ],
+  },
+  {
+    title: 'Executors and triage',
+    fields: [
+      { key: 'claude.binary', label: 'Claude binary', type: 'text', placeholder: 'claude' },
+      { key: 'claude.model', label: 'Claude model', type: 'text', help: 'Used when a repository’s policy sets none.' },
+      { key: 'codex.binary', label: 'Codex binary', type: 'text', placeholder: 'codex' },
+      { key: 'codex.model', label: 'Codex model', type: 'text' },
+      { key: 'triage.kind', label: 'Triage', type: 'select', options: ['', 'claude', 'passthrough'], placeholder: 'claude' },
+      { key: 'triage.model', label: 'Triage model', type: 'text' },
+      { key: 'triage.step_budget', label: 'Triage step budget', type: 'number', placeholder: '40' },
+      { key: 'triage.timeout', label: 'Triage timeout', type: 'text', placeholder: '5m' },
+    ],
+  },
+  {
+    title: 'Accounts',
+    fields: [
+      { key: 'jira.email', label: 'Jira email', type: 'text', help: 'The token comes from HIVE_JIRA_TOKEN.' },
+      { key: 'github.api_url', label: 'GitHub API URL', type: 'text', placeholder: 'https://api.github.com', help: 'The token comes from HIVE_GITHUB_TOKEN or gh auth.' },
+    ],
+  },
+]
+
+export const supervisorSchema = [
+  {
+    title: 'Model',
+    fields: [
+      { key: 'provider', label: 'Provider', type: 'select', options: ['', 'anthropic', 'openai', 'deepseek', 'huggingface', 'ollama'], help: 'Empty picks from whichever API key is set in the environment.' },
+      { key: 'model', label: 'Model', type: 'text', help: 'Empty uses the provider’s default; check the provider’s catalogue.' },
+      { key: 'base_url', label: 'Base URL', type: 'text' },
+      { key: 'api_key_env', label: 'API key variable', type: 'text', help: 'The environment variable holding the key — never the key itself.' },
+      { key: 'max_tokens', label: 'Max tokens', type: 'number', placeholder: '4096' },
+      { key: 'step_budget', label: 'Tool calls per turn', type: 'number', placeholder: '20' },
+    ],
+  },
+]
+
+export const repoSchema = [
+  {
+    title: 'Repository',
+    fields: [
+      { key: 'project', label: 'Project key', type: 'text', help: 'Ticket key prefix, e.g. HD for HD-12.' },
+      { key: 'tracker', label: 'Tracker', type: 'select', options: ['github', 'jira'] },
+      { key: 'name', label: 'Name', type: 'text', help: 'owner/repo; empty uses the origin remote.' },
+      { key: 'url', label: 'Clone URL', type: 'text', help: 'Empty uses the origin remote.' },
+      { key: 'default_branch', label: 'Default branch', type: 'text', help: 'Empty uses origin/HEAD, else main.' },
+    ],
+  },
+  {
+    title: 'GitHub Issues',
+    when: (v) => v.tracker !== 'jira',
+    fields: [
+      ...states.map(([k, l]) => ({ key: `github.labels.${k}`, label: `${l} label`, type: 'text', placeholder: `hive:${k.replace('_', '-')}` })),
+      { key: 'github.project.owner', label: 'Project board owner', type: 'text', help: 'Optional Projects board that mirrors the labels.' },
+      { key: 'github.project.number', label: 'Project board number', type: 'number' },
+      { key: 'github.project.field', label: 'Board field', type: 'text', placeholder: 'Status' },
+      ...states.map(([k, l]) => ({ key: `github.project.columns.${k}`, label: `${l} column`, type: 'text' })),
+    ],
+  },
+  {
+    title: 'Jira',
+    when: (v) => v.tracker === 'jira',
+    fields: [
+      { key: 'jira.base_url', label: 'Site URL', type: 'text', placeholder: 'https://example.atlassian.net' },
+      { key: 'jira.jql', label: 'Trigger JQL', type: 'textarea' },
+      { key: 'jira.fields.agent_id', label: 'Agent field id', type: 'text', help: 'Optional; found by name when empty.' },
+      { key: 'jira.fields.claimed_at', label: 'Claimed-at field id', type: 'text' },
+      ...states.map(([k, l]) => ({ key: `jira.statuses.${k}`, label: `${l} status`, type: 'text', placeholder: l.replace(/\b\w/g, (c) => c.toUpperCase()) })),
+    ],
+  },
+]
+
+export const policySchema = [
+  {
+    title: 'Claude Code',
+    fields: [
+      { key: 'executor.model', label: 'Model', type: 'text' },
+      { key: 'executor.permission_mode', label: 'Permission mode', type: 'select', options: ['', 'dontAsk', 'acceptEdits', 'auto', 'bypassPermissions', 'manual', 'plan'], placeholder: 'dontAsk' },
+      { key: 'executor.tools', label: 'Tools', type: 'list', placeholder: 'default' },
+      { key: 'executor.allowed_tools', label: 'Allowed tools', type: 'list', help: 'One per line, e.g. Bash(go test:*).' },
+      { key: 'executor.max_budget_usd', label: 'Max budget (USD)', type: 'number' },
+    ],
+  },
+  {
+    title: 'Codex',
+    fields: [
+      { key: 'executor.codex.model', label: 'Model', type: 'text' },
+      { key: 'executor.codex.sandbox', label: 'Sandbox', type: 'select', options: ['', 'read-only', 'workspace-write', 'danger-full-access'], placeholder: 'workspace-write' },
+      { key: 'executor.codex.network', label: 'Network inside the sandbox', type: 'bool' },
+    ],
+  },
+  {
+    title: 'Every executor',
+    fields: [
+      { key: 'executor.path', label: 'Extra PATH', type: 'list', help: 'Directories prepended to PATH for the agent. ~ and $VAR expand.' },
+      { key: 'guidance', label: 'Guidance', type: 'textarea', help: 'House rules for the agent: how to build, test and lint before finishing.' },
+    ],
+  },
+]

@@ -4,3 +4,4 @@
 *.out
 coverage.html
 .hivedispatch.local.yaml
+/web/node_modules/
