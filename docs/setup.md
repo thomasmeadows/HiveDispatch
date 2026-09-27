@@ -177,6 +177,8 @@ If you use GitHub Enterprise, set `github.api_url` in the worker config (default
 <workroot>/repos/<owner>__<repo>/.state    worktree of the hive/state branch
 ```
 
+Every ticket gets its own worktree, branched from `origin/<default branch>` in the worker's own clone — never from your checkout, whose branch and working tree the worker does not touch. With `max_concurrent: N` in the worker config, up to N tickets are worked in parallel, one worktree each; git operations on the shared clone are serialised per repository.
+
 Set `state_store: local` to keep run state in `<workroot>/state/` instead of the `hive/state` branch (useful for trials; not shared between workers).
 
 ## 7. Security

@@ -70,7 +70,8 @@ agent_id: worker-1
 # run_timeout: 45m
 # step_budget: 200         # tool calls per run
 # max_attempts: 3
-# max_concurrent: 1        # reserved; tickets run one at a time
+# max_concurrent: 1        # tickets worked at once, each in its own git worktree
+#                          # (and its own coding-agent session: mind your plan's limits)
 # executor: claude         # or codex, or fake (no agent; useful for trying the pipeline)
 # codex:
 #   binary: codex

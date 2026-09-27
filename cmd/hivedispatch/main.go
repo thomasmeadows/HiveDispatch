@@ -471,7 +471,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 			logger.Info("retention", "removed", n, "before", cutoff.Format("2006-01-02"))
 		}
 	}
-	logger.Info("starting", "agent", cfg.AgentID, "executor", d.Executor.Name(), "once", *once)
+	logger.Info("starting", "agent", cfg.AgentID, "executor", d.Executor.Name(), "max_concurrent", cfg.MaxConcurrent, "once", *once)
 
 	// First signal drains: stop polling, let the current run finish.
 	// Second signal cancels the run; cleanup still posts comments.

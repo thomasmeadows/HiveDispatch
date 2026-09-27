@@ -261,3 +261,13 @@ One Jira account (`jira.email` + `HIVE_JIRA_TOKEN`) serves every Jira repository
 Multiple workers: this change is configuration only. One process serves many repositories and trackers, tickets still run one at a time, and `max_concurrent` is reserved (only `1` is accepted) for the concurrency step in the design spec.
 
 Found along the way: the supervisor's startup `check` re-execs its own binary, which under `go test` is the test binary — `TestSupervisorOneShotFake` was re-running the whole suite until the 30 s timeout. The CLI tests now have a `TestMain` that runs the CLI when `HIVEDISPATCH_TEST_AS_CLI=1`.
+
+## 2026-09-27 — Tickets run in parallel, one worktree each
+
+Supersedes the "Multiple workers" paragraph of the entry above: `max_concurrent` is no longer reserved.
+
+Decided: one worker process works up to `max_concurrent` tickets at once (default 1). Each ticket already had its own git worktree on `hive/<KEY>` off the worker's base clone, so parallel runs never see each other's files, and the operator's own checkout — from which only `.hive-dispatch/repo.yaml` is read — is never touched. The dispatcher now starts each ticket in a goroutine holding one of N slots and skips tickets it is already working. `run` keeps polling while tickets run, starts new ones as slots free up, stops polling on the first signal and returns once in-flight runs finish (the second signal still cancels them). `run -once` works every ready ticket, N at a time, and waits. A budget stop still pauses new work; runs already in flight continue to their own end.
+
+Git does not wait for its own locks: two fetches, a `worktree add` and a push on one `.git` fail with "cannot lock ref" or "index.lock exists". Every git operation on a repository's shared clone — clone/fetch, worktree add, the safety commit and push, and the state branch's commit and push — now takes a per-repository lock (`internal/gitops/repolock`); the agent's own work inside its worktree does not. Reproduced first: six parallel Prepare+Finalize calls on one clone failed without the lock and pass with it under `-race`. Rejected: one base clone per ticket (a full clone per ticket costs disk and time, and loses the shared fetch), and retrying on lock errors (hides the contention instead of removing it).
+
+Rejected: several worker processes on one machine sharing a workroot. The lock is in-process; two processes would race on the same clone. Separate processes need separate workroots, which already works.

@@ -27,7 +27,7 @@ type Config struct {
 	Workroot          string        `yaml:"workroot"`
 	CodeDirs          []string      `yaml:"code_dirs"`      // scanned for repositories with .hive-dispatch/repo.yaml
 	ScanDepth         int           `yaml:"scan_depth"`     // directory levels below each code dir; default 4
-	MaxConcurrent     int           `yaml:"max_concurrent"` // reserved: tickets run one at a time; only 1 is accepted
+	MaxConcurrent     int           `yaml:"max_concurrent"` // tickets worked at once, each in its own worktree; default 1
 	RepoPaths         []RepoRef     `yaml:"repos"`          // explicit repositories, in addition to code_dirs
 	PollInterval      time.Duration `yaml:"poll_interval"`
 	HeartbeatInterval time.Duration `yaml:"heartbeat_interval"`
@@ -419,8 +419,8 @@ func (c *Config) workerProblems() []string {
 	if c.ScanDepth < 0 {
 		problems = append(problems, "scan_depth must be 0 (only the code dirs themselves) or more")
 	}
-	if c.MaxConcurrent > 1 || c.MaxConcurrent < 0 {
-		problems = append(problems, "max_concurrent: only 1 is supported so far — the field is reserved for running tickets in parallel")
+	if c.MaxConcurrent < 0 {
+		problems = append(problems, "max_concurrent must be 1 or more — how many tickets this worker works at once")
 	}
 	if c.StateStore != "" && c.StateStore != "branch" && c.StateStore != "local" {
 		problems = append(problems, fmt.Sprintf("state_store: want branch or local, got %q", c.StateStore))

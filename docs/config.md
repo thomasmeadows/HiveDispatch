@@ -21,7 +21,7 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 | `scan_depth` | `4` | Directory levels below each code dir to look for repositories |
 | `repos[].path` | *(none)* | A repository to enrol that is not under a code dir. Listed repositories come first; a second checkout of the same `owner/repo` is skipped (`check` names it) |
 | `workroot` | `~/.local/share/hivedispatch` | Clones, worktrees, and state live under here |
-| `max_concurrent` | `1` | Reserved for running tickets in parallel; only `1` is accepted today |
+| `max_concurrent` | `1` | Tickets this worker works at once. Each runs in its own git worktree on its own `hive/<KEY>` branch, so none of them — and none of your checkouts — see each other's changes. Each is also its own coding-agent session: several at once use your plan's limits several times faster. `run` keeps polling while tickets run and starts new ones as slots free up; `run -once` works every ready ticket, this many at a time |
 | `poll_interval` | `60s` | Time between polls |
 | `poll_jitter` | `10s` | Random extra wait per poll, so several workers do not poll in lockstep |
 | `heartbeat_interval` | `60s` | How often a running worker refreshes its claim |

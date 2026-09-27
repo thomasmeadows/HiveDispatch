@@ -372,7 +372,7 @@ func TestLoadExecutorAndTriageDefaults(t *testing.T) {
 	if cfg.Triage.Kind != "claude" || cfg.Triage.StepBudget != 40 || cfg.Triage.Timeout != 5*time.Minute {
 		t.Errorf("triage = %+v", cfg.Triage)
 	}
-	for extra, want := range map[string]string{"executor: gpt\n": "executor", "triage: {kind: coinflip}\n": "triage.kind", "max_concurrent: 4\n": "max_concurrent", "scan_depth: -1\n": "scan_depth"} {
+	for extra, want := range map[string]string{"executor: gpt\n": "executor", "triage: {kind: coinflip}\n": "triage.kind", "max_concurrent: -1\n": "max_concurrent", "scan_depth: -1\n": "scan_depth"} {
 		p, _ := setup(t, extra)
 		if _, err := Load(p); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: err = %v", extra, err)
@@ -515,5 +515,14 @@ func TestSetGitHubTokenReachesEveryRepo(t *testing.T) {
 	c.SetGitHubToken("tok")
 	if c.GitHub.Token != "tok" || c.Repos[0].GitHub.Token != "tok" || c.Repos[1].GitHub.Token != "tok" {
 		t.Errorf("c = %+v", c)
+	}
+}
+
+func TestMaxConcurrentAboveOne(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	p, _ := setup(t, "max_concurrent: 3\n")
+	cfg, err := Load(p)
+	if err != nil || cfg.MaxConcurrent != 3 {
+		t.Fatalf("cfg.MaxConcurrent = %v, err %v", cfg, err)
 	}
 }

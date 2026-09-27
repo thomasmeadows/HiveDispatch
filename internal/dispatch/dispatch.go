@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
@@ -32,6 +33,7 @@ type Config struct {
 	PollJitter        time.Duration
 	StepBudget        int
 	MaxAttempts       int
+	MaxConcurrent     int // tickets worked at once, each in its own worktree; <1 means 1
 	Repos             []config.RepoConfig
 }
 
@@ -46,6 +48,7 @@ func ConfigFrom(c *config.Config) Config {
 		PollJitter:        c.PollJitter,
 		StepBudget:        c.StepBudget,
 		MaxAttempts:       c.MaxAttempts,
+		MaxConcurrent:     c.MaxConcurrent,
 		Repos:             c.Repos,
 	}
 }
@@ -65,6 +68,12 @@ type Dispatcher struct {
 
 	pauseMu     sync.Mutex
 	pausedUntil time.Time // no new work is started before this
+
+	slotsOnce sync.Once
+	slots     chan struct{} // one token per ticket being worked
+	flightMu  sync.Mutex
+	inFlight  map[string]bool // ticket keys being worked
+	running   sync.WaitGroup  // every ticket goroutine
 
 	// Polled is called after each successful poll with the time it happened.
 	// The CLI uses it for its status line; nil = no-op. Polling itself is
@@ -145,48 +154,130 @@ func (d *Dispatcher) repoFor(key string) (config.RepoConfig, bool) {
 	return config.RepoConfig{}, false
 }
 
-// Once polls and handles every ticket, unless the schedule is closed.
-// It returns how many tickets were actually worked (not skipped or lost).
+// Once polls and handles every ticket, up to Cfg.MaxConcurrent at a time
+// (each in its own worktree), unless the schedule is closed or a budget
+// stop is in force. It waits for every ticket it started and returns how
+// many were actually worked (not skipped or lost).
 func (d *Dispatcher) Once(ctx context.Context) (int, error) {
+	var wg sync.WaitGroup
+	var handled atomic.Int64
+	err := d.poll(ctx, true, &wg, &handled)
+	wg.Wait()
+	return int(handled.Load()), err
+}
+
+// poll polls the tracker and starts a goroutine per ready ticket that is not
+// already being worked. With wait, it blocks for a free slot so every ticket
+// is started; without, it starts what fits and leaves the rest for the next
+// poll. wg and handled, when non-nil, track the tickets started here.
+func (d *Dispatcher) poll(ctx context.Context, wait bool, wg *sync.WaitGroup, handled *atomic.Int64) error {
 	if !d.Schedule.Open(d.now()) {
 		d.log().Debug("outside run window; not polling")
-		return 0, nil
+		return nil
 	}
 	if until := d.PausedUntil(); d.now().Before(until) {
 		d.log().Debug("paused after budget stop; not polling", "until", until)
-		return 0, nil
+		return nil
 	}
 	tickets, err := d.Tracker.Poll(ctx)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	if d.Polled != nil {
 		d.Polled(d.now())
 	}
-	handled := 0
 	for _, t := range tickets {
 		if ctx.Err() != nil {
 			break
 		}
-		// Handle logs the lifecycle of every ticket it works; only the
-		// error path needs a line here.
-		out, err := d.Handle(ctx, t)
-		if err != nil {
-			d.log().Error("handle failed", "ticket", t.Key, "outcome", out, "err", err)
+		if !d.markInFlight(t.Key) {
+			continue // already being worked by this worker
 		}
-		if out != OutcomeSkipped && out != OutcomeClaimLost {
-			handled++
+		if !d.takeSlot(ctx, wait) {
+			d.unmarkInFlight(t.Key)
+			break // every slot is busy: the rest wait for the next poll
 		}
+		// A run that finished while we waited may have hit the budget.
+		if until := d.PausedUntil(); d.now().Before(until) {
+			d.releaseSlot()
+			d.unmarkInFlight(t.Key)
+			break
+		}
+		d.running.Add(1)
+		if wg != nil {
+			wg.Add(1)
+		}
+		go func(t tracker.Ticket) {
+			defer d.running.Done()
+			if wg != nil {
+				defer wg.Done()
+			}
+			defer d.unmarkInFlight(t.Key)
+			defer d.releaseSlot()
+			// Handle logs the lifecycle of every ticket it works; only
+			// the error path needs a line here.
+			out, err := d.Handle(ctx, t)
+			if err != nil {
+				d.log().Error("handle failed", "ticket", t.Key, "outcome", out, "err", err)
+			}
+			if handled != nil && out != OutcomeSkipped && out != OutcomeClaimLost {
+				handled.Add(1)
+			}
+		}(t)
 	}
-	return handled, nil
+	return nil
 }
 
-// Run polls on the configured interval until loopCtx is cancelled. Runs in
-// flight use runCtx, so a caller can stop polling (drain) before it hard-
-// cancels work. Pass the same context for both to stop immediately.
+func (d *Dispatcher) markInFlight(key string) bool {
+	d.flightMu.Lock()
+	defer d.flightMu.Unlock()
+	if d.inFlight == nil {
+		d.inFlight = map[string]bool{}
+	}
+	if d.inFlight[key] {
+		return false
+	}
+	d.inFlight[key] = true
+	return true
+}
+
+func (d *Dispatcher) unmarkInFlight(key string) {
+	d.flightMu.Lock()
+	defer d.flightMu.Unlock()
+	delete(d.inFlight, key)
+}
+
+// takeSlot claims one of Cfg.MaxConcurrent slots, waiting for one when
+// wait is set (until ctx ends).
+func (d *Dispatcher) takeSlot(ctx context.Context, wait bool) bool {
+	d.slotsOnce.Do(func() { d.slots = make(chan struct{}, max(d.Cfg.MaxConcurrent, 1)) })
+	if !wait {
+		select {
+		case d.slots <- struct{}{}:
+			return true
+		default:
+			return false
+		}
+	}
+	select {
+	case d.slots <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (d *Dispatcher) releaseSlot() { <-d.slots }
+
+// Run polls on the configured interval until loopCtx is cancelled, starting
+// ready tickets as slots free up; polling continues while tickets run. Runs
+// in flight use runCtx, so a caller can stop polling (drain) before it hard-
+// cancels work; Run returns only once every run has finished. Pass the same
+// context for both to stop immediately.
 func (d *Dispatcher) Run(loopCtx, runCtx context.Context) error {
+	defer d.running.Wait()
 	for {
-		if _, err := d.Once(runCtx); err != nil {
+		if err := d.poll(runCtx, false, nil, nil); err != nil {
 			d.log().Error("poll failed", "err", err)
 		}
 		wait := d.Cfg.PollInterval
