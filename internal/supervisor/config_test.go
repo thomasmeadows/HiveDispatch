@@ -47,8 +47,8 @@ func TestProviderFromEnvOrder(t *testing.T) {
 }
 
 func TestLoadConfigFileWinsAndPresetsFill(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "c.yaml")
-	if err := os.WriteFile(p, []byte("provider: huggingface\nmodel: meta-llama/Llama-3.3-70B-Instruct\nstep_budget: 5\n"), 0o600); err != nil {
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(p, []byte("agent_id: w\nsupervisor:\n  provider: huggingface\n  model: meta-llama/Llama-3.3-70B-Instruct\n  step_budget: 5\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c, err := LoadConfig(p, env(map[string]string{"ANTHROPIC_API_KEY": "a"}))
@@ -61,18 +61,42 @@ func TestLoadConfigFileWinsAndPresetsFill(t *testing.T) {
 }
 
 func TestLoadConfigRejects(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "c.yaml")
-	if err := os.WriteFile(p, []byte("provider: bard\n"), 0o600); err != nil {
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(p, []byte("supervisor:\n  provider: bard\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := LoadConfig(p, env(nil)); err == nil || !strings.Contains(err.Error(), "provider") {
 		t.Errorf("err = %v", err)
 	}
-	if err := os.WriteFile(p, []byte("step_budget: -1\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("supervisor:\n  step_budget: -1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadConfig(p, env(nil)); err == nil || !strings.Contains(err.Error(), "step_budget") {
+	if _, err := LoadConfig(p, env(nil)); err == nil || !strings.Contains(err.Error(), "supervisor.step_budget") {
 		t.Errorf("err = %v", err)
+	}
+	if err := os.WriteFile(p, []byte("supervisor:\n  provider: fake\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(p, env(nil)); err == nil || !strings.Contains(err.Error(), "for tests") {
+		t.Errorf("fake in file: %v", err)
+	}
+}
+
+func TestLoadConfigRejectsTheOldSeparateFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(p, []byte("agent_id: w\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(Dir(p), "config.yaml")
+	if err := os.MkdirAll(Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(old, []byte("provider: deepseek\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadConfig(p, env(nil))
+	if err == nil || !strings.Contains(err.Error(), old) || !strings.Contains(err.Error(), "supervisor:") {
+		t.Errorf("err = %v, want it to name %s and say to move it under supervisor:", err, old)
 	}
 }
 
@@ -115,7 +139,7 @@ func TestNewModel(t *testing.T) {
 }
 
 func TestPaths(t *testing.T) {
-	if got := ConfigPath("/home/u/.config/hivedispatch/config.yaml"); got != "/home/u/.config/hivedispatch/supervisor/config.yaml" {
-		t.Errorf("ConfigPath = %s", got)
+	if got := Dir("/home/u/.config/hivedispatch/config.yaml"); got != "/home/u/.config/hivedispatch/supervisor" {
+		t.Errorf("Dir = %s", got)
 	}
 }

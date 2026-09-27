@@ -72,10 +72,10 @@ agent_id: worker-1
 # max_attempts: 3
 # max_concurrent: 1        # tickets worked at once, each in its own git worktree
 #                          # (and its own coding-agent session: mind your plan's limits)
-# executor: claude         # or codex, or fake (no agent; useful for trying the pipeline)
-# codex:
+# claude:
+#   binary: claude         # the Claude Code CLI; which agents use it is in each
+# codex:                   # repository's .hive-dispatch/agents.yaml
 #   binary: codex
-#   model: gpt-5-codex     # optional; default is the CLI's default
 # state_store: branch      # or local
 # triage:
 #   kind: claude           # or passthrough
@@ -87,11 +87,22 @@ agent_id: worker-1
 #     - days: [mon, tue, wed, thu, fri]
 #       start: "22:00"
 #       end: "06:00"
+
+# The built-in assistant (hivedispatch supervisor, and the chat in hivedispatch website).
+# Optional: with nothing set, the provider follows whichever key is in the environment
+# (ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, HF_TOKEN), else a local Ollama.
+# supervisor:
+#   provider: anthropic    # anthropic, openai, deepseek, huggingface or ollama
+#   model: claude-sonnet-5 # check the provider's catalogue
+#   api_key_env: ANTHROPIC_API_KEY   # the variable holding the key, never the key
+#   max_tokens: 4096
+#   step_budget: 20        # tool calls per reply
 `
 
 const repoStarterHead = `# HiveDispatch settings for this repository, read by the worker from this checkout.
-# Commit it: every clone then carries the same tracker settings. The agent's
-# policy (tools, model, budget) is in policy.yaml next to this file.
+# Commit it: every clone then carries the same tracker settings. The agents that
+# work this repository's tickets are in agents.yaml, and the policy they all
+# follow (tools, model, budget) in policy.yaml, both next to this file.
 # Reference: docs/config.md in the HiveDispatch repository.
 
 # Ticket key prefix. Jira: the project key (SCRUM for SCRUM-4). GitHub Issues: any
@@ -184,6 +195,17 @@ executor:
 #   House rules for the agent: how to build, test, and lint before finishing.
 `
 
+// AgentsStarter is the agents.yaml written next to a new repo.yaml.
+const AgentsStarter = `# The coding agents that work this repository's tickets, read by the worker from
+# this checkout. They form a pool: each works one ticket at a time (the worker's
+# max_concurrent caps them all), and a ticket labelled hive:agent:<name> waits
+# for that agent. Every agent follows policy.yaml; model overrides its model.
+agents:
+  - name: default
+    executor: claude       # claude, codex, or fake (no agent; for trying the pipeline)
+    # model: sonnet
+`
+
 // RepoStarter is the commented repo.yaml for tracker ("jira" or "github").
 func RepoStarter(tracker string) string {
 	if tracker == "jira" {
@@ -199,7 +221,8 @@ func WriteStarter(path string) (bool, error) {
 }
 
 // WriteRepoStarter writes .hive-dispatch/repo.yaml for tracker, and a
-// policy.yaml, into the repository at dir; existing files are kept. It
+// policy.yaml and agents.yaml, into the repository at dir; existing files
+// are kept. It
 // returns true when repo.yaml was written.
 func WriteRepoStarter(dir, tracker string) (bool, error) {
 	written, err := writeIfAbsent(repoFilePath(dir), RepoStarter(tracker))
@@ -207,6 +230,9 @@ func WriteRepoStarter(dir, tracker string) (bool, error) {
 		return false, err
 	}
 	if _, err := writeIfAbsent(filepath.Join(dir, RepoDir, "policy.yaml"), PolicyStarter); err != nil {
+		return written, err
+	}
+	if _, err := writeIfAbsent(agentsFilePath(dir), AgentsStarter); err != nil {
 		return written, err
 	}
 	return written, nil

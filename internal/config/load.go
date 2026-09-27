@@ -65,6 +65,9 @@ func readWorker(path string) (*Config, error) {
 	if err := checkLegacy(raw); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := checkMovedExecutor(raw); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	var c Config
 	if err := yaml.Unmarshal(raw, &c); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)

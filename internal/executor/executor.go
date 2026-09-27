@@ -61,6 +61,7 @@ type Task struct {
 	Workspace   string // path to the prepared worktree
 	ResumeToken string // opaque; stored, never interpreted
 	StepBudget  int
+	Model       string // the agent's model; wins over the repository policy's
 }
 
 // Footprint is the set of files a planned run expects to touch.

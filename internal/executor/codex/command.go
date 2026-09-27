@@ -7,17 +7,17 @@ import (
 // Config is the worker-level executor configuration.
 type Config struct {
 	Binary string // default "codex"
-	Model  string // default model when the repo config sets none
 }
 
 // planSchema is the output schema requested from Plan(); Codex takes it as
 // a file path, so it is written to a temporary file per call.
 const planSchema = `{"type":"object","properties":{"files":{"type":"array","items":{"type":"string"}}},"required":["files"],"additionalProperties":false}`
 
-// buildArgs assembles the argv for a run or a plan. Options precede the
+// buildArgs assembles the argv for a run or a plan. model is the agent's,
+// which wins over the policy's. Options precede the
 // optional `resume` subcommand, and the trailing "-" reads the prompt from
 // stdin in both forms. Approvals are always off: nobody is there to answer.
-func buildArgs(cfg Config, rc repoconfig.ExecutorConfig, resume string, plan bool, schemaPath string) []string {
+func buildArgs(rc repoconfig.ExecutorConfig, model, resume string, plan bool, schemaPath string) []string {
 	args := []string{"exec", "--json", "--skip-git-repo-check", "-c", "approval_policy=never"}
 	if plan {
 		args = append(args, "--sandbox", "read-only", "--ephemeral", "--output-schema", schemaPath)
@@ -27,7 +27,7 @@ func buildArgs(cfg Config, rc repoconfig.ExecutorConfig, resume string, plan boo
 			args = append(args, "-c", "sandbox_workspace_write.network_access=true")
 		}
 	}
-	if model := firstNonEmpty(rc.Codex.Model, cfg.Model); model != "" {
+	if model := firstNonEmpty(model, rc.Codex.Model); model != "" {
 		args = append(args, "--model", model)
 	}
 	if resume != "" && !plan {

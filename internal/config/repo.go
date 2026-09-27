@@ -87,6 +87,11 @@ func parseRepo(ctx context.Context, dir string, raw []byte) (RepoConfig, error) 
 		}
 	}
 	def(&r.Name, discover.ParseRepoName(r.URL))
+	agents, err := readAgents(dir)
+	if err != nil {
+		return RepoConfig{}, err
+	}
+	r.Agents = agents
 	return r, nil
 }
 

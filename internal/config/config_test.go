@@ -366,13 +366,13 @@ func TestLoadExecutorAndTriageDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Executor != "claude" || cfg.Claude.Binary != "claude" || cfg.Codex.Binary != "codex" {
+	if cfg.Claude.Binary != "claude" || cfg.Codex.Binary != "codex" {
 		t.Errorf("cfg = %+v", cfg)
 	}
 	if cfg.Triage.Kind != "claude" || cfg.Triage.StepBudget != 40 || cfg.Triage.Timeout != 5*time.Minute {
 		t.Errorf("triage = %+v", cfg.Triage)
 	}
-	for extra, want := range map[string]string{"executor: gpt\n": "executor", "triage: {kind: coinflip}\n": "triage.kind", "max_concurrent: -1\n": "max_concurrent", "scan_depth: -1\n": "scan_depth"} {
+	for extra, want := range map[string]string{"triage: {kind: coinflip}\n": "triage.kind", "max_concurrent: -1\n": "max_concurrent", "scan_depth: -1\n": "scan_depth"} {
 		p, _ := setup(t, extra)
 		if _, err := Load(p); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: err = %v", extra, err)
@@ -585,5 +585,73 @@ func TestScanRowsDescribesEachRepository(t *testing.T) {
 	t.Setenv("HOME", code)
 	if roots, home, err := bare.ScanRoots(nil); err != nil || !home || len(roots) != 1 || roots[0] != code {
 		t.Errorf("no code_dirs: ScanRoots = %v, %v, %v; want the home directory", roots, home, err)
+	}
+}
+
+func writeAgents(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, RepoDir, AgentsFileName), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAgentsDefaultToOneClaudeAgent(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	p, _ := setup(t, "")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Repos[0].Agents; len(got) != 1 || got[0] != (Agent{Name: "default", Executor: "claude"}) {
+		t.Errorf("agents = %+v", got)
+	}
+}
+
+func TestAgentsFileIsReadAndValidated(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	p, code := setup(t, "")
+	repo := filepath.Join(code, "hive")
+	writeAgents(t, repo, "# ours\nagents:\n  - name: claude-1\n    executor: claude\n  - name: codex-fast\n    executor: codex\n    model: gpt-5-codex\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Agent{{Name: "claude-1", Executor: "claude"}, {Name: "codex-fast", Executor: "codex", Model: "gpt-5-codex"}}
+	if got := cfg.Repos[0].Agents; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("agents = %+v", got)
+	}
+	for body, want := range map[string]string{
+		"agents: []\n": "at least one agent",
+		"agents:\n  - name: a\n    executor: claude\n  - name: A\n    executor: codex\n": "twice",
+		"agents:\n  - name: bad name\n    executor: claude\n":                            "name",
+		"agents:\n  - name: a\n    executor: gpt\n":                                      "executor",
+		"agents:\n  - name: a\n    executor: claude\n    permission_mode: auto\n":        "permission_mode",
+	} {
+		writeAgents(t, repo, body)
+		_, err := Load(p)
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), AgentsFileName) {
+			t.Errorf("%q: err = %v, want %q and the file name", body, err, want)
+		}
+	}
+}
+
+func TestParseAgentsDefaultsExecutor(t *testing.T) {
+	got, err := ParseAgents([]byte("agents:\n  - name: solo\n"))
+	if err != nil || len(got) != 1 || got[0].Executor != "claude" {
+		t.Errorf("ParseAgents = %+v, %v", got, err)
+	}
+}
+
+func TestExecutorKeysMovedIntoAgents(t *testing.T) {
+	for _, extra := range []string{"executor: codex\n", "claude:\n  model: opus\n", "codex:\n  model: gpt-5-codex\n"} {
+		p, _ := setup(t, extra)
+		if _, err := LoadWorker(p); err == nil || !strings.Contains(err.Error(), AgentsFileName) {
+			t.Errorf("%q: err = %v, want a pointer to %s", extra, err, AgentsFileName)
+		}
+	}
+	p, _ := setup(t, "claude:\n  binary: /opt/claude\ncodex:\n  binary: /opt/codex\n")
+	cfg, err := LoadWorker(p)
+	if err != nil || cfg.Claude.Binary != "/opt/claude" || cfg.Codex.Binary != "/opt/codex" {
+		t.Errorf("binaries stay in the worker config: %+v, %v", cfg, err)
 	}
 }

@@ -46,7 +46,8 @@ commands:
                               which are enrolled
   run   [-config P] [-once] [-executor claude|codex|fake] [-triage claude|passthrough]
         [-placeholder] [-skip-preflight]
-                              verify each repository's tracker, then poll and dispatch; -executor and -triage override the config
+                              verify each repository's tracker, then poll and dispatch; -executor makes every agent
+                              use that executor, -triage overrides the config
                               (-placeholder makes the fake executor write a file so
                               the branch/PR path is exercised)
   once  KEY [same flags as run]
@@ -150,7 +151,11 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 func printRepos(w io.Writer, cfg *config.Config) {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	for _, r := range cfg.Repos {
-		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", r.Project, r.Tracker, r.Name, r.Path)
+		names := make([]string, 0, len(r.Agents))
+		for _, a := range r.Agents {
+			names = append(names, a.Name+" ("+a.Executor+")")
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\tagents: %s\n", r.Project, r.Tracker, r.Name, r.Path, strings.Join(names, ", "))
 	}
 	_ = tw.Flush() // best-effort listing; the writer is the terminal
 	for skipped, kept := range cfg.Shadowed {
@@ -437,7 +442,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	once := fs.Bool("once", false, "poll once and exit")
-	executorFlag := fs.String("executor", "", "override config executor: claude, codex or fake")
+	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
@@ -586,7 +591,7 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("once", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
-	executorFlag := fs.String("executor", "", "override config executor: claude, codex or fake")
+	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")

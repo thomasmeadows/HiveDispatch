@@ -57,14 +57,14 @@ func NewSession(ctx context.Context, o SessionOptions) (*Session, error) {
 	stepBudget, maxTokens := defaultStepBudget, defaultMaxTokens
 	m := o.ChatModel
 	if m == nil {
-		cfg, err := LoadConfig(ConfigPath(o.WorkerConfigPath), o.Getenv)
+		cfg, err := LoadConfig(o.WorkerConfigPath, o.Getenv)
 		if err != nil {
 			return nil, err
 		}
 		cfg.Override(o.Provider, o.Model)
 		if cfg.Provider == "ollama" && cfg.FromEnv {
 			if err := ProbeOllama(ctx, cfg.BaseURL); err != nil {
-				return nil, fmt.Errorf("no model configured: set ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY or HF_TOKEN, run Ollama (tried %s: %w), or write %s", cfg.BaseURL, err, ConfigPath(o.WorkerConfigPath))
+				return nil, fmt.Errorf("no model configured: set ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY or HF_TOKEN, run Ollama (tried %s: %w), or set supervisor.provider in %s", cfg.BaseURL, err, o.WorkerConfigPath)
 			}
 		}
 		if m, err = NewModel(cfg, o.Getenv); err != nil {

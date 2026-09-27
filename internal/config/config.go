@@ -39,7 +39,6 @@ type Config struct {
 	RunWindows        RunWindows    `yaml:"run_windows"`
 	StateStore        string        `yaml:"state_store"`    // "branch" (default) or "local"
 	RetentionDays     int           `yaml:"retention_days"` // prune raw logs and finished runs older than this; 0 disables
-	Executor          string        `yaml:"executor"`       // "claude" (default), "codex" or "fake"
 	Claude            ClaudeConfig  `yaml:"claude"`
 	Codex             CodexConfig   `yaml:"codex"`
 	Triage            TriageConfig  `yaml:"triage"`
@@ -96,14 +95,12 @@ type JiraStatuses struct {
 // per-repo settings live in .hive-dispatch/policy.yaml inside the governed repo.
 type ClaudeConfig struct {
 	Binary string `yaml:"binary"` // default "claude"
-	Model  string `yaml:"model"`  // default model when the repo sets none
 }
 
 // CodexConfig configures the Codex executor at the worker level; per-repo
 // settings live under executor.codex in .hivedispatch.yaml.
 type CodexConfig struct {
 	Binary string `yaml:"binary"` // default "codex"
-	Model  string `yaml:"model"`  // default model when the repo sets none
 }
 
 // TriageConfig selects and bounds the triage step.
@@ -167,6 +164,7 @@ type RepoConfig struct {
 	DefaultBranch string       // default origin/HEAD, else "main"
 	Project       string       // ticket key prefix; tickets in this project map to this repo
 	Tracker       string       // "jira" or "github"
+	Agents        []Agent      // .hive-dispatch/agents.yaml; DefaultAgents without one
 	Jira          JiraConfig   // with tracker: jira
 	GitHub        GitHubConfig // PR API always; issues and labels with tracker: github
 }
@@ -227,7 +225,6 @@ func (c *Config) applyDefaults() {
 	if c.RetentionDays == 0 {
 		c.RetentionDays = 30
 	}
-	def(&c.Executor, "claude")
 	def(&c.Claude.Binary, "claude")
 	def(&c.Codex.Binary, "codex")
 	def(&c.Triage.Kind, "claude")
@@ -406,9 +403,6 @@ func (c *Config) workerProblems() []string {
 	var problems []string
 	if strings.TrimSpace(c.AgentID) == "" {
 		problems = append(problems, "agent_id is required — any short name for this worker, e.g. laptop-1")
-	}
-	if c.Executor != "" && c.Executor != "claude" && c.Executor != "codex" && c.Executor != "fake" {
-		problems = append(problems, fmt.Sprintf("executor: want claude, codex or fake, got %q", c.Executor))
 	}
 	if c.Triage.Kind != "" && c.Triage.Kind != "claude" && c.Triage.Kind != "passthrough" {
 		problems = append(problems, fmt.Sprintf("triage.kind: want claude or passthrough, got %q", c.Triage.Kind))

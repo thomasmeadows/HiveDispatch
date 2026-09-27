@@ -10,15 +10,15 @@ import (
 // Config is the worker-level executor configuration.
 type Config struct {
 	Binary string // default "claude"
-	Model  string // default model when the repo config sets none
 }
 
 // planSchema is the structured output requested from Plan().
 const planSchema = `{"type":"object","properties":{"files":{"type":"array","items":{"type":"string"}}},"required":["files"]}`
 
-// buildArgs assembles the argv for a run or a plan. --bare is deliberately
+// buildArgs assembles the argv for a run or a plan. model is the agent's,
+// which wins over the policy's. --bare is deliberately
 // absent: it skips credential loading.
-func buildArgs(cfg Config, rc repoconfig.ExecutorConfig, resume string, plan bool) []string {
+func buildArgs(rc repoconfig.ExecutorConfig, model, resume string, plan bool) []string {
 	args := []string{"-p"}
 	if plan {
 		args = append(args, "--output-format", "json", "--permission-mode", "plan", "--json-schema", planSchema, "--no-session-persistence")
@@ -38,7 +38,7 @@ func buildArgs(cfg Config, rc repoconfig.ExecutorConfig, resume string, plan boo
 	if rc.MaxBudgetUSD > 0 {
 		args = append(args, "--max-budget-usd", strconv.FormatFloat(rc.MaxBudgetUSD, 'f', -1, 64))
 	}
-	if model := firstNonEmpty(rc.Model, cfg.Model); model != "" {
+	if model := firstNonEmpty(model, rc.Model); model != "" {
 		args = append(args, "--model", model)
 	}
 	return args

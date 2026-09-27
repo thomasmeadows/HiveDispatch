@@ -34,7 +34,7 @@ import (
 
 // wireOptions are the command-line overrides that shape a worker.
 type wireOptions struct {
-	executor    string // "" = config
+	executor    string // "" = each agent's own
 	triage      string // "" = config
 	placeholder bool
 	preflight   bool
@@ -153,22 +153,22 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 		return nil, err
 	}
 
-	name := cfg.Executor
-	if opts.executor != "" {
-		name = opts.executor
+	// One executor per agent kind; -executor makes every agent use one kind.
+	fake := exfake.New()
+	fake.Placeholder = opts.placeholder
+	executors := map[string]executor.Executor{
+		"claude": claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary}),
+		"codex":  codex.New(codex.Config{Binary: cfg.Codex.Binary}),
+		"fake":   fake,
 	}
-	var ex executor.Executor
-	switch name {
-	case "fake":
-		f := exfake.New()
-		f.Placeholder = opts.placeholder
-		ex = f
-	case "claude":
-		ex = claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary, Model: cfg.Claude.Model})
-	case "codex":
-		ex = codex.New(codex.Config{Binary: cfg.Codex.Binary, Model: cfg.Codex.Model})
-	default:
-		return nil, fmt.Errorf("unknown executor %q", name)
+	if opts.executor != "" {
+		ex, ok := executors[opts.executor]
+		if !ok {
+			return nil, fmt.Errorf("unknown executor %q (want claude, codex or fake)", opts.executor)
+		}
+		for kind := range executors {
+			executors[kind] = ex
+		}
 	}
 	triKind := cfg.Triage.Kind
 	if opts.triage != "" {
@@ -187,7 +187,8 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 		Cfg:        dispatch.ConfigFrom(cfg),
 		Tracker:    tr,
 		Triager:    tri,
-		Executor:   ex,
+		Executors:  executors,
+		Executor:   executors["claude"],
 		Workspaces: ws,
 		Host:       host,
 		Store:      store,

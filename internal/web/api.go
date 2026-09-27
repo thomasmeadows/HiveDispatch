@@ -25,8 +25,7 @@ import (
 // overview is the dashboard's summary of the worker config.
 func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
 	out := map[string]any{
-		"config_path":            s.o.ConfigPath,
-		"supervisor_config_path": supervisor.ConfigPath(s.o.ConfigPath),
+		"config_path": s.o.ConfigPath,
 	}
 	if _, err := os.Stat(s.o.ConfigPath); err != nil {
 		out["config_exists"] = false
@@ -48,7 +47,6 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
 		repos = append(repos, map[string]string{"project": r.Project, "tracker": r.Tracker, "name": r.Name, "path": r.Path})
 	}
 	out["agent_id"] = cfg.AgentID
-	out["executor"] = cfg.Executor
 	out["max_concurrent"] = cfg.MaxConcurrent
 	out["poll_interval"] = cfg.PollInterval.String()
 	out["state_store"] = cfg.StateStore
@@ -227,11 +225,9 @@ func (s *Server) file(r *http.Request) (file, error) {
 	switch kind := r.PathValue("kind"); kind {
 	case "worker":
 		return file{path: s.o.ConfigPath, starter: config.Starter, validate: func(tmp string) error {
-			_, err := config.Load(tmp)
-			return err
-		}}, nil
-	case "supervisor":
-		return file{path: supervisor.ConfigPath(s.o.ConfigPath), validate: func(tmp string) error {
+			if _, err := config.Load(tmp); err != nil {
+				return err
+			}
 			c, err := supervisor.LoadConfig(tmp, getenv)
 			if err != nil {
 				return err
@@ -267,7 +263,7 @@ func (s *Server) file(r *http.Request) (file, error) {
 			return err
 		}}, nil
 	default:
-		return file{}, fmt.Errorf("unknown config file %q (want worker, supervisor, repo or policy)", kind)
+		return file{}, fmt.Errorf("unknown config file %q (want worker, repo or policy)", kind)
 	}
 }
 

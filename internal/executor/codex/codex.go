@@ -48,7 +48,7 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 	}
 	tr, exit, log, err := codexcli.Run(ctx, codexcli.Cmd{
 		Binary: e.cfg.Binary, Dir: t.Workspace,
-		Args:  buildArgs(e.cfg, rc.Executor, t.ResumeToken, false, ""),
+		Args:  buildArgs(rc.Executor, t.Model, t.ResumeToken, false, ""),
 		Stdin: promptText, StepBudget: t.StepBudget,
 		Env: pathEnv(rc.Executor.ExtraPath()),
 	})
@@ -82,7 +82,7 @@ func (e *Executor) Plan(ctx context.Context, t executor.Task) (executor.Footprin
 	planPrompt := t.Prompt + "\n\nDo not make changes. List every file you would create or modify to complete this ticket, as repository-relative paths, in the requested JSON shape.\n"
 	tr, exit, _, err := codexcli.Run(ctx, codexcli.Cmd{
 		Binary: e.cfg.Binary, Dir: t.Workspace,
-		Args:  buildArgs(e.cfg, rc.Executor, "", true, schema.Name()),
+		Args:  buildArgs(rc.Executor, t.Model, "", true, schema.Name()),
 		Stdin: planPrompt,
 		Env:   pathEnv(rc.Executor.ExtraPath()),
 	})

@@ -12,7 +12,7 @@ func TestBuildArgsRun(t *testing.T) {
 		Model: "sonnet", PermissionMode: "dontAsk", AllowedTools: []string{"Edit"},
 		Codex: repoconfig.CodexConfig{Model: "gpt-5-codex", Sandbox: "workspace-write", Network: true},
 	}
-	got := strings.Join(buildArgs(Config{Model: "o3"}, rc, "thread-1", false, ""), " ")
+	got := strings.Join(buildArgs(rc, "", "thread-1", false, ""), " ")
 	for _, want := range []string{"exec --json", "--skip-git-repo-check", "--sandbox workspace-write", "-c approval_policy=never", "-c sandbox_workspace_write.network_access=true", "--model gpt-5-codex", "resume thread-1 -"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
@@ -28,9 +28,9 @@ func TestBuildArgsRun(t *testing.T) {
 	}
 }
 
-func TestBuildArgsRunFreshUsesWorkerModel(t *testing.T) {
+func TestBuildArgsRunFreshUsesAgentModel(t *testing.T) {
 	rc := repoconfig.ExecutorConfig{Codex: repoconfig.CodexConfig{Sandbox: "read-only"}}
-	got := strings.Join(buildArgs(Config{Model: "o3"}, rc, "", false, ""), " ")
+	got := strings.Join(buildArgs(rc, "o3", "", false, ""), " ")
 	if !strings.Contains(got, "--sandbox read-only") || !strings.Contains(got, "--model o3") || strings.Contains(got, "network_access") {
 		t.Errorf("args = %q", got)
 	}
@@ -41,7 +41,7 @@ func TestBuildArgsRunFreshUsesWorkerModel(t *testing.T) {
 
 func TestBuildArgsPlan(t *testing.T) {
 	rc := repoconfig.ExecutorConfig{Codex: repoconfig.CodexConfig{Sandbox: "danger-full-access", Network: true}}
-	got := strings.Join(buildArgs(Config{}, rc, "thread-1", true, "/tmp/schema.json"), " ")
+	got := strings.Join(buildArgs(rc, "", "thread-1", true, "/tmp/schema.json"), " ")
 	for _, want := range []string{"--sandbox read-only", "--ephemeral", "--output-schema /tmp/schema.json", "-c approval_policy=never"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
@@ -49,5 +49,13 @@ func TestBuildArgsPlan(t *testing.T) {
 	}
 	if strings.Contains(got, "resume") || strings.Contains(got, "network_access") || strings.Contains(got, "danger") {
 		t.Errorf("plan must be read-only, fresh and offline: %q", got)
+	}
+}
+
+func TestBuildArgsAgentModelOverridesPolicy(t *testing.T) {
+	rc := repoconfig.ExecutorConfig{Codex: repoconfig.CodexConfig{Model: "gpt-5-codex", Sandbox: "workspace-write"}}
+	got := strings.Join(buildArgs(rc, "o3", "", false, ""), " ")
+	if !strings.Contains(got, "--model o3") || strings.Contains(got, "gpt-5-codex") {
+		t.Errorf("args = %q, want the agent's model instead of the policy's", got)
 	}
 }
