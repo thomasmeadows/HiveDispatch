@@ -6,11 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -28,8 +30,15 @@ func runWebsite(args []string, stdout, stderr io.Writer) int {
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	addr := fs.String("addr", "127.0.0.1:7878", "address to listen on")
 	open := fs.Bool("open", false, "open the site in the default browser")
+	assets := fs.String("assets", "", "serve the UI from this directory (e.g. internal/web/dist while `npm run dev` rebuilds it) instead of the embedded build")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if *assets != "" {
+		if _, err := os.Stat(filepath.Join(*assets, "index.html")); err != nil {
+			fmt.Fprintf(stderr, "-assets %s: no index.html there (run `npm run build` in web/ first): %v\n", *assets, err)
+			return 1
+		}
 	}
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
@@ -38,11 +47,18 @@ func runWebsite(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return serveWebsite(ctx, ln, *cfgPath, *open, stdout, stderr)
+	return serveWebsite(ctx, ln, websiteOptions{cfgPath: *cfgPath, assets: *assets, open: *open}, stdout, stderr)
+}
+
+type websiteOptions struct {
+	cfgPath string
+	assets  string // directory to serve the UI from; empty serves the embedded build
+	open    bool   // launch a browser
 }
 
 // serveWebsite serves on ln until ctx is done.
-func serveWebsite(ctx context.Context, ln net.Listener, cfgPath string, openBrowser bool, stdout, stderr io.Writer) int {
+func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdout, stderr io.Writer) int {
+	cfgPath := wo.cfgPath
 	exe, err := os.Executable()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -57,8 +73,12 @@ func serveWebsite(ctx context.Context, ln net.Listener, cfgPath string, openBrow
 			}
 		}
 	}
+	var assets fs.FS // nil: the embedded build
+	if wo.assets != "" {
+		assets = os.DirFS(wo.assets)
+	}
 	srv, err := web.New(web.Options{
-		ConfigPath: cfgPath, Exe: exe, AllowHosts: allow,
+		ConfigPath: cfgPath, Exe: exe, AllowHosts: allow, Assets: assets,
 		ListRuns: func(ctx context.Context) ([]state.Run, error) {
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
@@ -82,10 +102,21 @@ func serveWebsite(ctx context.Context, ln net.Listener, cfgPath string, openBrow
 		return 1
 	}
 	defer srv.Close()
-	hs := &http.Server{Handler: srv, ReadHeaderTimeout: 10 * time.Second}
+	var h http.Handler = srv
+	if wo.assets != "" {
+		// The files change under a watch build; never let the browser keep a stale copy.
+		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			srv.ServeHTTP(w, r)
+		})
+	}
+	hs := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	url := "http://" + displayAddr(ln.Addr())
 	fmt.Fprintf(stdout, "HiveDispatch website on %s (config %s) — Ctrl-C to stop\n", url, cfgPath)
-	if openBrowser {
+	if wo.assets != "" {
+		fmt.Fprintf(stdout, "serving the UI from %s; reload the page after a rebuild\n", wo.assets)
+	}
+	if wo.open {
 		if err := launchBrowser(url); err != nil {
 			fmt.Fprintln(stderr, "could not open a browser:", err)
 		}

@@ -55,9 +55,10 @@ commands:
   supervisor [-config P] [-provider anthropic|openai|deepseek|huggingface|ollama] [-model M] [-resume | -session FILE]
                               chat with the built-in assistant that helps configure and run HiveDispatch;
                               piped stdin asks one question and exits
-  website [-config P] [-addr 127.0.0.1:7878] [-open]
+  website [-config P] [-addr 127.0.0.1:7878] [-open] [-assets DIR]
                               serve a local web UI: the repositories scan finds, every config
-                              file, run records, and a chat with the supervisor
+                              file, run records, and a chat with the supervisor; -assets serves
+                              the UI from DIR instead of the embedded build (UI development)
 `
 
 func main() {

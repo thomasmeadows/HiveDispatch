@@ -448,7 +448,7 @@ func TestWebsiteServesUntilCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var out, errb syncBuffer
 	done := make(chan int, 1)
-	go func() { done <- serveWebsite(ctx, ln, cfgPath, false, &out, &errb) }()
+	go func() { done <- serveWebsite(ctx, ln, websiteOptions{cfgPath: cfgPath}, &out, &errb) }()
 	res, err := http.Get("http://" + ln.Addr().String() + "/api/overview")
 	if err != nil {
 		t.Fatal(err)
@@ -469,5 +469,45 @@ func TestWebsiteServesUntilCancelled(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "http://localhost:") {
 		t.Errorf("stdout = %q", out.String())
+	}
+}
+
+func TestWebsiteServesAssetsFromDisk(t *testing.T) {
+	assets := t.TempDir()
+	if err := os.WriteFile(filepath.Join(assets, "index.html"), []byte("<p>from disk</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	var out, errb syncBuffer
+	done := make(chan int, 1)
+	go func() {
+		done <- serveWebsite(ctx, ln, websiteOptions{cfgPath: filepath.Join(t.TempDir(), "config.yaml"), assets: assets}, &out, &errb)
+	}()
+	res, err := http.Get("http://" + ln.Addr().String() + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if !strings.Contains(string(body), "from disk") {
+		t.Errorf("GET / = %q, want the file from -assets", body)
+	}
+	if cc := res.Header.Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store so a rebuild shows on reload", cc)
+	}
+	cancel()
+	if code := <-done; code != 0 {
+		t.Errorf("exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "serving the UI from "+assets) {
+		t.Errorf("stdout = %q", out.String())
+	}
+	var o, e bytes.Buffer
+	if code := run([]string{"website", "-assets", filepath.Join(assets, "missing")}, &o, &e); code != 1 {
+		t.Errorf("missing -assets dir: exit %d, want 1", code)
 	}
 }
