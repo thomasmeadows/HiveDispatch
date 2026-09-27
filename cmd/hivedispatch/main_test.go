@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -420,5 +423,51 @@ func TestUsageListsSupervisor(t *testing.T) {
 	run(nil, &out, &errb)
 	if !strings.Contains(errb.String(), "supervisor") {
 		t.Error("usage lacks supervisor")
+	}
+}
+
+func TestWebsiteFlags(t *testing.T) {
+	var out, errb bytes.Buffer
+	if code := run([]string{"website", "-nope"}, &out, &errb); code != 2 {
+		t.Errorf("unknown flag: exit %d, want 2", code)
+	}
+	if code := run([]string{"website", "-addr", "not an address"}, &out, &errb); code != 1 {
+		t.Errorf("bad address: exit %d, want 1", code)
+	}
+	if !strings.Contains(usage, "website") {
+		t.Error("usage does not list website")
+	}
+}
+
+func TestWebsiteServesUntilCancelled(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	ctx, cancel := context.WithCancel(context.Background())
+	var out, errb syncBuffer
+	done := make(chan int, 1)
+	go func() { done <- serveWebsite(ctx, ln, cfgPath, false, &out, &errb) }()
+	res, err := http.Get("http://" + ln.Addr().String() + "/api/overview")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != 200 || !strings.Contains(string(body), `"config_exists":false`) {
+		t.Errorf("overview = %d %s", res.StatusCode, body)
+	}
+	cancel()
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Errorf("exit %d: %s", code, errb.String())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("website did not stop")
+	}
+	if !strings.Contains(out.String(), "http://localhost:") {
+		t.Errorf("stdout = %q", out.String())
 	}
 }

@@ -55,6 +55,9 @@ commands:
   supervisor [-config P] [-provider anthropic|openai|deepseek|huggingface|ollama] [-model M] [-resume | -session FILE]
                               chat with the built-in assistant that helps configure and run HiveDispatch;
                               piped stdin asks one question and exits
+  website [-config P] [-addr 127.0.0.1:7878] [-open]
+                              serve a local web UI: the repositories scan finds, every config
+                              file, run records, and a chat with the supervisor
 `
 
 func main() {
@@ -84,6 +87,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runStatus(args[1:], stdout, stderr)
 	case "supervisor":
 		return runSupervisor(args[1:], os.Stdin, stdout, stderr)
+	case "website":
+		return runWebsite(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
