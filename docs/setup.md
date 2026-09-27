@@ -1,14 +1,41 @@
 # Setup
 
-HiveDispatch needs: a Jira Cloud site (API token, two custom fields for the claim protocol, five workflow statuses), a GitHub token for opening pull requests, git credentials that can clone and push the repositories it works in, and a logged-in Claude Code CLI (or Codex CLI, with `executor: codex`).
+HiveDispatch needs: an issue tracker per repository — its GitHub Issues, or a Jira Cloud site (API token, two custom fields for the claim protocol, five workflow statuses) — a GitHub token for opening pull requests, git credentials that can clone and push the repositories it works in, and a logged-in Claude Code CLI (or Codex CLI, with `executor: codex`).
 
 ## 0. Start here
+
+Configuration has two layers ([`docs/config.md`](config.md) has every key): a **worker config** for this machine, and a **`.hive-dispatch/` folder in each repository** that says which tracker holds that repository's queue. Repositories can use different trackers.
 
 ```sh
 hivedispatch init
 ```
 
-writes a commented starter config to `~/.config/hivedispatch/config.yaml` (or `-config PATH`) and never overwrites a non-empty file. Every field in it says where its value comes from. The sections below follow the same order as the comments in that file. If a later command reports `invalid config`, each line names the field and where to get it.
+writes a commented starter worker config to `~/.config/hivedispatch/config.yaml` (or `-config PATH`) and never overwrites a non-empty file. Set `agent_id`, and point `code_dirs` at the folder your checkouts live in:
+
+```yaml
+agent_id: laptop-1
+code_dirs: [~/code]
+```
+
+Then enrol each repository the worker should take tickets for:
+
+```sh
+cd ~/code/yourrepo
+hivedispatch init -github      # queue in this repository's GitHub Issues (section 8)
+# or
+hivedispatch init -jira        # queue in a Jira project (sections 1–4)
+```
+
+The first run writes `.hive-dispatch/repo.yaml` (the tracker settings, every field commented) and `.hive-dispatch/policy.yaml` (the agent policy, section 9). Fill in `repo.yaml`, commit both, and run the same command again: it creates the labels or claim fields that tracker needs. `name`, `url` and `default_branch` come from the `origin` remote.
+
+Any repository under a code dir with a `repo.yaml` is enrolled; there is nothing else to register. Repositories elsewhere go under `repos:` by path. See what the worker would pick up with
+
+```sh
+hivedispatch scan              # every git repository under code_dirs, and which are enrolled
+hivedispatch check             # validates the worker config and every enrolled repository
+```
+
+If a command reports `invalid config`, each line names the file and field and where to get the value.
 
 ## 0b. Or let the supervisor walk you through it
 
@@ -17,7 +44,7 @@ export ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY, DEEPSEEK_API_KEY, HF_TOKEN
 hivedispatch supervisor
 ```
 
-opens a chat with an assistant built into the binary. It has read these docs, sees the current `hivedispatch check` output, and can write the config for you (you approve every diff), run `check -live` on its own, and run `init -jira` / `init -github` / a fake-executor dry run (you approve each of those), and remembers what it learned in `~/.config/hivedispatch/supervisor/memory.md` for next time. It never runs the real executor. `echo "why does check fail?" | hivedispatch supervisor` asks one question and exits. Which model answers is in [`docs/config.md` — Supervisor config](config.md#supervisor-config--confighivedispatchsupervisorconfigyaml).
+opens a chat with an assistant built into the binary. It has read these docs, sees the current `hivedispatch check` output, and can write the config for you (you approve every diff), run `check -live` and `scan` on its own, read each enrolled repository's `.hive-dispatch/` files, and run `init -jira` / `init -github` (in the repository it was started from) / a fake-executor dry run (you approve each of those), and remembers what it learned in `~/.config/hivedispatch/supervisor/memory.md` for next time. It never runs the real executor. `echo "why does check fail?" | hivedispatch supervisor` asks one question and exits. Which model answers is in [`docs/config.md` — Supervisor config](config.md#supervisor-config--confighivedispatchsupervisorconfigyaml).
 
 ## 1. API token
 
@@ -27,13 +54,13 @@ Create one at https://id.atlassian.com/manage-profile/security/api-tokens. Expor
 export HIVE_JIRA_TOKEN=...
 ```
 
-Put `base_url` and `email` in the worker config. The token never goes in YAML.
+Put `email` (the Atlassian account the token belongs to) in the worker config under `jira:`, and `base_url` in the repository's `.hive-dispatch/repo.yaml`. The token never goes in YAML. One token and email serve every Jira repository on the worker.
 
 ## 2. Claim fields
 
 When a worker takes a ticket it has to tell every other worker — and every human looking at the board — that the ticket is taken and that the worker is still alive. HiveDispatch does that with two custom fields on the issue:
 
-| Field in Jira | Config key | Meaning |
+| Field in Jira | `repo.yaml` key | Meaning |
 |---|---|---|
 | **HiveDispatch Agent** | `jira.fields.agent_id` | the `agent_id` of the worker that holds the ticket; empty when unclaimed |
 | **HiveDispatch Claimed At** | `jira.fields.claimed_at` | when that worker last checked in (its heartbeat, refreshed every `heartbeat_interval`). A claim older than `claim_timeout` is treated as abandoned — the worker probably crashed — and another worker may take the ticket over |
@@ -43,7 +70,7 @@ Two workers racing for one ticket both write the Agent field and then read it ba
 Create them with:
 
 ```sh
-hivedispatch init -jira
+hivedispatch init -jira        # in the repository, once repo.yaml is filled in
 ```
 
 which adds both fields (if missing) and puts them on the default screen so they are writable. You do **not** need to copy anything into the config: the worker looks the fields up by name at startup. Set `jira.fields.agent_id` / `claimed_at` to explicit `customfield_NNNNN` ids only if you renamed the fields or run against several sites.
@@ -62,11 +89,11 @@ Any names work; map them under `jira.statuses`. The workflow must allow transiti
 
 ## 4. Project key
 
-`repos[].jira_project` is the Jira **project key** — the letters before the dash in ticket keys (`SCRUM` for `SCRUM-4`). Tickets in that project are dispatched into that repository. `check -jira` lists the keys on your site if the configured one does not exist.
+`project` in `repo.yaml` is the Jira **project key** — the letters before the dash in ticket keys (`SCRUM` for `SCRUM-4`). Tickets in that project are dispatched into that repository. `check -jira` lists the keys on your site if the configured one does not exist.
 
 ## 4b. Trigger query
 
-`jira.jql` selects what HiveDispatch may work on, e.g.
+`jira.jql` in `repo.yaml` selects what HiveDispatch may work on, e.g.
 
 ```
 project = HIVE AND status = "Ready" AND labels = hive
@@ -74,24 +101,34 @@ project = HIVE AND status = "Ready" AND labels = hive
 
 Using a label as well as a status means a human explicitly opts each ticket in.
 
-## Example worker config
+## Example configuration
 
 `~/.config/hivedispatch/config.yaml`:
 
 ```yaml
 agent_id: worker-a
-workroot: ~/.local/share/hivedispatch
+code_dirs: [~/code]
+repos:
+  - path: ~/work/other-repo     # outside code_dirs
+jira:
+  email: you@example.com        # only needed when a repository uses Jira
+```
+
+`~/code/yourrepo/.hive-dispatch/repo.yaml`, a Jira repository:
+
+```yaml
+project: HIVE
+tracker: jira
 jira:
   base_url: https://yoursite.atlassian.net
-  email: you@example.com
   jql: 'project = HIVE AND status = "Ready" AND labels = hive'
-  fields:
-    agent_id: customfield_10042     # from `hivedispatch init -jira`
-    claimed_at: customfield_10043
-repos:
-  - name: yourorg/yourrepo
-    url: git@github.com:yourorg/yourrepo.git
-    jira_project: HIVE
+```
+
+`~/work/other-repo/.hive-dispatch/repo.yaml`, a GitHub Issues repository on the same worker:
+
+```yaml
+project: OTHER
+tracker: github
 ```
 
 ## 5. GitHub
@@ -118,7 +155,7 @@ GitHub has two kinds of personal access token. HiveDispatch does not care which 
 | Need | Fine-grained token | Classic token |
 |---|---|---|
 | Open pull requests | *Pull requests: Read and write* + *Contents: Read* | `repo` (or `public_repo` for public repos only) |
-| Read and write issues (`tracker: github`) | *Issues: Read and write* | `repo` |
+| Read and write issues (repositories with `tracker: github`) | *Issues: Read and write* | `repo` |
 | Move cards on an **organisation-owned** Projects board | *Projects: Read and write* on the organisation | `project` |
 | Move cards on a **user-owned** Projects board | **not possible** — fine-grained tokens have no account-level Projects permission | `project` |
 
@@ -155,20 +192,22 @@ hivedispatch run -once -placeholder   # takes one Ready ticket to a PR with a pl
 
 ## 8. GitHub Issues instead of Jira
 
-Set `tracker: github` in the worker config and skip sections 1–4. The GitHub token (section 5) then also needs **Issues: read and write**. State lives in labels and the claim in a hidden marker in the issue body, so nothing else has to exist in the repository.
+A repository whose `repo.yaml` says `tracker: github` needs none of sections 1–4. The GitHub token (section 5) then also needs **Issues: read and write**. State lives in labels and the claim in a hidden marker in the issue body, so nothing else has to exist in the repository.
 
 ```sh
-hivedispatch init -github     # creates hive:ready, hive:in-progress, hive:needs-info, hive:in-review, hive:needs-human in each repo
+cd ~/code/yourrepo
+hivedispatch init -github     # first run: writes .hive-dispatch/; set project, commit, then:
+hivedispatch init -github     # creates hive:ready, hive:in-progress, hive:needs-info, hive:in-review, hive:needs-human
 hivedispatch check -live
 ```
 
-To queue an issue, add the **`hive:ready`** label (one tap in the GitHub mobile app). The worker swaps the label as the ticket moves: `hive:in-progress` while it works, `hive:needs-info` when it has a question — answer in the thread and put `hive:ready` back — `hive:in-review` when a pull request is open, `hive:needs-human` when it will not attempt the issue. Ticket keys are `<project>-<issue number>` with `project` from `repos[].project`, so issue #12 in a repo with `project: HD` is `HD-12` and its branch is `hive/HD-12`.
+To queue an issue, add the **`hive:ready`** label (one tap in the GitHub mobile app). The worker swaps the label as the ticket moves: `hive:in-progress` while it works, `hive:needs-info` when it has a question — answer in the thread and put `hive:ready` back — `hive:in-review` when a pull request is open, `hive:needs-human` when it will not attempt the issue. Ticket keys are `<project>-<issue number>` with `project` from `repo.yaml`, so issue #12 in a repo with `project: HD` is `HD-12` and its branch is `hive/HD-12`.
 
-Label names are configurable under `github.labels`.
+Label names are configurable under `github.labels` in `repo.yaml`.
 
 ### A GitHub Projects board
 
-Optionally the worker also moves each issue's card on a GitHub Projects (v2) board as the label changes, so the board shows the same state as the labels. Point `github.project` at the board — `owner` and `number` come from its URL, `github.com/users/OWNER/projects/N` or `github.com/orgs/OWNER/projects/N` — and name the option of its single-select field (`Status` by default) for each state:
+Optionally the worker also moves each issue's card on a GitHub Projects (v2) board as the label changes, so the board shows the same state as the labels. Point `github.project` in `repo.yaml` at the board — `owner` and `number` come from its URL, `github.com/users/OWNER/projects/N` or `github.com/orgs/OWNER/projects/N` — and name the option of its single-select field (`Status` by default) for each state:
 
 ```yaml
 github:
@@ -193,13 +232,13 @@ Every option must already exist on the board; `hivedispatch check -live` lists t
 
 On each transition the worker adds the issue to the board if it is not there yet and sets the field; labels remain the queue and the source of truth, so a board that cannot be reached is logged and never blocks a run.
 
-Choose a `project` that no Jira project on the same worker uses. Ticket keys are the identity for branches, run records and worktrees; `SCRUM-5` from Jira and issue #5 in a repo with `project: SCRUM` would share all three.
+Choose a `project` that no other repository on the same worker uses (`check` rejects duplicates). Ticket keys are the identity for branches, run records and worktrees; `SCRUM-5` from Jira and issue #5 in a repo with `project: SCRUM` would share all three.
 
 ## 9. Claude Code
 
 The worker shells out to the `claude` CLI. Log in once as the user that runs the worker (`claude` then `/login`) — headless runs reuse the stored credentials. Do not set `--bare` anywhere; it skips credential loading.
 
-Per-repo policy lives in `.hivedispatch.yaml` at the repository root:
+Per-repo policy lives in `.hive-dispatch/policy.yaml` (`init -github` or `init -jira` writes a starter):
 
 ```yaml
 executor:
