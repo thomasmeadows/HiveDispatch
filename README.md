@@ -56,6 +56,8 @@ hivedispatch once SCRUM-42                           # drive one ticket by hand
 hivedispatch status                                  # what has run, from the state branch
 ```
 
+Or do all of that in a browser: `hivedispatch website -open` serves a local UI on `http://localhost:7878`. It has a **Dashboard** (check output, enrolled repositories, recent runs), a **Repos** list of everything `scan` finds (enrol a repository and edit its `repo.yaml` and `policy.yaml`), and a **Configuration** page for the worker and supervisor configs. On the right is a chat with the supervisor. Every save shows a diff and whatever the loader still objects to, keeps a `.bak`, and preserves comments. The supervisor asks for approval in the chat before it changes anything. The site answers only on loopback.
+
 Prebuilt binaries for Linux and macOS are on the [releases page](https://github.com/thomasmeadows/HiveDispatch/releases). Every step's prerequisites are in [`docs/setup.md`](docs/setup.md); every key in [`docs/config.md`](docs/config.md).
 
 ## License

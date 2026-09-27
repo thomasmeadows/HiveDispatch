@@ -14,6 +14,18 @@ go test -race ./...               # run all tests with the race detector
 go test -race -run TestName ./internal/pkg   # one test in one package
 ```
 
+### The web UI
+
+`hivedispatch website` serves a Vue 3 app from `web/`. Its Vite build is committed to `internal/web/dist` and embedded, so `go build` never needs Node. To change the UI you need Node 22+:
+
+```sh
+cd web && npm ci
+npm run dev        # hot-reloading UI on :5173; proxies /api to a running `hivedispatch website` on :7878
+npm run build      # rewrites internal/web/dist — commit it with the source change
+```
+
+CI rebuilds the UI and fails if `internal/web/dist` differs from what is committed.
+
 Unit tests are hermetic: every external system has a fake under `internal/`, so no credentials or network are needed to run the suite.
 
 ## Before every commit
