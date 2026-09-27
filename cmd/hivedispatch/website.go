@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -23,22 +22,28 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/web"
 )
 
-// runWebsite serves the local operator UI until interrupted.
+// runWebsite serves the local operator UI until interrupted: the embedded
+// production build, or with -dev the Vite dev server (HMR) behind the same
+// Go front door.
 func runWebsite(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("website", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	addr := fs.String("addr", "127.0.0.1:7878", "address to listen on")
 	open := fs.Bool("open", false, "open the site in the default browser")
-	assets := fs.String("assets", "", "serve the UI from this directory (e.g. internal/web/dist while `npm run dev` rebuilds it) instead of the embedded build")
+	dev := fs.Bool("dev", false, "UI development: serve the Vue source through Vite with hot reload instead of the embedded build")
+	webDir := fs.String("web", "", "with -dev, the web/ source directory (default: found from the current directory upward)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *assets != "" {
-		if _, err := os.Stat(filepath.Join(*assets, "index.html")); err != nil {
-			fmt.Fprintf(stderr, "-assets %s: no index.html there (run `npm run build` in web/ first): %v\n", *assets, err)
+	wo := websiteOptions{cfgPath: *cfgPath, open: *open}
+	if *dev {
+		dir, err := findWebDir(*webDir)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
 			return 1
 		}
+		wo.webDir = dir
 	}
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
@@ -47,13 +52,36 @@ func runWebsite(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return serveWebsite(ctx, ln, websiteOptions{cfgPath: *cfgPath, assets: *assets, open: *open}, stdout, stderr)
+	return serveWebsite(ctx, ln, wo, stdout, stderr)
 }
 
 type websiteOptions struct {
 	cfgPath string
-	assets  string // directory to serve the UI from; empty serves the embedded build
+	webDir  string // -dev: the web/ source to run Vite in; empty serves the embedded build
 	open    bool   // launch a browser
+}
+
+// findWebDir resolves -web, or looks for web/vite.config.js in the working
+// directory and each parent, so -dev works from anywhere in the checkout.
+func findWebDir(dir string) (string, error) {
+	if dir != "" {
+		if _, err := os.Stat(filepath.Join(dir, "vite.config.js")); err != nil {
+			return "", fmt.Errorf("-web %s: no vite.config.js there", dir)
+		}
+		return filepath.Abs(dir)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for d := wd; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, "web", "vite.config.js")); err == nil {
+			return filepath.Join(d, "web"), nil
+		}
+		if filepath.Dir(d) == d {
+			return "", errors.New("-dev needs the HiveDispatch source: run it inside the checkout, or pass -web DIR")
+		}
+	}
 }
 
 // serveWebsite serves on ln until ctx is done.
@@ -73,12 +101,21 @@ func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdou
 			}
 		}
 	}
-	var assets fs.FS // nil: the embedded build
-	if wo.assets != "" {
-		assets = os.DirFS(wo.assets)
+	var frontend http.Handler // nil: the embedded build
+	var viteDone <-chan struct{}
+	if wo.webDir != "" {
+		viteCtx, stopVite := context.WithCancel(ctx)
+		defer stopVite()
+		v, err := web.StartVite(viteCtx, wo.webDir, stderr)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		frontend, viteDone = v.Handler(), v.Done()
+		defer func() { stopVite(); <-v.Done() }() // never leave Vite running behind us
 	}
 	srv, err := web.New(web.Options{
-		ConfigPath: cfgPath, Exe: exe, AllowHosts: allow, Assets: assets,
+		ConfigPath: cfgPath, Exe: exe, AllowHosts: allow, Frontend: frontend,
 		ListRuns: func(ctx context.Context) ([]state.Run, error) {
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
@@ -102,19 +139,11 @@ func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdou
 		return 1
 	}
 	defer srv.Close()
-	var h http.Handler = srv
-	if wo.assets != "" {
-		// The files change under a watch build; never let the browser keep a stale copy.
-		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Cache-Control", "no-store")
-			srv.ServeHTTP(w, r)
-		})
-	}
-	hs := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	hs := &http.Server{Handler: srv, ReadHeaderTimeout: 10 * time.Second}
 	url := "http://" + displayAddr(ln.Addr())
 	fmt.Fprintf(stdout, "HiveDispatch website on %s (config %s) — Ctrl-C to stop\n", url, cfgPath)
-	if wo.assets != "" {
-		fmt.Fprintf(stdout, "serving the UI from %s; reload the page after a rebuild\n", wo.assets)
+	if wo.webDir != "" {
+		fmt.Fprintf(stdout, "dev mode: serving %s through Vite with hot reload\n", wo.webDir)
 	}
 	if wo.open {
 		if err := launchBrowser(url); err != nil {
@@ -126,6 +155,10 @@ func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdou
 	select {
 	case err := <-errc:
 		fmt.Fprintln(stderr, err)
+		return 1
+	case <-viteDone:
+		fmt.Fprintln(stderr, "the Vite dev server exited; stopping")
+		_ = hs.Close() // Vite is gone, so nothing is left to serve
 		return 1
 	case <-ctx.Done():
 	}

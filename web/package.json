@@ -4,7 +4,6 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch --mode development",
     "build": "vite build"
   },
   "dependencies": {

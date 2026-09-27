@@ -472,42 +472,35 @@ func TestWebsiteServesUntilCancelled(t *testing.T) {
 	}
 }
 
-func TestWebsiteServesAssetsFromDisk(t *testing.T) {
-	assets := t.TempDir()
-	if err := os.WriteFile(filepath.Join(assets, "index.html"), []byte("<p>from disk</p>"), 0o600); err != nil {
+func TestWebsiteDevNeedsTheSource(t *testing.T) {
+	var out, errb bytes.Buffer
+	if code := run([]string{"website", "-dev", "-web", t.TempDir()}, &out, &errb); code != 1 || !strings.Contains(errb.String(), "vite.config.js") {
+		t.Errorf("-web without a Vite project: exit %d, %q", code, errb.String())
+	}
+	web := t.TempDir()
+	if err := os.WriteFile(filepath.Join(web, "vite.config.js"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
+	errb.Reset()
+	if code := run([]string{"website", "-dev", "-web", web, "-addr", "127.0.0.1:0"}, &out, &errb); code != 1 || !strings.Contains(errb.String(), "npm ci") {
+		t.Errorf("-dev without node_modules: exit %d, %q", code, errb.String())
+	}
+	t.Chdir(t.TempDir())
+	if _, err := findWebDir(""); err == nil || !strings.Contains(err.Error(), "-web") {
+		t.Errorf("outside a checkout: %v", err)
+	}
+	sub := filepath.Join(filepath.Dir(web), "repo", "internal", "x")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	var out, errb syncBuffer
-	done := make(chan int, 1)
-	go func() {
-		done <- serveWebsite(ctx, ln, websiteOptions{cfgPath: filepath.Join(t.TempDir(), "config.yaml"), assets: assets}, &out, &errb)
-	}()
-	res, err := http.Get("http://" + ln.Addr().String() + "/")
-	if err != nil {
+	if err := os.MkdirAll(filepath.Join(filepath.Dir(web), "repo", "web"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body, _ := io.ReadAll(res.Body)
-	_ = res.Body.Close()
-	if !strings.Contains(string(body), "from disk") {
-		t.Errorf("GET / = %q, want the file from -assets", body)
+	if err := os.WriteFile(filepath.Join(filepath.Dir(web), "repo", "web", "vite.config.js"), nil, 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if cc := res.Header.Get("Cache-Control"); cc != "no-store" {
-		t.Errorf("Cache-Control = %q, want no-store so a rebuild shows on reload", cc)
-	}
-	cancel()
-	if code := <-done; code != 0 {
-		t.Errorf("exit %d: %s", code, errb.String())
-	}
-	if !strings.Contains(out.String(), "serving the UI from "+assets) {
-		t.Errorf("stdout = %q", out.String())
-	}
-	var o, e bytes.Buffer
-	if code := run([]string{"website", "-assets", filepath.Join(assets, "missing")}, &o, &e); code != 1 {
-		t.Errorf("missing -assets dir: exit %d, want 1", code)
+	t.Chdir(sub)
+	if got, err := findWebDir(""); err != nil || !strings.HasSuffix(got, filepath.Join("repo", "web")) {
+		t.Errorf("from a subdirectory: %q, %v", got, err)
 	}
 }

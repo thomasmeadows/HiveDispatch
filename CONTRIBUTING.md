@@ -16,14 +16,15 @@ go test -race -run TestName ./internal/pkg   # one test in one package
 
 ### The web UI
 
-`hivedispatch website` serves a Vue 3 app from `web/`. Its Vite build is committed to `internal/web/dist` and embedded, so `go build` never needs Node. Node 22+ is only needed to compile the UI after you change it, and the Go binary serves the UI in development too — there is no Node server:
+`hivedispatch website` serves a Vue 3 app from `web/`. It has two modes, and in both the browser only talks to the Go server, so everything in front of the UI (the host and origin checks today, a login gate later) applies to both:
+
+- **Production:** `hivedispatch website` serves the Vite build that is committed to `internal/web/dist` and embedded in the binary. `go build` never needs Node.
+- **Development:** `hivedispatch website -dev` starts Vite's dev server itself, on a private loopback port, and proxies every non-API request to it, including the hot-reload websocket. Edit a `.vue` file and the page updates in place. Run it anywhere inside the checkout (it finds `web/`), or pass `-web DIR`. It needs Node 22+ and `npm ci` in `web/` once.
 
 ```sh
-cd web && npm ci
-npm run dev        # rebuilds internal/web/dist on every change (vite build --watch)
-# in another terminal, from the repo root:
-go run ./cmd/hivedispatch website -assets internal/web/dist   # serve those files from disk; reload the page after a rebuild
-npm run build      # the production build — commit internal/web/dist with the source change
+cd web && npm ci && cd ..
+go run ./cmd/hivedispatch website -dev   # hot-reloading UI on http://localhost:7878
+cd web && npm run build                  # when done: rewrites internal/web/dist; commit it with the source change
 ```
 
 CI rebuilds the UI and fails if `internal/web/dist` differs from what is committed.

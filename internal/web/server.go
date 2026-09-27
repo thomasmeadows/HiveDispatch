@@ -38,6 +38,9 @@ type Options struct {
 	AllowHosts []string
 	// Assets is the front end; nil serves the embedded build.
 	Assets fs.FS
+	// Frontend, when set, answers every non-API request instead of Assets
+	// (the Vite dev server proxy in -dev mode).
+	Frontend http.Handler
 	// Getenv reads the environment (supervisor API keys); nil is os.Getenv.
 	Getenv func(string) string
 }
@@ -85,7 +88,11 @@ func (s *Server) routes() {
 	m.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, errors.New("no such endpoint"))
 	})
-	m.Handle("/", http.FileServerFS(s.o.Assets))
+	if s.o.Frontend != nil {
+		m.Handle("/", s.o.Frontend)
+	} else {
+		m.Handle("/", http.FileServerFS(s.o.Assets))
+	}
 }
 
 // ServeHTTP applies the host and origin checks, then routes.
