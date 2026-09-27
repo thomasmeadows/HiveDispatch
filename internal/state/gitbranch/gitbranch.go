@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thomasmeadows/hivedispatch/internal/gitops/repolock"
 	"github.com/thomasmeadows/hivedispatch/internal/state"
 	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
 )
@@ -49,6 +50,9 @@ var _ state.RunStore = (*Store)(nil)
 // not) and is checked out at dir as a worktree of base.
 func Open(ctx context.Context, base, dir string) (*Store, error) {
 	s := &Store{Dir: dir, Now: time.Now}
+	l := repolock.For(filepath.Dir(dir))
+	l.Lock()
+	defer l.Unlock()
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 		_, _ = runEnv(ctx, dir, identityEnv(commitName, commitEmail), "pull", "-q", "--rebase", "origin", Branch) // best effort
 		return s, nil
@@ -75,7 +79,7 @@ func Open(ctx context.Context, base, dir string) (*Store, error) {
 		if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("HiveDispatch run state. Managed automatically; do not edit by hand.\n"), 0o644); err != nil {
 			return nil, err
 		}
-		if err := s.commitAndPush(ctx, "hive: init state", nil); err != nil {
+		if err := s.commitAndPushLocked(ctx, "hive: init state", nil); err != nil {
 			return nil, err
 		}
 	}
@@ -194,6 +198,16 @@ func (s *Store) write(rel string, raw []byte) error {
 // On rejection it fetches; if the incoming commits touch any of ours it
 // returns ErrClaimInvariant, otherwise it rebases and pushes again.
 func (s *Store) commitAndPush(ctx context.Context, msg string, ours []string) error {
+	// The state worktree shares its base clone with the ticket worktrees,
+	// which may be fetching or pushing at the same time.
+	l := repolock.For(filepath.Dir(s.Dir))
+	l.Lock()
+	defer l.Unlock()
+	return s.commitAndPushLocked(ctx, msg, ours)
+}
+
+// commitAndPushLocked is commitAndPush for a caller holding the repository's lock.
+func (s *Store) commitAndPushLocked(ctx context.Context, msg string, ours []string) error {
 	env := identityEnv(commitName, commitEmail)
 	if _, err := run(ctx, s.Dir, "add", "-A"); err != nil {
 		return err

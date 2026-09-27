@@ -1,8 +1,14 @@
-// Package config loads and validates the HiveDispatch worker configuration.
+// Package config loads and validates the HiveDispatch configuration.
 //
-// The worker config lives outside any governed repository (by default
-// ~/.config/hivedispatch/config.yaml) because the worker needs it before it
-// can clone anything. Secrets are never read from YAML; they come from the
+// Configuration comes in two layers. The worker config (by default
+// ~/.config/hivedispatch/config.yaml) holds what belongs to this machine:
+// the agent id, workroot, schedule, executor, credentials' account names,
+// and where to find repositories — explicit paths and code_dirs to scan.
+// Each governed repository carries its own settings in
+// .hive-dispatch/repo.yaml: its ticket-key prefix, which tracker holds its
+// queue (Jira or GitHub Issues) and that tracker's settings. The worker
+// reads repo.yaml from the local checkout, so it can start before cloning
+// anything. Secrets are never read from YAML; they come from the
 // environment.
 package config
 
@@ -14,11 +20,15 @@ import (
 	"time"
 )
 
-// Config is the worker-level configuration.
+// Config is the worker-level configuration plus the repositories resolved
+// from it.
 type Config struct {
-	Tracker           string        `yaml:"tracker"` // "jira" (default) or "github"
 	AgentID           string        `yaml:"agent_id"`
 	Workroot          string        `yaml:"workroot"`
+	CodeDirs          []string      `yaml:"code_dirs"`      // scanned for repositories with .hive-dispatch/repo.yaml
+	ScanDepth         int           `yaml:"scan_depth"`     // directory levels below each code dir; default 4
+	MaxConcurrent     int           `yaml:"max_concurrent"` // tickets worked at once, each in its own worktree; default 1
+	RepoPaths         []RepoRef     `yaml:"repos"`          // explicit repositories, in addition to code_dirs
 	PollInterval      time.Duration `yaml:"poll_interval"`
 	HeartbeatInterval time.Duration `yaml:"heartbeat_interval"`
 	ClaimTimeout      time.Duration `yaml:"claim_timeout"`
@@ -33,9 +43,25 @@ type Config struct {
 	Claude            ClaudeConfig  `yaml:"claude"`
 	Codex             CodexConfig   `yaml:"codex"`
 	Triage            TriageConfig  `yaml:"triage"`
-	Jira              JiraConfig    `yaml:"jira"`
-	GitHub            GitHubConfig  `yaml:"github"`
-	Repos             []RepoConfig  `yaml:"repos"`
+	// Jira and GitHub hold the worker's accounts: jira.email and
+	// github.api_url in YAML, tokens from the environment. Tracker settings
+	// live in each repository's repo.yaml.
+	Jira   JiraConfig   `yaml:"jira"`
+	GitHub GitHubConfig `yaml:"github"`
+
+	// Repos are the enrolled repositories, resolved by Load: explicit
+	// RepoPaths first, then those found under CodeDirs.
+	Repos []RepoConfig `yaml:"-"`
+	// Shadowed maps a repository path that was skipped to the path used
+	// instead, when both are checkouts of the same repository.
+	Shadowed map[string]string `yaml:"-"`
+
+	problems []string // found while resolving Repos; reported by Validate
+}
+
+// RepoRef is one explicit repository in the worker config.
+type RepoRef struct {
+	Path string `yaml:"path"`
 }
 
 // JiraConfig describes the Jira Cloud site and the fields the claim protocol uses.
@@ -67,7 +93,7 @@ type JiraStatuses struct {
 }
 
 // ClaudeConfig configures the Claude Code executor at the worker level;
-// per-repo settings live in .hivedispatch.yaml inside the governed repo.
+// per-repo settings live in .hive-dispatch/policy.yaml inside the governed repo.
 type ClaudeConfig struct {
 	Binary string `yaml:"binary"` // default "claude"
 	Model  string `yaml:"model"`  // default model when the repo sets none
@@ -131,13 +157,18 @@ type GitHubProjectColumns struct {
 // Enabled reports whether a project board is configured at all.
 func (p GitHubProject) Enabled() bool { return p.Owner != "" || p.Number != 0 }
 
-// RepoConfig is one repository the worker may dispatch work into.
+// RepoConfig is one enrolled repository: its .hive-dispatch/repo.yaml,
+// with origin facts filled in and the worker's accounts merged into Jira
+// and GitHub.
 type RepoConfig struct {
-	Name          string `yaml:"name"`           // owner/repo
-	URL           string `yaml:"url"`            // clone URL
-	DefaultBranch string `yaml:"default_branch"` // default "main"
-	Project       string `yaml:"project"`        // ticket key prefix; tickets in this project map to this repo
-	JiraProject   string `yaml:"jira_project"`   // deprecated alias for project
+	Path          string       // local checkout the settings were read from
+	Name          string       // owner/repo; default parsed from the origin URL
+	URL           string       // clone URL; default the origin remote
+	DefaultBranch string       // default origin/HEAD, else "main"
+	Project       string       // ticket key prefix; tickets in this project map to this repo
+	Tracker       string       // "jira" or "github"
+	Jira          JiraConfig   // with tracker: jira
+	GitHub        GitHubConfig // PR API always; issues and labels with tracker: github
 }
 
 // RunWindows restricts when the poller claims new work. Empty means always.
@@ -156,6 +187,12 @@ type WindowConfig struct {
 // projectKeyRe matches Jira project keys: letters first, then letters,
 // digits or underscores.
 var projectKeyRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
+
+func def(p *string, v string) {
+	if *p == "" {
+		*p = v
+	}
+}
 
 func (c *Config) applyDefaults() {
 	if c.PollInterval == 0 {
@@ -179,17 +216,12 @@ func (c *Config) applyDefaults() {
 	if c.PollJitter == 0 {
 		c.PollJitter = 10 * time.Second
 	}
-	s := &c.Jira.Statuses
-	def := func(p *string, v string) {
-		if *p == "" {
-			*p = v
-		}
+	if c.ScanDepth == 0 {
+		c.ScanDepth = 4
 	}
-	def(&s.Ready, "Ready")
-	def(&s.InProgress, "In Progress")
-	def(&s.NeedsInfo, "Needs Info")
-	def(&s.InReview, "In Review")
-	def(&s.NeedsHuman, "Needs Human")
+	if c.MaxConcurrent == 0 {
+		c.MaxConcurrent = 1
+	}
 	def(&c.GitHub.APIURL, "https://api.github.com")
 	def(&c.StateStore, "branch")
 	if c.RetentionDays == 0 {
@@ -205,18 +237,24 @@ func (c *Config) applyDefaults() {
 	if c.Triage.Timeout == 0 {
 		c.Triage.Timeout = 5 * time.Minute
 	}
-	for i := range c.Repos {
-		def(&c.Repos[i].DefaultBranch, "main")
-		def(&c.Repos[i].Project, c.Repos[i].JiraProject)
-	}
-	def(&c.Tracker, "jira")
-	l := &c.GitHub.Labels
+}
+
+// applyDefaults fills a repository's tracker defaults.
+func (r *RepoConfig) applyDefaults() {
+	def(&r.DefaultBranch, "main")
+	s := &r.Jira.Statuses
+	def(&s.Ready, "Ready")
+	def(&s.InProgress, "In Progress")
+	def(&s.NeedsInfo, "Needs Info")
+	def(&s.InReview, "In Review")
+	def(&s.NeedsHuman, "Needs Human")
+	l := &r.GitHub.Labels
 	def(&l.Ready, "hive:ready")
 	def(&l.InProgress, "hive:in-progress")
 	def(&l.NeedsInfo, "hive:needs-info")
 	def(&l.InReview, "hive:in-review")
 	def(&l.NeedsHuman, "hive:needs-human")
-	p := &c.GitHub.Project
+	p := &r.GitHub.Project
 	def(&p.Field, "Status")
 	def(&p.Columns.Ready, "Ready")
 	def(&p.Columns.InProgress, "In Progress")
@@ -225,78 +263,149 @@ func (c *Config) applyDefaults() {
 	def(&p.Columns.NeedsHuman, "Needs Human")
 }
 
+// SetGitHubToken records a discovered GitHub token on the worker and on
+// every repository.
+func (c *Config) SetGitHubToken(tok string) {
+	c.GitHub.Token = tok
+	for i := range c.Repos {
+		c.Repos[i].GitHub.Token = tok
+	}
+}
+
+// RepoByProject returns the repository whose ticket-key prefix is project
+// (case-insensitive), or nil.
+func (c *Config) RepoByProject(project string) *RepoConfig {
+	for i := range c.Repos {
+		if strings.EqualFold(c.Repos[i].Project, project) {
+			return &c.Repos[i]
+		}
+	}
+	return nil
+}
+
+// UsesTracker reports whether any repository uses tracker kind.
+func (c *Config) UsesTracker(kind string) bool {
+	for _, r := range c.Repos {
+		if r.Tracker == kind {
+			return true
+		}
+	}
+	return false
+}
+
 // Validate returns an error listing every missing or inconsistent field,
-// each with a hint about where the value comes from.
-//
-// The claim field ids are optional: when empty they are resolved by name at
-// startup.
+// each with a hint about where the value comes from: the worker's own
+// settings, every repository's repo.yaml (prefixed with its path), and the
+// rules that span repositories.
 func (c *Config) Validate() error {
+	problems := c.workerProblems()
+	problems = append(problems, c.problems...)
+	if len(c.Repos) == 0 && len(c.problems) == 0 {
+		problems = append(problems, "no enrolled repositories — run `hivedispatch init -github` (or -jira) inside a repository, then list it under repos: or keep it under code_dirs; `hivedispatch scan` shows what is found")
+	}
+	seen := map[string]string{}
+	for _, r := range c.Repos {
+		problems = append(problems, c.repoProblems(r)...)
+		key := strings.ToUpper(r.Project)
+		if other, dup := seen[key]; dup && key != "" {
+			problems = append(problems, fmt.Sprintf("%s: project %q is also used by %s — ticket keys must map to one repository", repoFilePath(r.Path), r.Project, other))
+		}
+		seen[key] = r.Path
+	}
+	problems = append(problems, c.accountProblems()...)
+	return problemsError(problems)
+}
+
+func problemsError(problems []string) error {
+	if len(problems) == 0 {
+		return nil
+	}
+	return errors.New("invalid config:\n  - " + strings.Join(problems, "\n  - ") + "\n\nSee docs/setup.md for the full walkthrough.")
+}
+
+// accountProblems checks the worker-level credentials that the enrolled
+// repositories' trackers need.
+func (c *Config) accountProblems() []string {
+	if !c.UsesTracker("jira") {
+		return nil
+	}
 	var problems []string
+	if strings.TrimSpace(c.Jira.Email) == "" {
+		problems = append(problems, "jira.email is required in the worker config (a repository uses tracker: jira) — the Atlassian account email the API token belongs to")
+	} else if ph := placeholderIn(c.Jira.Email); ph != "" {
+		problems = append(problems, "jira.email still has the starter placeholder "+ph+" — replace it with your real value")
+	}
+	if c.Jira.Token == "" {
+		problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required (a repository uses tracker: jira) — create an API token at https://id.atlassian.com/manage-profile/security/api-tokens and `export HIVE_JIRA_TOKEN=...`")
+	}
+	return problems
+}
+
+// placeholderIn returns the starter placeholder v still contains, or "".
+func placeholderIn(v string) string {
+	for _, ph := range starterPlaceholders {
+		if strings.Contains(v, ph) {
+			return ph
+		}
+	}
+	return ""
+}
+
+// repoProblems checks one repository's settings; every problem names its
+// repo.yaml.
+func (c *Config) repoProblems(r RepoConfig) []string {
+	var problems []string
+	file := repoFilePath(r.Path)
+	add := func(msg string) { problems = append(problems, file+": "+msg) }
 	need := func(v, name, hint string) {
 		if strings.TrimSpace(v) == "" {
-			problems = append(problems, name+" is required — "+hint)
+			add(name + " is required — " + hint)
 		}
 	}
 	placeholder := func(v, name string) {
-		for _, ph := range starterPlaceholders {
-			if strings.Contains(v, ph) {
-				problems = append(problems, name+" still has the starter placeholder "+ph+" — replace it with your real value")
-				return
-			}
+		if ph := placeholderIn(v); ph != "" {
+			add(name + " still has the starter placeholder " + ph + " — replace it with your real value")
 		}
 	}
-	need(c.AgentID, "agent_id", "any short name for this worker, e.g. laptop-1")
-	switch c.Tracker {
-	case "", "jira":
-		need(c.Jira.BaseURL, "jira.base_url", "your Jira Cloud site, e.g. https://yourteam.atlassian.net")
-		need(c.Jira.Email, "jira.email", "the Atlassian account email the API token belongs to")
-		need(c.Jira.JQL, "jira.jql", `the query that selects work, e.g. project = KEY AND status = "Ready" AND labels = hive`)
-		placeholder(c.Jira.BaseURL, "jira.base_url")
-		placeholder(c.Jira.Email, "jira.email")
-		placeholder(c.Jira.JQL, "jira.jql")
-		for _, f := range []struct{ v, name string }{{c.Jira.Fields.AgentID, "jira.fields.agent_id"}, {c.Jira.Fields.ClaimedAt, "jira.fields.claimed_at"}} {
+	need(r.Name, "name", "owner/repo as shown on GitHub; normally parsed from the origin remote")
+	need(r.URL, "url", "the repository has no origin remote — add one (git remote add origin ...) or set url to the clone URL your git credentials can push to")
+	need(r.Project, "project", "the ticket key prefix: the Jira project key, or any short upper-case tag for GitHub Issues")
+	if r.Project == "KEY" {
+		add("project still has the starter placeholder KEY — use your project key")
+	} else if r.Project != "" && !projectKeyRe.MatchString(r.Project) {
+		add(fmt.Sprintf("project %q is not a project key — it is the letters before the dash in ticket keys, e.g. SCRUM for SCRUM-4", r.Project))
+	}
+	switch r.Tracker {
+	case "jira":
+		need(r.Jira.BaseURL, "jira.base_url", "your Jira Cloud site, e.g. https://yourteam.atlassian.net")
+		need(r.Jira.JQL, "jira.jql", `the query that selects work, e.g. project = KEY AND status = "Ready" AND labels = hive`)
+		placeholder(r.Jira.BaseURL, "jira.base_url")
+		placeholder(r.Jira.JQL, "jira.jql")
+		for _, f := range []struct{ v, name string }{{r.Jira.Fields.AgentID, "jira.fields.agent_id"}, {r.Jira.Fields.ClaimedAt, "jira.fields.claimed_at"}} {
 			if f.v != "" && !strings.HasPrefix(f.v, "customfield_") {
-				problems = append(problems, f.name+" must be a Jira custom field id like customfield_10042 (or leave it empty to look the field up by name)")
+				add(f.name + " must be a Jira custom field id like customfield_10042 (or leave it empty to look the field up by name)")
 			}
-		}
-		if c.Jira.Token == "" {
-			problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required — create an API token at https://id.atlassian.com/manage-profile/security/api-tokens and `export HIVE_JIRA_TOKEN=...`")
 		}
 	case "github":
-		if c.GitHub.Token == "" {
-			problems = append(problems, "tracker: github needs a GitHub token with Issues read/write — `export HIVE_GITHUB_TOKEN=...`, or run `gh auth login` (the GitHub CLI token is picked up automatically)")
-		}
-		if p := c.GitHub.Project; p.Enabled() {
+		if p := r.GitHub.Project; p.Enabled() {
 			need(p.Owner, "github.project.owner", "the user or organisation that owns the board: OWNER in github.com/users/OWNER/projects/N")
 			if p.Number <= 0 {
-				problems = append(problems, "github.project.number is required — N in github.com/users/OWNER/projects/N")
+				add("github.project.number is required — N in github.com/users/OWNER/projects/N")
 			}
 		}
+	case "":
+		add("tracker is required — jira or github")
 	default:
-		problems = append(problems, fmt.Sprintf("tracker: want jira or github, got %q", c.Tracker))
+		add(fmt.Sprintf("tracker: want jira or github, got %q", r.Tracker))
 	}
-	if len(c.Repos) == 0 {
-		problems = append(problems, "repos must list at least one repository — name (owner/repo), url (clone URL), project (the ticket key prefix)")
-	}
-	seen := map[string]int{}
-	for i, r := range c.Repos {
-		key := strings.ToUpper(r.Project)
-		if j, dup := seen[key]; dup && key != "" {
-			problems = append(problems, fmt.Sprintf("repos[%d].project %q is also used by repos[%d] — ticket keys must map to one repository", i, r.Project, j))
-		}
-		seen[key] = i
-	}
-	for i, r := range c.Repos {
-		need(r.Name, fmt.Sprintf("repos[%d].name", i), "owner/repo as shown on GitHub")
-		need(r.URL, fmt.Sprintf("repos[%d].url", i), "the clone URL your git credentials can push to, e.g. git@github.com:owner/repo.git")
-		need(r.Project, fmt.Sprintf("repos[%d].project", i), "the ticket key prefix: the Jira project key, or any short upper-case tag for GitHub Issues")
-		placeholder(r.Name, fmt.Sprintf("repos[%d].name", i))
-		placeholder(r.URL, fmt.Sprintf("repos[%d].url", i))
-		if r.Project == "KEY" {
-			problems = append(problems, fmt.Sprintf("repos[%d].project still has the starter placeholder KEY — use your project key", i))
-		} else if r.Project != "" && !projectKeyRe.MatchString(r.Project) {
-			problems = append(problems, fmt.Sprintf("repos[%d].project %q is not a project key — it is the letters before the dash in ticket keys, e.g. SCRUM for SCRUM-4", i, r.Project))
-		}
+	return problems
+}
+
+// workerProblems checks the worker's own settings.
+func (c *Config) workerProblems() []string {
+	var problems []string
+	if strings.TrimSpace(c.AgentID) == "" {
+		problems = append(problems, "agent_id is required — any short name for this worker, e.g. laptop-1")
 	}
 	if c.Executor != "" && c.Executor != "claude" && c.Executor != "codex" && c.Executor != "fake" {
 		problems = append(problems, fmt.Sprintf("executor: want claude, codex or fake, got %q", c.Executor))
@@ -306,6 +415,12 @@ func (c *Config) Validate() error {
 	}
 	if c.RetentionDays < -1 {
 		problems = append(problems, "retention_days must be -1 (never prune), or a number of days")
+	}
+	if c.ScanDepth < 0 {
+		problems = append(problems, "scan_depth must be 0 (only the code dirs themselves) or more")
+	}
+	if c.MaxConcurrent < 0 {
+		problems = append(problems, "max_concurrent must be 1 or more — how many tickets this worker works at once")
 	}
 	if c.StateStore != "" && c.StateStore != "branch" && c.StateStore != "local" {
 		problems = append(problems, fmt.Sprintf("state_store: want branch or local, got %q", c.StateStore))
@@ -325,8 +440,5 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
-	if len(problems) == 0 {
-		return nil
-	}
-	return errors.New("invalid config:\n  - " + strings.Join(problems, "\n  - ") + "\n\nSee docs/setup.md for the full walkthrough.")
+	return problems
 }

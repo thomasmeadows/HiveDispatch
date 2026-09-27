@@ -1,6 +1,7 @@
-// Package repoconfig reads .hivedispatch.yaml from a governed repository.
-// Per-repo policy lives in the repo so changes go through the same review
-// as code.
+// Package repoconfig reads the agent policy, .hive-dispatch/policy.yaml,
+// from a governed repository. Per-repo policy lives in the repo so changes
+// go through the same review as code; it is read from the ticket worktree,
+// so the committed copy is the one that applies.
 package repoconfig
 
 import (
@@ -13,8 +14,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// FileName is the config file at the repo root.
-const FileName = ".hivedispatch.yaml"
+// Dir is the HiveDispatch folder at the repo root. It holds PolicyFile and
+// the tracker settings (repo.yaml, read by package config).
+const Dir = ".hive-dispatch"
+
+// PolicyFile is the agent policy inside Dir.
+const PolicyFile = "policy.yaml"
+
+// FileName is the policy's path relative to the repo root, for messages.
+const FileName = Dir + "/" + PolicyFile
+
+// LegacyFileName is where the policy lived before Dir; it is no longer read.
+const LegacyFileName = ".hivedispatch.yaml"
 
 // Config is the per-repo policy.
 type Config struct {
@@ -65,12 +76,19 @@ var permissionModes = map[string]bool{"acceptEdits": true, "auto": true, "bypass
 
 var codexSandboxes = map[string]bool{"read-only": true, "workspace-write": true, "danger-full-access": true}
 
-// Load reads dir/.hivedispatch.yaml; a missing file yields defaults.
+// Load reads dir/.hive-dispatch/policy.yaml; a missing file yields
+// defaults, unless the repo still has the legacy .hivedispatch.yaml, which
+// is an error rather than silently ignored policy.
 func Load(dir string) (Config, error) {
 	var c Config
-	raw, err := os.ReadFile(filepath.Join(dir, FileName))
+	raw, err := os.ReadFile(filepath.Join(dir, Dir, PolicyFile))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return c, err
+	}
+	if err != nil {
+		if _, lerr := os.Stat(filepath.Join(dir, LegacyFileName)); lerr == nil {
+			return c, fmt.Errorf("%s is no longer read: move it to %s (same keys) — see docs/config.md", LegacyFileName, FileName)
+		}
 	}
 	if err == nil {
 		if err := yaml.Unmarshal(raw, &c); err != nil {

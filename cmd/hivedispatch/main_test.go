@@ -16,6 +16,16 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/statusline"
 )
 
+// TestMain lets the test binary stand in for hivedispatch when a test makes
+// it re-exec itself (the supervisor runs `<exe> check`): with
+// HIVEDISPATCH_TEST_AS_CLI set it runs the CLI instead of the tests.
+func TestMain(m *testing.M) {
+	if os.Getenv("HIVEDISPATCH_TEST_AS_CLI") == "1" {
+		os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	}
+	os.Exit(m.Run())
+}
+
 func TestVersion(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := run([]string{"version"}, &out, &errb); code != 0 {
@@ -39,24 +49,12 @@ func TestNoArgsPrintsUsage(t *testing.T) {
 func TestCheckValidConfig(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
 	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
-	p := filepath.Join(t.TempDir(), "c.yaml")
-	if err := os.WriteFile(p, []byte(`
-agent_id: w
-jira:
-  base_url: https://x.atlassian.net
-  email: a@b.c
-  jql: project = X
-  fields: {agent_id: customfield_1, claimed_at: customfield_2}
-repos:
-  - {name: o/r, url: git@github.com:o/r.git, jira_project: X}
-`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	p := writeValidConfigWith(t, "")
 	var out, errb bytes.Buffer
 	if code := run([]string{"check", "-config", p}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d: %s", code, errb.String())
 	}
-	if !strings.Contains(out.String(), "config ok") {
+	if !strings.Contains(out.String(), "config ok") || !strings.Contains(out.String(), "o/r") {
 		t.Errorf("stdout = %q", out.String())
 	}
 }
@@ -168,7 +166,7 @@ func TestInitWritesStarterConfigWhenMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("starter config not written: %v", err)
 	}
-	for _, want := range []string{"agent_id:", "base_url:", "jql:", "repos:", "HIVE_JIRA_TOKEN", "HIVE_GITHUB_TOKEN", "id.atlassian.com"} {
+	for _, want := range []string{"agent_id:", "code_dirs:", "repos:", ".hive-dispatch/repo.yaml", "HIVE_JIRA_TOKEN", "HIVE_GITHUB_TOKEN", "id.atlassian.com"} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("starter config missing %q", want)
 		}
@@ -189,16 +187,53 @@ func TestInitWritesStarterConfigWhenMissing(t *testing.T) {
 	}
 }
 
-func TestInitJiraOnFreshMachineWritesStarterAndStops(t *testing.T) {
+func TestInitGitHubOnFreshMachineWritesStarters(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("HIVE_JIRA_TOKEN", "")
+	repo := t.TempDir()
 	var out, errb bytes.Buffer
-	if code := run([]string{"init", "-jira"}, &out, &errb); code != 1 {
-		t.Fatalf("exit %d, want 1 (config needs editing first): %s", code, errb.String())
+	if code := run([]string{"init", "-github", repo}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
 	}
-	if !strings.Contains(out.String(), "wrote starter config") || !strings.Contains(errb.String(), "fill in the config") {
-		t.Errorf("out=%q err=%q", out.String(), errb.String())
+	for _, f := range []string{filepath.Join(home, ".config", "hivedispatch", "config.yaml"), filepath.Join(repo, ".hive-dispatch", "repo.yaml"), filepath.Join(repo, ".hive-dispatch", "policy.yaml")} {
+		if _, err := os.Stat(f); err != nil {
+			t.Errorf("%s not written: %v", f, err)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(repo, ".hive-dispatch", "repo.yaml"))
+	if err != nil || !strings.Contains(string(raw), "tracker: github") {
+		t.Errorf("repo.yaml = %q, %v", raw, err)
+	}
+	for _, want := range []string{"wrote starter config", "repo.yaml", "init -github " + repo, "will not pick up", "- path: " + repo} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("stdout should mention %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestInitRelativeDirIsMadeAbsolute(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := t.TempDir()
+	t.Chdir(repo)
+	var out, errb bytes.Buffer
+	if code := run([]string{"init", "-github", "."}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "- path: "+repo) || !strings.Contains(out.String(), "code_dirs: ["+filepath.Dir(repo)+"]") {
+		t.Errorf("hints should use absolute paths:\n%s", out.String())
+	}
+}
+
+func TestInitRejectsTrackerMismatch(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repo := writeRepo(t, t.TempDir(), "project: HD\ntracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n")
+	var out, errb bytes.Buffer
+	if code := run([]string{"init", "-jira", repo}, &out, &errb); code != 1 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "tracker: github") || !strings.Contains(errb.String(), "init -github") {
+		t.Errorf("stderr = %q", errb.String())
 	}
 }
 
@@ -221,23 +256,20 @@ func TestInitReplacesEmptyFile(t *testing.T) {
 	}
 }
 
-func TestInitJiraOnIncompleteConfigExplainsEachValue(t *testing.T) {
+func TestInitJiraOnUneditedStarterExplainsEachValue(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("HIVE_JIRA_TOKEN", "")
 	t.Setenv("HIVE_GITHUB_TOKEN", "")
-	p := filepath.Join(home, ".config", "hivedispatch", "config.yaml")
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(p, []byte("agent_id: w\n"), 0o600); err != nil { // hand-made, incomplete
-		t.Fatal(err)
-	}
+	repo := t.TempDir()
 	var out, errb bytes.Buffer
-	if code := run([]string{"init", "-jira"}, &out, &errb); code != 1 {
+	if code := run([]string{"init", "-jira", repo}, &out, &errb); code != 0 {
+		t.Fatalf("first run writes starters: exit %d: %s", code, errb.String())
+	}
+	if code := run([]string{"init", "-jira", repo}, &out, &errb); code != 1 {
 		t.Fatalf("exit %d, want 1: %s", code, errb.String())
 	}
-	for _, want := range []string{"id.atlassian.com", "atlassian.net", "config.yaml", "docs/setup.md"} {
+	for _, want := range []string{"id.atlassian.com", "YOURTEAM", "jira.email", "repo.yaml", "docs/setup.md"} {
 		if !strings.Contains(errb.String(), want) {
 			t.Errorf("stderr should mention %q:\n%s", want, errb.String())
 		}
@@ -247,20 +279,36 @@ func TestInitJiraOnIncompleteConfigExplainsEachValue(t *testing.T) {
 	}
 }
 
-// writeValidConfigWith writes a minimal valid config plus extra YAML lines.
+// writeRepo writes repoYAML as dir/.hive-dispatch/repo.yaml.
+func writeRepo(t *testing.T, dir, repoYAML string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".hive-dispatch"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".hive-dispatch", "repo.yaml"), []byte(repoYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// writeValidConfigWith writes a minimal valid worker config, listing one
+// Jira repository (o/r, project X) by path, plus extra YAML lines.
 func writeValidConfigWith(t *testing.T, extra string) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "c.yaml")
-	body := `
-agent_id: w
+	dir := t.TempDir()
+	repo := writeRepo(t, filepath.Join(dir, "r"), `
+project: X
+tracker: jira
+name: o/r
+url: git@github.com:o/r.git
+default_branch: main
 jira:
   base_url: https://x.atlassian.net
-  email: a@b.c
   jql: project = X
   fields: {agent_id: customfield_1, claimed_at: customfield_2}
-repos:
-  - {name: o/r, url: git@github.com:o/r.git, jira_project: X}
-` + extra
+`)
+	p := filepath.Join(dir, "c.yaml")
+	body := "agent_id: w\njira:\n  email: a@b.c\nrepos:\n  - path: " + repo + "\n" + extra
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +322,7 @@ func TestOnceRejectsUnknownProjectBeforeNetwork(t *testing.T) {
 	if code := run([]string{"once", "NOPE-1", "-config", p}, &out, &errb); code != 1 {
 		t.Fatalf("exit %d: %s", code, errb.String())
 	}
-	if !strings.Contains(errb.String(), "NOPE") || !strings.Contains(errb.String(), "jira_project") {
+	if !strings.Contains(errb.String(), "NOPE") || !strings.Contains(errb.String(), "no enrolled repository") {
 		t.Errorf("stderr = %q", errb.String())
 	}
 	if code := run([]string{"once"}, &out, &errb); code != 2 {
@@ -309,8 +357,10 @@ func TestStatusWithLocalStore(t *testing.T) {
 func TestCheckGithubTrackerNeedsToken(t *testing.T) {
 	t.Setenv("HIVE_GITHUB_TOKEN", "")
 	t.Setenv("PATH", t.TempDir()) // no gh, no git credential helper
-	p := filepath.Join(t.TempDir(), "c.yaml")
-	if err := os.WriteFile(p, []byte("tracker: github\nagent_id: w\nrepos:\n  - {name: o/r, url: git@github.com:o/r.git, project: HD}\n"), 0o600); err != nil {
+	dir := t.TempDir()
+	repo := writeRepo(t, filepath.Join(dir, "r"), "project: HD\ntracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n")
+	p := filepath.Join(dir, "c.yaml")
+	if err := os.WriteFile(p, []byte("agent_id: w\nrepos:\n  - path: "+repo+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer
@@ -322,7 +372,34 @@ func TestCheckGithubTrackerNeedsToken(t *testing.T) {
 	}
 }
 
+func TestScanListsReposAndEnrolment(t *testing.T) {
+	code := t.TempDir()
+	for _, d := range []string{"plain", "old", "new"} {
+		if err := os.MkdirAll(filepath.Join(code, d, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(code, "old", ".hivedispatch.yaml"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeRepo(t, filepath.Join(code, "new"), "project: NW\ntracker: github\nname: o/new\nurl: git@github.com:o/new.git\ndefault_branch: main\n")
+	p := filepath.Join(t.TempDir(), "c.yaml")
+	if err := os.WriteFile(p, []byte("agent_id: w\ncode_dirs: ["+code+"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if code := run([]string{"scan", "-config", p}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	for _, want := range []string{"plain", "legacy .hivedispatch.yaml", "enrolled", "NW", "github", "o/new", "3 repositories, 1 enrolled"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("stdout missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
 func TestSupervisorOneShotFake(t *testing.T) {
+	t.Setenv("HIVEDISPATCH_TEST_AS_CLI", "1") // the supervisor re-execs the test binary as the CLI
 	dir := t.TempDir()
 	var out, errb bytes.Buffer
 	stdin := strings.NewReader("what is wrong?\n")

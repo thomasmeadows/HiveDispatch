@@ -24,9 +24,13 @@ type Executor struct {
 	Default executor.Result
 	// Placeholder writes a file into the workspace so the git path is exercised.
 	Placeholder bool
+	// Gate, when set, holds every run until it is closed (or the run's
+	// context ends), so tests can observe runs in flight.
+	Gate chan struct{}
 
-	mu    sync.Mutex
-	calls []executor.Task
+	mu           sync.Mutex
+	calls        []executor.Task
+	active, peak int
 }
 
 var _ executor.Executor = (*Executor)(nil)
@@ -59,7 +63,21 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 	if !ok {
 		res = e.Default
 	}
+	e.active++
+	e.peak = max(e.peak, e.active)
+	gate := e.Gate
 	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		e.active--
+		e.mu.Unlock()
+	}()
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+		}
+	}
 
 	if err != nil {
 		return executor.Result{}, err
@@ -81,6 +99,20 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 		res.ChangedFiles = append(res.ChangedFiles, name)
 	}
 	return res, nil
+}
+
+// Active is how many runs are in flight now.
+func (e *Executor) Active() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.active
+}
+
+// Peak is the most runs that were ever in flight at once.
+func (e *Executor) Peak() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.peak
 }
 
 // Calls returns every task Run has received.

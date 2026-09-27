@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thomasmeadows/hivedispatch/internal/repoconfig"
+
 	"github.com/thomasmeadows/hivedispatch/internal/claudecli/clitest"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 )
@@ -49,7 +51,7 @@ func TestRunPassesResumeAndGuidance(t *testing.T) {
 	e, argsFile, stdinFile := fakeExec(t, "success")
 	tk := task(t)
 	tk.ResumeToken = "old-session"
-	if err := os.WriteFile(filepath.Join(tk.Workspace, ".hivedispatch.yaml"), []byte("guidance: Always run make test.\n"), 0o644); err != nil {
+	if err := writePolicy(tk.Workspace, []byte("guidance: Always run make test.\n")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.Run(context.Background(), tk); err != nil {
@@ -129,7 +131,7 @@ func TestRunPrependsRepoPath(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env")
 	t.Setenv("FAKE_CLAUDE_ENV_FILE", envFile)
 	tk := task(t)
-	if err := os.WriteFile(filepath.Join(tk.Workspace, ".hivedispatch.yaml"), []byte("executor:\n  path: [/opt/tools/bin]\n"), 0o644); err != nil {
+	if err := writePolicy(tk.Workspace, []byte("executor:\n  path: [/opt/tools/bin]\n")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.Run(context.Background(), tk); err != nil {
@@ -139,4 +141,12 @@ func TestRunPrependsRepoPath(t *testing.T) {
 	if !strings.Contains(string(env), "PATH=/opt/tools/bin"+string(os.PathListSeparator)) {
 		t.Errorf("PATH not prepended:\n%s", env)
 	}
+}
+
+// writePolicy writes the repo's .hive-dispatch/policy.yaml.
+func writePolicy(dir string, body []byte) error {
+	if err := os.MkdirAll(filepath.Join(dir, repoconfig.Dir), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, repoconfig.Dir, repoconfig.PolicyFile), body, 0o644)
 }

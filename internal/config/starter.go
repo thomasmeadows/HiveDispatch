@@ -7,107 +7,61 @@ import (
 	"path/filepath"
 )
 
-// starterPlaceholders are values in Starter that must be replaced; Validate
-// rejects a config that still contains them.
-var starterPlaceholders = []string{"YOURTEAM", "you@example.com", "yourorg", "yourrepo", "project = KEY"}
+// starterPlaceholders are values in the starters that must be replaced;
+// Validate rejects a config that still contains them.
+var starterPlaceholders = []string{"YOURTEAM", "you@example.com", "project = KEY"}
 
-// Starter is the commented config written by `hivedispatch init`. Every
-// value that must come from somewhere else says where.
-const Starter = `# HiveDispatch worker configuration.
-# Secrets never go in this file.
+// Starter is the commented worker config written by `hivedispatch init`.
+// Every value that must come from somewhere else says where.
+const Starter = `# HiveDispatch worker configuration: settings for this machine.
+# Each repository's own settings (its tracker, labels, Jira query) live in that
+# repository, in .hive-dispatch/repo.yaml — create it with
+#   cd /path/to/repo && hivedispatch init -github     (or: init -jira)
+# Secrets never go in either file.
 #
-#   export HIVE_JIRA_TOKEN=...    # required. https://id.atlassian.com/manage-profile/security/api-tokens
+#   export HIVE_JIRA_TOKEN=...    # needed when any repository uses Jira.
+#                                 # https://id.atlassian.com/manage-profile/security/api-tokens
 #
-#   GitHub: opening a pull request needs a token even on public repositories
-#   (GitHub does not accept anonymous PR creation). The worker looks, in order, for
-#   HIVE_GITHUB_TOKEN, "gh auth token" (if you use the GitHub CLI), then your git
-#   credential helper for github.com. If none is found it still pushes the branch
-#   and asks you on the ticket to open the PR yourself.
-#   export HIVE_GITHUB_TOKEN=...  # optional. https://github.com/settings/personal-access-tokens
-#                                 # fine-grained: Pull requests read/write, Contents read
+#   GitHub: opening a pull request needs a token even on public repositories.
+#   The worker looks, in order, for HIVE_GITHUB_TOKEN, "gh auth token" (if you use
+#   the GitHub CLI), then your git credential helper for github.com. Without one it
+#   still pushes the branch and asks you on the ticket to open the PR yourself;
+#   repositories that use GitHub Issues need one.
+#   export HIVE_GITHUB_TOKEN=...  # https://github.com/settings/personal-access-tokens
+#                                 # fine-grained: Pull requests + Issues read/write, Contents read
 #                                 # classic: repo scope (or public_repo for public repos)
 #
 #   Cloning and pushing use your own git credentials (ssh key or credential helper),
 #   not the token: "git clone <url>" must work non-interactively.
 #
 # Setup order:
-#   1. Fill in agent_id, jira.*, and repos below.
-#   2. export HIVE_JIRA_TOKEN, then run:  hivedispatch init -jira
-#      It creates the two claim fields in Jira (see jira.fields below).
-#   3. hivedispatch check -jira   (also reports where the GitHub token came from)
-#   4. hivedispatch run -once
-# Full walkthrough: docs/setup.md in the repository.
-
-# Which issue tracker holds the queue: jira (default) or github.
-#   github: state is carried by labels (hive:ready, hive:in-progress, ...) and the claim by
-#   a hidden marker in the issue body; the jira: block is then ignored, and the GitHub
-#   token needs Issues read/write. Run "hivedispatch init -github" to create the labels.
-tracker: jira
-
-# GitHub Issues only. Optional: also move each issue's card on a GitHub Projects board
-# as its state changes. Labels stay the source of truth; the board mirrors them. Take
-# owner and number from the board's URL: github.com/users/OWNER/projects/N (or
-# github.com/orgs/OWNER/projects/N). The token then also needs project access: for a
-# user-owned board that means a classic PAT with the project scope (or
-# "gh auth refresh -s project") — fine-grained tokens cannot reach user-owned Projects;
-# for an organisation board a fine-grained token with Projects: read and write also works.
-# github:
-#   project:
-#     owner: OWNER
-#     number: 1
-#     # Single-select field and its option per state. Defaults shown; every option
-#     # must exist on the board ("hivedispatch check -live" lists the missing ones).
-#     field: Status
-#     columns:
-#       ready: Ready
-#       in_progress: In Progress
-#       needs_info: Needs Info
-#       in_review: In Review
-#       needs_human: Needs Human
+#   1. Set agent_id, and code_dirs or repos below.
+#   2. In each repository: hivedispatch init -github   (or -jira); fill in the
+#      .hive-dispatch/repo.yaml it writes, then run the same command again.
+#   3. hivedispatch scan          (lists repositories found, and which are enrolled)
+#   4. hivedispatch check -live
+#   5. hivedispatch run -once
+# Full walkthrough: docs/setup.md in the HiveDispatch repository.
 
 # Any short name for this worker. Shown on tickets it claims.
 agent_id: worker-1
 
+# Where to find repositories. Every git repository under a code dir that has a
+# .hive-dispatch/repo.yaml is enrolled automatically; "hivedispatch scan" shows them.
+# code_dirs: [~/code]
+# scan_depth: 4            # directory levels below each code dir
+#
+# Repositories outside the code dirs can be listed by path.
+# repos:
+#   - path: ~/work/api
+
 # Where clones, worktrees, and run state live. Default: ~/.local/share/hivedispatch
 # workroot: ~/.local/share/hivedispatch
 
-jira:
-  # Your Jira Cloud site.
-  base_url: https://YOURTEAM.atlassian.net
-  # The Atlassian account the API token belongs to.
-  email: you@example.com
-  # Which tickets the worker may take. Using a label as well as a status means a
-  # human opts each ticket in.
-  jql: 'project = KEY AND status = "Ready" AND labels = hive'
-  # Claim fields. HiveDispatch marks a ticket it is working on by writing two custom
-  # fields on the issue:
-  #   agent_id    which worker holds the ticket ("HiveDispatch Agent")
-  #   claimed_at  when that worker last checked in ("HiveDispatch Claimed At");
-  #               a claim older than claim_timeout is treated as abandoned and
-  #               another worker may take the ticket over.
-  # "hivedispatch init -jira" creates both fields. Leave the ids empty and the worker
-  # finds the fields by name; set them (customfield_NNNNN) only if you renamed the
-  # fields or use several Jira sites.
-  # fields:
-  #   agent_id: ""
-  #   claimed_at: ""
-  # Workflow status names in your Jira project. Defaults shown; change to match yours.
-  # statuses:
-  #   ready: Ready
-  #   in_progress: In Progress
-  #   needs_info: Needs Info
-  #   in_review: In Review
-  #   needs_human: Needs Human
-
-repos:
-    # owner/repo as shown on GitHub (used for the pull-request API).
-  - name: yourorg/yourrepo
-    # Clone URL your own git credentials can push to (ssh key or credential helper).
-    url: git@github.com:yourorg/yourrepo.git
-    # Ticket key prefix for this repo. Jira: the project key (SCRUM for SCRUM-4).
-    # GitHub Issues: any short upper-case tag you choose; issue #12 becomes KEY-12.
-    project: KEY
-    # default_branch: main
+# Jira account, when any repository uses Jira: the Atlassian account email the
+# HIVE_JIRA_TOKEN belongs to.
+# jira:
+#   email: you@example.com
 
 # Optional. Defaults shown.
 # poll_interval: 60s
@@ -116,6 +70,8 @@ repos:
 # run_timeout: 45m
 # step_budget: 200         # tool calls per run
 # max_attempts: 3
+# max_concurrent: 1        # tickets worked at once, each in its own git worktree
+#                          # (and its own coding-agent session: mind your plan's limits)
 # executor: claude         # or codex, or fake (no agent; useful for trying the pipeline)
 # codex:
 #   binary: codex
@@ -133,9 +89,130 @@ repos:
 #       end: "06:00"
 `
 
+const repoStarterHead = `# HiveDispatch settings for this repository, read by the worker from this checkout.
+# Commit it: every clone then carries the same tracker settings. The agent's
+# policy (tools, model, budget) is in policy.yaml next to this file.
+# Reference: docs/config.md in the HiveDispatch repository.
+
+# Ticket key prefix. Jira: the project key (SCRUM for SCRUM-4). GitHub Issues: any
+# short upper-case tag you choose; issue #12 becomes KEY-12. Unique per worker.
+project: KEY
+
+# name, url and default_branch default to the origin remote; set them only to override.
+# name: owner/repo
+# url: git@github.com:owner/repo.git
+# default_branch: main
+
+`
+
+const repoStarterJira = repoStarterHead + `tracker: jira
+
+jira:
+  # Your Jira Cloud site. The account (jira.email) is in the worker config.
+  base_url: https://YOURTEAM.atlassian.net
+  # Which tickets the worker may take. Using a label as well as a status means a
+  # human opts each ticket in.
+  jql: 'project = KEY AND status = "Ready" AND labels = hive'
+  # Claim fields. HiveDispatch marks a ticket it is working on by writing two custom
+  # fields on the issue:
+  #   agent_id    which worker holds the ticket ("HiveDispatch Agent")
+  #   claimed_at  when that worker last checked in ("HiveDispatch Claimed At");
+  #               a claim older than claim_timeout is treated as abandoned and
+  #               another worker may take the ticket over.
+  # "hivedispatch init -jira" creates both fields. Leave the ids empty and the worker
+  # finds the fields by name; set them (customfield_NNNNN) only if you renamed them.
+  # fields:
+  #   agent_id: ""
+  #   claimed_at: ""
+  # Workflow status names in your Jira project. Defaults shown; change to match yours.
+  # statuses:
+  #   ready: Ready
+  #   in_progress: In Progress
+  #   needs_info: Needs Info
+  #   in_review: In Review
+  #   needs_human: Needs Human
+`
+
+const repoStarterGitHub = repoStarterHead + `# The queue is this repository's GitHub Issues: state is carried by labels and the
+# claim by a hidden marker in the issue body. "hivedispatch init -github" creates the
+# labels; the GitHub token needs Issues read/write.
+tracker: github
+
+# github:
+#   # State labels. Defaults shown.
+#   labels:
+#     ready: hive:ready
+#     in_progress: hive:in-progress
+#     needs_info: hive:needs-info
+#     in_review: hive:in-review
+#     needs_human: hive:needs-human
+#   # Optional: also move each issue's card on a GitHub Projects board as its state
+#   # changes. Labels stay the source of truth; the board mirrors them. Take owner and
+#   # number from the board's URL: github.com/users/OWNER/projects/N (or
+#   # github.com/orgs/OWNER/projects/N). The token then also needs project access: for
+#   # a user-owned board a classic PAT with the project scope (or
+#   # "gh auth refresh -s project"); for an organisation board a fine-grained token
+#   # with Projects: read and write also works.
+#   project:
+#     owner: OWNER
+#     number: 1
+#     field: Status        # single-select field; every option below must exist on it
+#     columns:
+#       ready: Ready
+#       in_progress: In Progress
+#       needs_info: Needs Info
+#       in_review: In Review
+#       needs_human: Needs Human
+`
+
+// PolicyStarter is the policy.yaml written next to a new repo.yaml.
+const PolicyStarter = `# HiveDispatch agent policy for this repository. The worker reads it from the
+# ticket's worktree, so the committed copy on the default branch is what applies.
+# Reference: docs/config.md in the HiveDispatch repository.
+executor:
+  permission_mode: dontAsk
+  tools: [default]
+  # Tools the agent may use without asking. Keep it to what the repo needs.
+  # allowed_tools: [Read, Edit, Write, Glob, Grep, "Bash(go test:*)"]
+  # model: sonnet
+  # max_budget_usd: 5
+  # path: ["~/go/bin"]     # prepended to the agent's PATH
+  # codex:                 # used by the codex executor instead of the keys above
+  #   sandbox: workspace-write
+  #   network: false
+# guidance: |
+#   House rules for the agent: how to build, test, and lint before finishing.
+`
+
+// RepoStarter is the commented repo.yaml for tracker ("jira" or "github").
+func RepoStarter(tracker string) string {
+	if tracker == "jira" {
+		return repoStarterJira
+	}
+	return repoStarterGitHub
+}
+
 // WriteStarter writes Starter to path unless a non-empty file already exists
 // there. It returns true when a file was written.
 func WriteStarter(path string) (bool, error) {
+	return writeIfAbsent(path, Starter)
+}
+
+// WriteRepoStarter writes .hive-dispatch/repo.yaml for tracker, and a
+// policy.yaml, into the repository at dir; existing files are kept. It
+// returns true when repo.yaml was written.
+func WriteRepoStarter(dir, tracker string) (bool, error) {
+	written, err := writeIfAbsent(repoFilePath(dir), RepoStarter(tracker))
+	if err != nil {
+		return false, err
+	}
+	if _, err := writeIfAbsent(filepath.Join(dir, RepoDir, "policy.yaml"), PolicyStarter); err != nil {
+		return written, err
+	}
+	return written, nil
+}
+
+func writeIfAbsent(path, body string) (bool, error) {
 	if fi, err := os.Stat(path); err == nil {
 		if fi.Size() > 0 {
 			return false, nil
@@ -144,9 +221,9 @@ func WriteStarter(path string) (bool, error) {
 		return false, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return false, fmt.Errorf("create config directory: %w", err)
+		return false, fmt.Errorf("create directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(Starter), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		return false, err
 	}
 	return true, nil
