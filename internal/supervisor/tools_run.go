@@ -26,6 +26,7 @@ var Allowlist = []string{
 	"version",
 	"check", "check -live",
 	"init", "init -jira", "init -github",
+	"scan",
 	"status", "status -json",
 	"run -once -executor fake", "run -once -executor fake -placeholder",
 }
@@ -33,8 +34,8 @@ var Allowlist = []string{
 // effects explains what a mutating shape does, for the confirmation.
 var effects = map[string]string{
 	"init":                                  "writes a starter worker config (never overwrites one)",
-	"init -jira":                            "creates the two claim custom fields in Jira",
-	"init -github":                          "creates the hive:* labels in every configured repository",
+	"init -jira":                            "in the repository the supervisor was started in: writes .hive-dispatch/ starters, or once they are filled in, creates the two claim custom fields in its Jira site",
+	"init -github":                          "in the repository the supervisor was started in: writes .hive-dispatch/ starters, or once they are filled in, creates its hive:* labels",
 	"run -once -executor fake":              "polls the tracker once and, for a ready ticket, claims it, branches and reports — with no coding agent",
 	"run -once -executor fake -placeholder": "polls the tracker once and, for a ready ticket, claims it, writes a placeholder file, pushes a branch and opens a pull request",
 }

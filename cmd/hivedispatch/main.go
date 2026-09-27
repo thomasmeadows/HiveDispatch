@@ -10,13 +10,16 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
+	"github.com/thomasmeadows/hivedispatch/internal/discover"
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
 	"github.com/thomasmeadows/hivedispatch/internal/statusline"
@@ -31,13 +34,19 @@ const usage = `usage: hivedispatch <command> [flags]
 
 commands:
   version                     print the version
-  check [-config P] [-live]   validate the worker config; -live verifies against the tracker and GitHub
-  init  [-config P]           write a commented starter config (never overwrites)
-  init  -jira [-config P]     create the claim custom fields in Jira
-  init  -github [-config P]   create the hive:* state labels in each GitHub repository
+  check [-config P] [-live]   validate the worker config and every enrolled repository;
+                              -live verifies against each repository's tracker and GitHub
+  init  [-config P]           write a commented starter worker config (never overwrites)
+  init  -github [-config P] [DIR]
+  init  -jira   [-config P] [DIR]
+                              enrol the repository at DIR (default: the one you are in): first
+                              write .hive-dispatch/repo.yaml and policy.yaml to fill in; once
+                              filled in, create its hive:* labels (GitHub) or claim fields (Jira)
+  scan  [-config P] [DIR...]  list git repositories under DIR (default: code_dirs, else ~) and
+                              which are enrolled
   run   [-config P] [-once] [-executor claude|codex|fake] [-triage claude|passthrough]
         [-placeholder] [-skip-preflight]
-                              verify Jira setup, then poll and dispatch; -executor and -triage override the config
+                              verify each repository's tracker, then poll and dispatch; -executor and -triage override the config
                               (-placeholder makes the fake executor write a file so
                               the branch/PR path is exercised)
   once  KEY [same flags as run]
@@ -65,6 +74,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runCheck(args[1:], stdout, stderr)
 	case "init":
 		return runInit(args[1:], stdout, stderr)
+	case "scan":
+		return runScan(args[1:], stdout, stderr)
 	case "run":
 		return runRun(args[1:], stdout, stderr)
 	case "once":
@@ -83,7 +94,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
-	live := fs.Bool("live", false, "also verify against the live tracker and GitHub")
+	live := fs.Bool("live", false, "also verify against each repository's tracker and GitHub")
 	liveJira := fs.Bool("jira", false, "alias for -live")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -94,18 +105,15 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	ctx := context.Background()
-	target := cfg.Jira.BaseURL
-	if cfg.Tracker == "github" {
-		target = "GitHub Issues"
-	}
-	fmt.Fprintf(stdout, "config ok: agent %s, %d repo(s), tracker %s (%s)\n", cfg.AgentID, len(cfg.Repos), cfg.Tracker, target)
+	fmt.Fprintf(stdout, "config ok: agent %s, %d repo(s)\n", cfg.AgentID, len(cfg.Repos))
+	printRepos(stdout, cfg)
 	tok, src := github.DiscoverToken(ctx, "github.com")
 	switch {
 	case src != "":
 		fmt.Fprintf(stdout, "github ok: token from %s\n", src)
-		cfg.GitHub.Token = tok
-	case cfg.Tracker == "github":
-		fmt.Fprintln(stderr, "github: no token found (HIVE_GITHUB_TOKEN, gh auth token, or git credential helper) — required when tracker is github")
+		cfg.SetGitHubToken(tok)
+	case cfg.UsesTracker("github"):
+		fmt.Fprintln(stderr, "github: no token found (HIVE_GITHUB_TOKEN, gh auth token, or git credential helper) — required because a repository uses GitHub Issues; run `gh auth login`")
 		return 1
 	default:
 		fmt.Fprintln(stdout, "github: no token found (HIVE_GITHUB_TOKEN, gh auth token, or git credential helper) — branches will be pushed but PRs will not be opened")
@@ -113,7 +121,15 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	if !*live && !*liveJira {
 		return 0
 	}
-	ok := trackerPreflight(ctx, cfg, stdout, stderr)
+	ok := true
+	for _, repo := range cfg.Repos {
+		_, repoOK, err := repoTracker(ctx, repo, true, stdout, stderr)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			repoOK = false
+		}
+		ok = ok && repoOK
+	}
 	if cfg.GitHub.Token != "" && !prPreflight(ctx, cfg, stdout, stderr) {
 		ok = false
 	}
@@ -121,6 +137,19 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// printRepos lists the enrolled repositories and any second checkout that
+// was skipped in favour of another.
+func printRepos(w io.Writer, cfg *config.Config) {
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	for _, r := range cfg.Repos {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", r.Project, r.Tracker, r.Name, r.Path)
+	}
+	_ = tw.Flush() // best-effort listing; the writer is the terminal
+	for skipped, kept := range cfg.Shadowed {
+		fmt.Fprintf(w, "  skipped %s: another checkout of the same repository as %s\n", skipped, kept)
+	}
 }
 
 // prPreflight verifies the token can open pull requests on every repo.
@@ -140,30 +169,6 @@ func prPreflight(ctx context.Context, cfg *config.Config, stdout, stderr io.Writ
 		fmt.Fprintf(stdout, "token can open pull requests on %s\n", repo.Name)
 	}
 	return ok
-}
-
-// trackerPreflight runs the live check for whichever tracker is configured.
-func trackerPreflight(ctx context.Context, cfg *config.Config, stdout, stderr io.Writer) bool {
-	switch cfg.Tracker {
-	case "github":
-		client, err := ghissues.New(cfg.GitHub, cfg.Repos)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return false
-		}
-		return githubPreflight(ctx, client, stdout, stderr)
-	default:
-		client, err := jira.New(cfg.Jira)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return false
-		}
-		if err := client.ResolveFields(ctx); err != nil {
-			fmt.Fprintln(stderr, err)
-			return false
-		}
-		return jiraPreflight(ctx, client, cfg, stdout, stderr)
-	}
 }
 
 // githubPreflight runs the live GitHub Issues check and prints the report.
@@ -201,19 +206,15 @@ func githubPreflight(ctx context.Context, client *ghissues.Client, stdout, stder
 
 // jiraPreflight runs the live Jira check and prints the report. It returns
 // false when something would prevent a run.
-func jiraPreflight(ctx context.Context, client *jira.Client, cfg *config.Config, stdout, stderr io.Writer) bool {
-	var projects []string
-	for _, r := range cfg.Repos {
-		projects = append(projects, r.Project)
-	}
-	rep, err := client.Check(ctx, projects)
+func jiraPreflight(ctx context.Context, client *jira.Client, repo config.RepoConfig, stdout, stderr io.Writer) bool {
+	rep, err := client.Check(ctx, []string{repo.Project})
 	if err != nil {
 		fmt.Fprintln(stderr, "jira check failed:", err)
 		return false
 	}
 	fmt.Fprintf(stdout, "jira ok: authenticated as %s; trigger JQL matches %d ticket(s)\n", rep.User, rep.SampleTickets)
 	for _, p := range rep.UnknownProjects {
-		fmt.Fprintf(stderr, "repos: jira_project %q does not exist on this site; projects here: %s\n", p, strings.Join(rep.Projects, ", "))
+		fmt.Fprintf(stderr, "%s: project %q does not exist on this site; projects here: %s\n", repo.Path, p, strings.Join(rep.Projects, ", "))
 	}
 	for _, f := range rep.MissingFields {
 		fmt.Fprintf(stderr, "missing custom field: %s (run `hivedispatch init -jira`)\n", f)
@@ -239,8 +240,8 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
-	doJira := fs.Bool("jira", false, "create the claim custom fields in Jira")
-	doGitHub := fs.Bool("github", false, "create the state labels in each GitHub repository")
+	doJira := fs.Bool("jira", false, "enrol a repository whose queue is in Jira, and create the claim custom fields")
+	doGitHub := fs.Bool("github", false, "enrol a repository whose queue is its GitHub Issues, and create the state labels")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -249,59 +250,179 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if written {
-		fmt.Fprintf(stdout, "wrote starter config to %s\n\nEdit it (every field says where its value comes from), then run:\n  hivedispatch init -jira      (Jira: creates the claim fields)\n  hivedispatch init -github    (GitHub Issues: creates the state labels)\n", *cfgPath)
-		if !*doJira && !*doGitHub {
-			return 0
-		}
-		fmt.Fprintln(stderr, "\ninit: fill in the config first, then run this again.")
-		return 1
-	}
 	if !*doJira && !*doGitHub {
-		fmt.Fprintf(stdout, "config already exists at %s\nNext: `hivedispatch init -jira` or `hivedispatch init -github`, then `hivedispatch check -live`\n", *cfgPath)
+		if written {
+			fmt.Fprintf(stdout, "wrote starter config to %s\n\nSet agent_id and code_dirs (every field says where its value comes from), then in each repository run:\n  hivedispatch init -github    (queue in GitHub Issues)\n  hivedispatch init -jira      (queue in Jira)\n", *cfgPath)
+		} else {
+			fmt.Fprintf(stdout, "config already exists at %s\nNext: `hivedispatch init -github` or `hivedispatch init -jira` inside a repository, then `hivedispatch check -live`\n", *cfgPath)
+		}
 		return 0
 	}
-	if *doGitHub {
-		cfg, err := config.Load(*cfgPath)
-		if err != nil {
-			fmt.Fprintf(stderr, "%v\n\nEdit %s and run `hivedispatch init -github` again.\n", err, *cfgPath)
-			return 1
-		}
-		tok, src := github.DiscoverToken(context.Background(), "github.com")
-		if src == "" {
-			fmt.Fprintln(stderr, "no GitHub token found: export HIVE_GITHUB_TOKEN (Issues read/write) or run `gh auth login`")
-			return 1
-		}
-		cfg.GitHub.Token = tok
-		client, err := ghissues.New(cfg.GitHub, cfg.Repos)
+	if *doJira && *doGitHub {
+		fmt.Fprintln(stderr, "init: choose one of -github or -jira")
+		return 2
+	}
+	if written {
+		fmt.Fprintf(stdout, "wrote starter config to %s\n", *cfgPath)
+	}
+	kind := "github"
+	if *doJira {
+		kind = "jira"
+	}
+	return initRepo(fs.Arg(0), kind, *cfgPath, stdout, stderr)
+}
+
+// initRepo enrols the repository at dir (default: the one containing the
+// working directory) for tracker kind: it writes the .hive-dispatch starters
+// the first time, and once they are filled in creates the tracker's labels
+// or claim fields.
+func initRepo(dir, kind, cfgPath string, stdout, stderr io.Writer) int {
+	ctx := context.Background()
+	cfg, err := config.LoadWorker(cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n\nEdit %s and run `hivedispatch init -%s` again.\n", err, cfgPath, kind)
+		return 1
+	}
+	if dir == "" {
+		wd, err := os.Getwd()
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		n, err := client.EnsureLabels(context.Background())
-		if err != nil {
-			fmt.Fprintln(stderr, "init failed:", err)
+		if dir, err = discover.GitRoot(ctx, wd); err != nil {
+			fmt.Fprintf(stderr, "%v — run init -%s inside a repository, or pass its path\n", err, kind)
 			return 1
 		}
-		fmt.Fprintf(stdout, "github labels ready (%d created). Put %q on an issue to queue it.\nNext: hivedispatch check -live\n", n, cfg.GitHub.Labels.Ready)
-		return 0
 	}
-	cfg, err := config.Load(*cfgPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "%v\n\nEdit %s and run `hivedispatch init -jira` again.\n", err, *cfgPath)
-		return 1
-	}
-	client, err := jira.New(cfg.Jira)
+	file := filepath.Join(dir, config.RepoDir, config.RepoFileName)
+	written, err := config.WriteRepoStarter(dir, kind)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	ids, err := client.EnsureFields(context.Background())
+	if written {
+		what := "project"
+		if kind == "jira" {
+			what = "project, jira.base_url and jira.jql (and jira.email in " + cfgPath + ")"
+		}
+		fmt.Fprintf(stdout, "wrote %s and policy.yaml beside it.\nFill in %s, commit both, then run `hivedispatch init -%s %s` again.\n", file, what, kind, dir)
+		enrolHint(stdout, cfg, dir, cfgPath)
+		return 0
+	}
+	repo, err := cfg.LoadRepo(dir)
 	if err != nil {
-		fmt.Fprintln(stderr, "init failed:", err)
+		fmt.Fprintf(stderr, "%v\n\nEdit %s and run `hivedispatch init -%s` again.\n", err, file, kind)
 		return 1
 	}
-	fmt.Fprintf(stdout, "jira claim fields ready:\n  %s = %s  (which worker holds a ticket)\n  %s = %s  (that worker's last heartbeat)\n\nThe worker finds them by name, so nothing needs pasting into %s.\nNext: hivedispatch check -jira\n", jira.FieldNameAgent, ids.AgentID, jira.FieldNameClaimedAt, ids.ClaimedAt, *cfgPath)
+	if repo.Tracker != kind {
+		fmt.Fprintf(stderr, "%s says tracker: %s — run `hivedispatch init -%s`, or change the tracker there\n", file, repo.Tracker, repo.Tracker)
+		return 1
+	}
+	if kind == "github" {
+		tok, src := github.DiscoverToken(ctx, "github.com")
+		if src == "" {
+			fmt.Fprintln(stderr, "no GitHub token found: export HIVE_GITHUB_TOKEN (Issues read/write) or run `gh auth login`")
+			return 1
+		}
+		repo.GitHub.Token = tok
+		client, err := ghissues.New(repo.GitHub, []config.RepoConfig{repo})
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		n, err := client.EnsureLabels(ctx)
+		if err != nil {
+			fmt.Fprintln(stderr, "init failed:", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "%s: github labels ready (%d created). Put %q on an issue to queue it; it becomes %s-<number>.\n", repo.Name, n, repo.GitHub.Labels.Ready, repo.Project)
+	} else {
+		client, err := jira.New(repo.Jira)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		ids, err := client.EnsureFields(ctx)
+		if err != nil {
+			fmt.Fprintln(stderr, "init failed:", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "jira claim fields ready on %s:\n  %s = %s  (which worker holds a ticket)\n  %s = %s  (that worker's last heartbeat)\n\nThe worker finds them by name, so nothing needs pasting into %s.\n", repo.Jira.BaseURL, jira.FieldNameAgent, ids.AgentID, jira.FieldNameClaimedAt, ids.ClaimedAt, file)
+	}
+	enrolHint(stdout, cfg, dir, cfgPath)
+	fmt.Fprintln(stdout, "Next: hivedispatch check -live")
+	return 0
+}
+
+// enrolHint tells the operator how to make the worker pick up dir when it
+// is neither listed under repos: nor under a code dir.
+func enrolHint(w io.Writer, cfg *config.Config, dir, cfgPath string) {
+	if cfg.Enrolled(dir) {
+		return
+	}
+	fmt.Fprintf(w, "\nThe worker will not pick up %s yet: it is not under code_dirs and not listed under repos:.\nAdd to %s either\n  code_dirs: [%s]\nor\n  repos:\n    - path: %s\n", dir, cfgPath, filepath.Dir(dir), dir)
+}
+
+// runScan lists the git repositories under the given directories (default:
+// code_dirs, else the home directory) and which of them are enrolled.
+func runScan(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	cfg, err := config.LoadWorker(*cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n(run `hivedispatch init` to write a starter config)\n", err)
+		return 1
+	}
+	roots := fs.Args()
+	if len(roots) == 0 && len(cfg.CodeDirs) == 0 {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		roots = []string{home}
+		fmt.Fprintf(stdout, "code_dirs is not set; scanning %s. Set code_dirs in %s to scan your code folder instead.\n", home, *cfgPath)
+	}
+	found, err := cfg.Scan(roots)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if len(found) == 0 {
+		fmt.Fprintln(stdout, "no git repositories found")
+		return 0
+	}
+	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "PATH\tSTATUS\tPROJECT\tTRACKER\tREPO")
+	enrolled := 0
+	for _, f := range found {
+		status, project, trk, name := "-", "", "", ""
+		switch {
+		case f.Enrolled:
+			enrolled++
+			status = "enrolled"
+			r, err := cfg.LoadRepo(f.Path)
+			if err != nil {
+				status = "enrolled, invalid (see check)"
+			}
+			project, trk, name = r.Project, r.Tracker, r.Name
+			if !cfg.Enrolled(f.Path) {
+				status += ", outside code_dirs"
+			}
+		case f.Legacy:
+			status = "legacy .hivedispatch.yaml"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", f.Path, status, project, trk, name)
+	}
+	if err := tw.Flush(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "\n%d repositories, %d enrolled. Enrol one with `hivedispatch init -github DIR` (or -jira).\n", len(found), enrolled)
 	return 0
 }
 
@@ -312,7 +433,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	once := fs.Bool("once", false, "poll once and exit")
 	executorFlag := fs.String("executor", "", "override config executor: claude, codex or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
-	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying Jira fields, statuses, and projects")
+	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -461,7 +582,7 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	executorFlag := fs.String("executor", "", "override config executor: claude, codex or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
-	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying Jira fields, statuses, and projects")
+	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
@@ -472,14 +593,8 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	project, _, _ := strings.Cut(key, "-")
-	known := false
-	for _, r := range cfg.Repos {
-		if strings.EqualFold(r.Project, project) {
-			known = true
-		}
-	}
-	if !known {
-		fmt.Fprintf(stderr, "%s: no repo has jira_project %q configured\n", key, project)
+	if cfg.RepoByProject(project) == nil {
+		fmt.Fprintf(stderr, "%s: no enrolled repository has project %q in its .hive-dispatch/repo.yaml\n", key, project)
 		return 1
 	}
 	logger := slog.New(slog.NewTextHandler(stderr, nil))

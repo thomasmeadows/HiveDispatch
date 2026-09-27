@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -178,54 +179,26 @@ func (readDoc) Call(_ context.Context, args json.RawMessage) (string, error) {
 
 type readRepoFile struct{ workerConfigPath string }
 
-// NewReadRepoFile returns the tool that reads a governed repo's policy
-// file or AGENTS.md from its base checkout under workroot.
+// NewReadRepoFile returns the tool that reads an enrolled repository's
+// .hive-dispatch files or AGENTS.md from its local checkout.
 func NewReadRepoFile(workerConfigPath string) Tool {
 	return readRepoFile{workerConfigPath: workerConfigPath}
 }
+
+// repoFileNames are the files read_repo_file may read, relative to the
+// repository root.
+var repoFileNames = []string{".hive-dispatch/repo.yaml", ".hive-dispatch/policy.yaml", "AGENTS.md"}
 
 // Def describes the read_repo_file tool.
 func (readRepoFile) Def() model.ToolDef {
 	return model.ToolDef{
 		Name:        "read_repo_file",
-		Description: "Read .hivedispatch.yaml (the repo policy the executor obeys) or AGENTS.md from a configured repository's checkout. The checkout exists only after a run has cloned it.",
-		Schema:      []byte(`{"type":"object","properties":{"repo":{"type":"string","description":"owner/repo as in repos[].name"},"name":{"type":"string","enum":[".hivedispatch.yaml","AGENTS.md"]}},"required":["repo","name"]}`),
+		Description: "Read a file from an enrolled repository's local checkout: .hive-dispatch/repo.yaml (its project key, tracker and tracker settings), .hive-dispatch/policy.yaml (the agent policy the executor obeys; the worker uses the committed copy) or AGENTS.md.",
+		Schema:      []byte(`{"type":"object","properties":{"repo":{"type":"string","description":"owner/repo, or the repository's project key"},"name":{"type":"string","enum":[".hive-dispatch/repo.yaml",".hive-dispatch/policy.yaml","AGENTS.md"]}},"required":["repo","name"]}`),
 	}
 }
 
-// workerRepos reads only workroot and repos[].name from the worker config,
-// without validating the rest, so this works on a half-written config.
-func workerRepos(path string) (workroot string, names []string, err error) {
-	raw, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return "", nil, errors.New("no config at " + path)
-	}
-	if err != nil {
-		return "", nil, err
-	}
-	var c struct {
-		Workroot string `yaml:"workroot"`
-		Repos    []struct {
-			Name string `yaml:"name"`
-		} `yaml:"repos"`
-	}
-	if err := yaml.Unmarshal(raw, &c); err != nil {
-		return "", nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	for _, r := range c.Repos {
-		names = append(names, r.Name)
-	}
-	workroot = c.Workroot
-	if home := os.Getenv("HOME"); strings.HasPrefix(workroot, "~/") && home != "" {
-		workroot = filepath.Join(home, workroot[2:])
-	}
-	if workroot == "" {
-		workroot = filepath.Join(os.Getenv("HOME"), ".local", "share", "hivedispatch")
-	}
-	return workroot, names, nil
-}
-
-// Call reads name (.hivedispatch.yaml or AGENTS.md) from repo's checkout.
+// Call reads name from repo's local checkout.
 func (r readRepoFile) Call(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		Repo string `json:"repo"`
@@ -234,26 +207,32 @@ func (r readRepoFile) Call(_ context.Context, args json.RawMessage) (string, err
 	if err := decode(args, &in); err != nil {
 		return "", err
 	}
-	if in.Name != ".hivedispatch.yaml" && in.Name != "AGENTS.md" {
-		return "", fmt.Errorf("name must be .hivedispatch.yaml or AGENTS.md, got %q", in.Name)
+	if !slices.Contains(repoFileNames, in.Name) {
+		return "", fmt.Errorf("name must be one of %s, got %q", strings.Join(repoFileNames, ", "), in.Name)
 	}
-	workroot, names, err := workerRepos(r.workerConfigPath)
+	// Unvalidated, so this works on a half-written config.
+	cfg, err := config.LoadUnvalidated(r.workerConfigPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", errors.New("no config at " + r.workerConfigPath)
+	}
 	if err != nil {
 		return "", err
 	}
-	matched := ""
-	for _, n := range names {
-		if strings.EqualFold(n, in.Repo) {
-			matched = n
+	var known []string
+	dir := ""
+	for _, repo := range cfg.Repos {
+		known = append(known, repo.Name+" ("+repo.Project+")")
+		if strings.EqualFold(repo.Name, in.Repo) || strings.EqualFold(repo.Project, in.Repo) {
+			dir = repo.Path
 		}
 	}
-	if matched == "" {
-		return "", fmt.Errorf("%q is not in repos[] of %s (configured: %s)", in.Repo, r.workerConfigPath, strings.Join(names, ", "))
+	if dir == "" {
+		return "", fmt.Errorf("%q is not an enrolled repository (enrolled: %s); `scan` lists what is found", in.Repo, strings.Join(known, ", "))
 	}
-	base := filepath.Join(workroot, "repos", strings.ReplaceAll(matched, "/", "__"), "repo")
-	raw, err := os.ReadFile(filepath.Join(base, in.Name))
+	p := filepath.Join(dir, filepath.FromSlash(in.Name))
+	raw, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("no %s in %s (the checkout appears after the first run clones the repo)", in.Name, base)
+		return "", fmt.Errorf("no %s", p)
 	}
 	if err != nil {
 		return "", err

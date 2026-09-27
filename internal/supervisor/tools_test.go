@@ -118,7 +118,7 @@ func TestWriteConfigReportsValidationProblems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "repos must list") || !strings.Contains(prompt, "repos must list") {
+	if !strings.Contains(out, "no enrolled repositories") || !strings.Contains(prompt, "no enrolled repositories") {
 		t.Errorf("problems not reported: out=%q prompt=%q", out, prompt)
 	}
 }
@@ -133,35 +133,35 @@ func TestReadDoc(t *testing.T) {
 	}
 }
 
-func TestReadRepoFile(t *testing.T) {
+func TestReadRepoFileReadsFromTheLocalCheckout(t *testing.T) {
 	dir := t.TempDir()
-	cfg := filepath.Join(dir, "config.yaml")
-	root := filepath.Join(dir, "work")
-	if err := os.WriteFile(cfg, []byte("workroot: "+root+"\nrepos:\n  - {name: o/r, url: u, project: X}\n"), 0o600); err != nil {
+	repo := filepath.Join(dir, "r")
+	if err := os.MkdirAll(filepath.Join(repo, ".hive-dispatch"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	repo := filepath.Join(root, "repos", "o__r", "repo")
-	if err := os.MkdirAll(repo, 0o755); err != nil {
+	body := "project: HD\ntracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n"
+	if err := os.WriteFile(filepath.Join(repo, ".hive-dispatch", "repo.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repo, ".hivedispatch.yaml"), []byte("executor: {}\n"), 0o600); err != nil {
+	p := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(p, []byte("repos:\n  - path: "+repo+"\n"), 0o600); err != nil { // half-written: no agent_id
 		t.Fatal(err)
 	}
-	tool := NewReadRepoFile(cfg)
-	if out, err := call(t, tool, `{"repo":"o/r","name":".hivedispatch.yaml"}`); err != nil || out != "executor: {}\n" {
-		t.Errorf("out = %q, err = %v", out, err)
+	tool := NewReadRepoFile(p)
+	for _, id := range []string{"o/r", "hd"} {
+		out, err := call(t, tool, `{"repo":"`+id+`","name":".hive-dispatch/repo.yaml"}`)
+		if err != nil || out != body {
+			t.Errorf("%s: out = %q, err = %v", id, out, err)
+		}
 	}
-	if out, err := call(t, tool, `{"repo":"O/R","name":".hivedispatch.yaml"}`); err != nil || out != "executor: {}\n" {
-		t.Errorf("case-insensitive repo: out = %q, err = %v", out, err)
-	}
-	if _, err := call(t, tool, `{"repo":"o/r","name":"AGENTS.md"}`); err == nil || !strings.Contains(err.Error(), "no AGENTS.md") {
+	if _, err := call(t, tool, `{"repo":"o/r","name":".hive-dispatch/policy.yaml"}`); err == nil || !strings.Contains(err.Error(), "no ") {
 		t.Errorf("missing file: %v", err)
 	}
-	if _, err := call(t, tool, `{"repo":"o/r","name":"../secret"}`); err == nil || !strings.Contains(err.Error(), ".hivedispatch.yaml or AGENTS.md") {
-		t.Errorf("bad name: %v", err)
+	if _, err := call(t, tool, `{"repo":"o/r","name":"../../etc/passwd"}`); err == nil {
+		t.Error("arbitrary paths must be refused")
 	}
-	if _, err := call(t, tool, `{"repo":"x/y","name":"AGENTS.md"}`); err == nil || !strings.Contains(err.Error(), "not in repos") {
-		t.Errorf("unknown repo: %v", err)
+	if _, err := call(t, tool, `{"repo":"x/y","name":"AGENTS.md"}`); err == nil || !strings.Contains(err.Error(), "o/r (HD)") {
+		t.Errorf("unknown repo should list enrolled ones: %v", err)
 	}
 	if _, err := call(t, NewReadRepoFile(filepath.Join(dir, "nope.yaml")), `{"repo":"o/r","name":"AGENTS.md"}`); err == nil || !strings.Contains(err.Error(), "no config") {
 		t.Errorf("no config: %v", err)
