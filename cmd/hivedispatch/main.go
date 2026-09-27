@@ -381,52 +381,48 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%v\n(run `hivedispatch init` to write a starter config)\n", err)
 		return 1
 	}
-	roots := fs.Args()
-	if len(roots) == 0 && len(cfg.CodeDirs) == 0 {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		roots = []string{home}
-		fmt.Fprintf(stdout, "code_dirs is not set; scanning %s. Set code_dirs in %s to scan your code folder instead.\n", home, *cfgPath)
-	}
-	found, err := cfg.Scan(roots)
+	roots, home, err := cfg.ScanRoots(fs.Args())
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if len(found) == 0 {
+	if home {
+		fmt.Fprintf(stdout, "code_dirs is not set; scanning %s. Set code_dirs in %s to scan your code folder instead.\n", roots[0], *cfgPath)
+	}
+	rows, err := cfg.ScanRows(roots)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if len(rows) == 0 {
 		fmt.Fprintln(stdout, "no git repositories found")
 		return 0
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "PATH\tSTATUS\tPROJECT\tTRACKER\tREPO")
 	enrolled := 0
-	for _, f := range found {
-		status, project, trk, name := "-", "", "", ""
+	for _, r := range rows {
+		status := "-"
 		switch {
-		case f.Enrolled:
+		case r.Enrolled:
 			enrolled++
 			status = "enrolled"
-			r, err := cfg.LoadRepo(f.Path)
-			if err != nil {
+			if r.Problem != "" {
 				status = "enrolled, invalid (see check)"
 			}
-			project, trk, name = r.Project, r.Tracker, r.Name
-			if !cfg.Enrolled(f.Path) {
+			if !r.PickedUp {
 				status += ", outside code_dirs"
 			}
-		case f.Legacy:
+		case r.Legacy:
 			status = "legacy .hivedispatch.yaml"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", f.Path, status, project, trk, name)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.Path, status, r.Project, r.Tracker, r.Name)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "\n%d repositories, %d enrolled. Enrol one with `hivedispatch init -github DIR` (or -jira).\n", len(found), enrolled)
+	fmt.Fprintf(stdout, "\n%d repositories, %d enrolled. Enrol one with `hivedispatch init -github DIR` (or -jira).\n", len(rows), enrolled)
 	return 0
 }
 

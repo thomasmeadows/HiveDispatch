@@ -100,3 +100,12 @@ func TestLoadRejectsLegacyFile(t *testing.T) {
 		t.Errorf("new file wins once present: %+v, %v", c, err)
 	}
 }
+
+func TestParseValidatesContent(t *testing.T) {
+	if c, err := Parse(nil); err != nil || c.Executor.PermissionMode != "dontAsk" {
+		t.Errorf("Parse(nil) = %+v, %v; want defaults", c, err)
+	}
+	if _, err := Parse([]byte("executor:\n  codex:\n    sandbox: wide-open\n")); err == nil || !strings.Contains(err.Error(), FileName) {
+		t.Errorf("bad sandbox: %v, want an error naming %s", err, FileName)
+	}
+}

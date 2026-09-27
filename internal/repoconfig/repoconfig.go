@@ -80,20 +80,24 @@ var codexSandboxes = map[string]bool{"read-only": true, "workspace-write": true,
 // defaults, unless the repo still has the legacy .hivedispatch.yaml, which
 // is an error rather than silently ignored policy.
 func Load(dir string) (Config, error) {
-	var c Config
 	raw, err := os.ReadFile(filepath.Join(dir, Dir, PolicyFile))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return c, err
+		return Config{}, err
 	}
 	if err != nil {
 		if _, lerr := os.Stat(filepath.Join(dir, LegacyFileName)); lerr == nil {
-			return c, fmt.Errorf("%s is no longer read: move it to %s (same keys) — see docs/config.md", LegacyFileName, FileName)
+			return Config{}, fmt.Errorf("%s is no longer read: move it to %s (same keys) — see docs/config.md", LegacyFileName, FileName)
 		}
 	}
-	if err == nil {
-		if err := yaml.Unmarshal(raw, &c); err != nil {
-			return c, fmt.Errorf("%s: %w", FileName, err)
-		}
+	return Parse(raw)
+}
+
+// Parse decodes raw as a policy file (empty means all defaults), applies
+// defaults and validates it.
+func Parse(raw []byte) (Config, error) {
+	var c Config
+	if err := yaml.Unmarshal(raw, &c); err != nil {
+		return c, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if c.Executor.PermissionMode == "" {
 		c.Executor.PermissionMode = "dontAsk"

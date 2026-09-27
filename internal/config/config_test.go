@@ -526,3 +526,64 @@ func TestMaxConcurrentAboveOne(t *testing.T) {
 		t.Fatalf("cfg.MaxConcurrent = %v, err %v", cfg, err)
 	}
 }
+
+func TestParseRepoChecksContentWithoutWriting(t *testing.T) {
+	fakeOrigin(t)
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	worker, err := LoadWorker(writeTemp(t, "agent_id: w\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := makeRepo(t, filepath.Join(t.TempDir(), "gh"), "")
+	r, err := worker.ParseRepo(dir, []byte(githubRepoYAML))
+	if err != nil || r.Name != "o/gh" || r.Project != "HD" {
+		t.Fatalf("ParseRepo = %+v, %v", r, err)
+	}
+	_, err = worker.ParseRepo(dir, []byte("project: HD\ntracker: github\njira:\n  email: me@x\n"))
+	if err == nil || !strings.Contains(err.Error(), filepath.Join(dir, RepoDir, RepoFileName)) {
+		t.Errorf("worker key in repo.yaml: %v, want an error naming the file", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, RepoDir)); !errors.Is(err, os.ErrNotExist) {
+		t.Error("ParseRepo must not write anything")
+	}
+}
+
+func TestScanRowsDescribesEachRepository(t *testing.T) {
+	cfgPath, code := setup(t, "")
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	makeRepo(t, filepath.Join(code, "plain"), "")
+	makeRepo(t, filepath.Join(code, "broken"), "project: HD\ntracker: gitlab\n")
+	worker, err := LoadWorker(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots, home, err := worker.ScanRoots(nil)
+	if err != nil || home || len(roots) != 1 {
+		t.Fatalf("ScanRoots = %v, %v, %v", roots, home, err)
+	}
+	rows, err := worker.ScanRows(roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]ScanRow{}
+	for _, r := range rows {
+		byName[filepath.Base(r.Path)] = r
+	}
+	if r := byName["hive"]; !r.Enrolled || !r.PickedUp || r.Problem != "" || r.Project != "HIVE" || r.Tracker != "jira" {
+		t.Errorf("hive = %+v", r)
+	}
+	if r := byName["plain"]; r.Enrolled || r.Problem != "" {
+		t.Errorf("plain = %+v", r)
+	}
+	if r := byName["broken"]; !r.Enrolled || r.Problem == "" {
+		t.Errorf("broken = %+v", r)
+	}
+	bare, err := LoadWorker(writeTemp(t, "agent_id: w\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", code)
+	if roots, home, err := bare.ScanRoots(nil); err != nil || !home || len(roots) != 1 || roots[0] != code {
+		t.Errorf("no code_dirs: ScanRoots = %v, %v, %v; want the home directory", roots, home, err)
+	}
+}

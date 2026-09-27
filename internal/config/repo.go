@@ -60,6 +60,12 @@ func readRepo(ctx context.Context, dir string) (RepoConfig, error) {
 	if err != nil {
 		return RepoConfig{}, err
 	}
+	return parseRepo(ctx, dir, raw)
+}
+
+// parseRepo decodes raw as dir's repo.yaml and fills origin facts.
+func parseRepo(ctx context.Context, dir string, raw []byte) (RepoConfig, error) {
+	file := repoFilePath(dir)
 	var f repoFile
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
@@ -151,12 +157,84 @@ func (c *Config) LoadRepo(dir string) (RepoConfig, error) {
 	if err != nil {
 		return RepoConfig{}, err
 	}
+	return c.checkRepo(r)
+}
+
+// ParseRepo validates raw as the repo.yaml of the repository at dir
+// without reading or writing that file, so an edit can be checked before
+// it is saved.
+func (c *Config) ParseRepo(dir string, raw []byte) (RepoConfig, error) {
+	r, err := parseRepo(context.Background(), absPath(dir), raw)
+	if err != nil {
+		return RepoConfig{}, err
+	}
+	return c.checkRepo(r)
+}
+
+// checkRepo merges accounts into r and reports its problems.
+func (c *Config) checkRepo(r RepoConfig) (RepoConfig, error) {
 	r = c.withAccounts(r)
 	one := *c
 	one.Repos = []RepoConfig{r}
 	problems := one.repoProblems(r)
 	problems = append(problems, one.accountProblems()...)
 	return r, problemsError(problems)
+}
+
+// ScanRow is one repository found by a scan and what the worker makes of it.
+type ScanRow struct {
+	Path     string `json:"path"`
+	Enrolled bool   `json:"enrolled"`  // has .hive-dispatch/repo.yaml
+	Legacy   bool   `json:"legacy"`    // has only the old .hivedispatch.yaml
+	PickedUp bool   `json:"picked_up"` // under code_dirs or listed under repos:
+	Problem  string `json:"problem,omitempty"`
+	Project  string `json:"project,omitempty"`
+	Tracker  string `json:"tracker,omitempty"`
+	Name     string `json:"name,omitempty"`
+}
+
+// ScanRoots is where a scan looks: roots when given, else the code dirs,
+// else the home directory (home reports that last case).
+func (c *Config) ScanRoots(roots []string) (dirs []string, home bool, err error) {
+	switch {
+	case len(roots) > 0:
+		return roots, false, nil
+	case len(c.CodeDirs) > 0:
+		return c.CodeDirs, false, nil
+	}
+	h := homeDir()
+	if h == "" {
+		return nil, false, errors.New("code_dirs is not set and the home directory is unknown")
+	}
+	return []string{h}, true, nil
+}
+
+// ScanRows scans roots and describes each repository found.
+func (c *Config) ScanRows(roots []string) ([]ScanRow, error) {
+	found, err := c.Scan(roots)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]ScanRow, 0, len(found))
+	for _, f := range found {
+		rows = append(rows, c.Describe(f))
+	}
+	return rows, nil
+}
+
+// Describe reads what the worker makes of one found repository.
+func (c *Config) Describe(f discover.Found) ScanRow {
+	row := ScanRow{Path: f.Path, Enrolled: f.Enrolled, Legacy: f.Legacy}
+	if !f.Enrolled {
+		return row
+	}
+	row.PickedUp = c.Enrolled(f.Path)
+	r, err := c.LoadRepo(f.Path)
+	if err != nil {
+		row.Problem = err.Error()
+	}
+	row.Project, row.Tracker, row.Name = r.Project, r.Tracker, r.Name
+	return row
 }
 
 // Enrolled reports whether the worker would pick up the repository at dir:
