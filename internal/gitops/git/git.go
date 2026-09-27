@@ -17,6 +17,7 @@ import (
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/gitops"
+	"github.com/thomasmeadows/hivedispatch/internal/gitops/repolock"
 )
 
 // Identity used for safety commits, so they are distinguishable from the
@@ -46,6 +47,14 @@ func (w *Workspaces) RepoDir(repo config.RepoConfig) string {
 // EnsureBase clones the repo if needed and fetches. It returns the base
 // clone path.
 func (w *Workspaces) EnsureBase(ctx context.Context, repo config.RepoConfig) (string, error) {
+	l := repolock.For(w.RepoDir(repo))
+	l.Lock()
+	defer l.Unlock()
+	return w.ensureBase(ctx, repo)
+}
+
+// ensureBase is EnsureBase for a caller holding the repository's lock.
+func (w *Workspaces) ensureBase(ctx context.Context, repo config.RepoConfig) (string, error) {
 	base := filepath.Join(w.RepoDir(repo), "repo")
 	if _, err := os.Stat(filepath.Join(base, ".git")); errors.Is(err, os.ErrNotExist) {
 		if err := os.MkdirAll(w.RepoDir(repo), 0o755); err != nil {
@@ -62,9 +71,14 @@ func (w *Workspaces) EnsureBase(ctx context.Context, repo config.RepoConfig) (st
 }
 
 // Prepare returns the ticket's worktree, creating it from the remote ticket
-// branch if one exists, else from the default branch.
+// branch if one exists, else from the default branch. Every ticket gets its
+// own worktree, so tickets can be worked in parallel; the git operations on
+// the shared base clone are serialised per repository.
 func (w *Workspaces) Prepare(ctx context.Context, repo config.RepoConfig, key string) (gitops.Workspace, error) {
-	base, err := w.EnsureBase(ctx, repo)
+	l := repolock.For(w.RepoDir(repo))
+	l.Lock()
+	defer l.Unlock()
+	base, err := w.ensureBase(ctx, repo)
 	if err != nil {
 		return gitops.Workspace{}, err
 	}
@@ -102,6 +116,11 @@ func (w *Workspaces) Prepare(ctx context.Context, repo config.RepoConfig, key st
 // Finalize commits a dirty tree under the HiveDispatch identity and pushes
 // the branch when it has commits beyond Base.
 func (w *Workspaces) Finalize(ctx context.Context, ws gitops.Workspace, message string) (bool, error) {
+	// The worktree's objects and refs live in the base clone it shares with
+	// every other ticket of the repository.
+	l := repolock.For(filepath.Dir(ws.Path))
+	l.Lock()
+	defer l.Unlock()
 	status, err := run(ctx, ws.Path, "status", "--porcelain")
 	if err != nil {
 		return false, err

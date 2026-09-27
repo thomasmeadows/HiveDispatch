@@ -2,8 +2,10 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
@@ -149,5 +151,42 @@ func TestPrepareKeepsDivergedBranch(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(ws.Path, "later.txt")); err == nil {
 		t.Error("a diverged branch must not be rewritten under the agent")
+	}
+}
+
+func TestParallelTicketsShareOneBaseClone(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	w := New(t.TempDir())
+	ctx := context.Background()
+	keys := []string{"HIVE-10", "HIVE-11", "HIVE-12", "HIVE-13", "HIVE-14", "HIVE-15"}
+	errs := make(chan error, len(keys))
+	var wg sync.WaitGroup
+	for _, key := range keys {
+		wg.Add(1)
+		go func(key string) {
+			defer wg.Done()
+			ws, err := w.Prepare(ctx, repoCfg(remote), key)
+			if err != nil {
+				errs <- err
+				return
+			}
+			if err := os.WriteFile(filepath.Join(ws.Path, key+".txt"), []byte(key), 0o644); err != nil {
+				errs <- err
+				return
+			}
+			if pushed, err := w.Finalize(ctx, ws, "hive: "+key); err != nil || !pushed {
+				errs <- fmt.Errorf("%s: pushed=%v err=%w", key, pushed, err)
+			}
+		}(key)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	for _, key := range keys {
+		if got := gittest.Git(t, remote, "log", "-1", "--format=%s", "hive/"+key); got != "hive: "+key+"\n" {
+			t.Errorf("%s on remote: %q", key, got)
+		}
 	}
 }
