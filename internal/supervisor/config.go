@@ -34,6 +34,12 @@ type Config struct {
 	FromEnv    bool   `yaml:"-"` // provider was chosen from the environment, not the file or a flag
 }
 
+// Defaults for the per-turn limits when the config leaves them unset.
+const (
+	defaultMaxTokens  = 4096
+	defaultStepBudget = 20
+)
+
 type preset struct {
 	model, baseURL, keyEnv string
 }
@@ -128,10 +134,10 @@ func (c *Config) applyPreset() {
 		c.APIKeyEnv = p.keyEnv
 	}
 	if c.MaxTokens == 0 {
-		c.MaxTokens = 4096
+		c.MaxTokens = defaultMaxTokens
 	}
 	if c.StepBudget == 0 {
-		c.StepBudget = 20
+		c.StepBudget = defaultStepBudget
 	}
 }
 
