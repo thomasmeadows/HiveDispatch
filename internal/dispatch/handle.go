@@ -33,9 +33,13 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 		d.log().Warn("no repo configured for ticket", "ticket", t.Key)
 		return OutcomeSkipped, nil
 	}
-	cands, err := candidates(repo, t)
+	cands, err := candidates(repo, t, config.RoleCoding)
 	if err != nil {
 		d.log().Warn("ticket skipped", "ticket", t.Key, "err", err)
+		return OutcomeSkipped, nil
+	}
+	if len(cands) == 0 {
+		d.log().Warn("ticket skipped: the repository has no coding agent", "ticket", t.Key)
 		return OutcomeSkipped, nil
 	}
 	agent, ok := d.takeAgent(ctx, repo, cands, true)
@@ -46,48 +50,38 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 	return d.handle(ctx, t, repo, agent)
 }
 
-// handle works t with agent, which the caller has reserved.
+// handle works t with agent, which the caller has reserved, in the way the
+// agent's role works its column.
 func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, agent config.Agent) (Outcome, error) {
+	switch roleOf(agent) {
+	case config.RolePlanning:
+		return d.handlePlanning(ctx, t, repo, agent)
+	case config.RoleReview:
+		return d.handleReview(ctx, t, repo, agent)
+	}
+	return d.handleCoding(ctx, t, repo, agent)
+}
+
+// handleCoding implements a Ready ticket: triage (unless it was planned or
+// sent back by a review), run the coding agent, open or update the PR.
+func (d *Dispatcher) handleCoding(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, agent config.Agent) (Outcome, error) {
 	now := d.now()
-	if t.Claim.Fresh(now, d.Cfg.ClaimTimeout) && t.Claim.AgentID != d.Cfg.MachineID {
-		return OutcomeSkipped, nil
-	}
-	won, err := d.Tracker.Claim(ctx, t.Key, d.Cfg.MachineID, now)
-	if err != nil {
-		return OutcomeSkipped, fmt.Errorf("claim %s: %w", t.Key, err)
-	}
-	if !won {
-		return OutcomeClaimLost, nil
+	if out, err := d.claim(ctx, t, now); out != "" || err != nil {
+		return out, err
 	}
 	d.log().Info("picked up ticket", "ticket", t.Key, "agent", agent.Name, "summary", t.Summary)
 	defer d.release(ctx, t.Key)
 
-	run, err := d.Store.Load(ctx, t.Key)
+	run, err := d.loadRun(ctx, t)
 	if err != nil {
-		return OutcomeSkipped, fmt.Errorf("load run %s: %w", t.Key, err)
+		return OutcomeSkipped, err
 	}
-	if run.URL != "" && t.URL != "" && run.URL != t.URL {
-		// The key now names a different ticket (e.g. a Jira project and a
-		// GitHub repo sharing a prefix). Nothing in the old record — least
-		// of all its resume token — applies to this one.
-		d.log().Warn("run record belongs to another ticket with the same key; starting fresh", "ticket", t.Key, "was", run.URL, "now", t.URL)
-		run = &state.Run{Ticket: t.Key}
-	}
-	run.URL = t.URL
 	priorPhase := run.Phase // where the last run stopped, before we overwrite it
 	run.Agent = d.Cfg.MachineID + "/" + agent.Name
 	if run.ResumeToken != "" && run.Executor != "" && run.Executor != agent.Executor {
 		// A session id means nothing to another CLI: this agent starts over.
 		d.log().Info("previous session belongs to another executor; starting fresh", "ticket", t.Key, "was", run.Executor, "agent", agent.Name)
 		run.ResumeToken = ""
-	}
-	// The name and branch are fixed when the ticket is first worked, so a
-	// retitled ticket keeps its branch and pull request.
-	if run.Name == "" {
-		run.Name = tracker.Name(t.Key, t.Summary)
-	}
-	if run.Branch == "" {
-		run.Branch = gitops.BranchName(run.Name)
 	}
 	d.setPhase(ctx, run, state.PhaseClaimed)
 
@@ -111,12 +105,21 @@ func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.R
 		return d.finishCompleted(d.background(ctx), t, repo, run, executor.Result{Status: executor.StatusCompleted, Summary: "Finished a previous run: the branch was pushed but the pull request had not been opened."}, true)
 	}
 
-	// Resume after a human reply, or triage afresh.
+	// Address a review, resume after a human reply, start from a plan, or
+	// triage afresh.
 	var taskPrompt string
-	if d.canResume(t, run) {
+	switch {
+	case run.ReviewFix:
+		taskPrompt = prompt.RenderReviewFix(t, repo, run.Branch, run.Review)
+		run.ReviewFix, run.Review = false, ""
+		d.event(ctx, run, "review_fix", "")
+	case run.Planned && !d.canResume(t, run):
+		taskPrompt = prompt.Render(t, repo, run.Branch)
+		d.event(ctx, run, "from_plan", "")
+	case d.canResume(t, run):
 		taskPrompt = prompt.RenderResume(t, run.QuestionAt, isOurs)
 		d.event(ctx, run, "resume", "")
-	} else {
+	default:
 		dec, err := d.Triager.Decide(ctx, triage.Input{
 			Ticket: t, Repo: repo, Branch: run.Branch, RepoPath: ws.Path,
 			Attempts: run.Attempts, LastStopCause: run.StopCause,
@@ -154,6 +157,48 @@ func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.R
 
 	d.transition(ctx, t.Key, tracker.StateInProgress)
 	return d.execute(runCtx, t, repo, agent, run, ws, taskPrompt)
+}
+
+// loadRun loads t's run record, fresh when the key now names a different
+// ticket, with the ticket's name and branch fixed on first use.
+func (d *Dispatcher) loadRun(ctx context.Context, t tracker.Ticket) (*state.Run, error) {
+	run, err := d.Store.Load(ctx, t.Key)
+	if err != nil {
+		return nil, fmt.Errorf("load run %s: %w", t.Key, err)
+	}
+	if run.URL != "" && t.URL != "" && run.URL != t.URL {
+		// The key now names a different ticket (e.g. a Jira project and a
+		// GitHub repo sharing a prefix). Nothing in the old record — least
+		// of all its resume token — applies to this one.
+		d.log().Warn("run record belongs to another ticket with the same key; starting fresh", "ticket", t.Key, "was", run.URL, "now", t.URL)
+		run = &state.Run{Ticket: t.Key}
+	}
+	run.URL = t.URL
+	// The name and branch are fixed when the ticket is first worked, so a
+	// retitled ticket keeps its branch and pull request.
+	if run.Name == "" {
+		run.Name = tracker.Name(t.Key, t.Summary)
+	}
+	if run.Branch == "" {
+		run.Branch = gitops.BranchName(run.Name)
+	}
+	return run, nil
+}
+
+// claim takes t's claim for this machine. A non-empty outcome (or an
+// error) means it did not, and the caller stops.
+func (d *Dispatcher) claim(ctx context.Context, t tracker.Ticket, now time.Time) (Outcome, error) {
+	if t.Claim.Fresh(now, d.Cfg.ClaimTimeout) && t.Claim.AgentID != d.Cfg.MachineID {
+		return OutcomeSkipped, nil
+	}
+	won, err := d.Tracker.Claim(ctx, t.Key, d.Cfg.MachineID, now)
+	if err != nil {
+		return OutcomeSkipped, fmt.Errorf("claim %s: %w", t.Key, err)
+	}
+	if !won {
+		return OutcomeClaimLost, nil
+	}
+	return "", nil
 }
 
 // canResume reports whether the last run asked a question that a human has

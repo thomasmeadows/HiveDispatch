@@ -22,12 +22,20 @@ const AgentsFileName = "agents.yaml"
 // the repository's policy.yaml; Model overrides the policy's model.
 type Agent struct {
 	Name     string `yaml:"name" json:"name"`
+	Role     string `yaml:"role,omitempty" json:"role"`   // planning, coding (default) or review
 	Executor string `yaml:"executor" json:"executor"`     // claude (default), codex or fake
 	Model    string `yaml:"model,omitempty" json:"model"` // default: the policy's model, then the CLI's
 }
 
+// Agent roles: which board column an agent works.
+const (
+	RolePlanning = "planning" // Planning: posts a plan, moves the ticket to Ready
+	RoleCoding   = "coding"   // Ready: implements the ticket and opens a pull request
+	RoleReview   = "review"   // In Review: reviews the pull request, sends it back or passes it
+)
+
 // DefaultAgents is the pool of a repository without an agents.yaml.
-func DefaultAgents() []Agent { return []Agent{{Name: "default", Executor: "claude"}} }
+func DefaultAgents() []Agent { return []Agent{{Name: "default", Role: RoleCoding, Executor: "claude"}} }
 
 // PinLabelPrefix is the label prefix that, followed by an agent's name, pins a ticket to that agent.
 const PinLabelPrefix = "hive:agent:"
@@ -57,6 +65,12 @@ func ParseAgents(raw []byte) ([]Agent, error) {
 		a.Name = strings.TrimSpace(a.Name)
 		if a.Executor == "" {
 			a.Executor = "claude"
+		}
+		if a.Role == "" {
+			a.Role = RoleCoding
+		}
+		if a.Role != RolePlanning && a.Role != RoleCoding && a.Role != RoleReview {
+			problems = append(problems, fmt.Sprintf("agents[%d].role: want planning, coding or review, got %q", i, a.Role))
 		}
 		switch {
 		case !agentNameRe.MatchString(a.Name):

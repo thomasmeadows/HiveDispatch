@@ -93,14 +93,14 @@ func (f *Tracker) PollCount() int {
 	return f.polls
 }
 
-// Poll returns tickets in the ready state.
-func (f *Tracker) Poll(_ context.Context) ([]tracker.Ticket, error) {
+// Poll returns tickets in state.
+func (f *Tracker) Poll(_ context.Context, state tracker.State) ([]tracker.Ticket, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.polls++
 	var out []tracker.Ticket
 	for _, t := range f.tickets {
-		if t.Status == string(tracker.StateReady) {
+		if t.Status == string(state) {
 			out = append(out, copyTicket(t))
 		}
 	}

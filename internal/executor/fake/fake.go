@@ -4,6 +4,7 @@ package fake
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -27,9 +28,15 @@ type Executor struct {
 	// Gate, when set, holds every run until it is closed (or the run's
 	// context ends), so tests can observe runs in flight.
 	Gate chan struct{}
+	// Answers are Advise's JSON answers keyed by ticket; without one, a plan
+	// or an approving review is returned.
+	Answers map[string]string
+	// AdviceErr fails Advise for a ticket.
+	AdviceErr map[string]error
 
 	mu           sync.Mutex
 	calls        []executor.Task
+	advice       []executor.Advice
 	active, peak int
 }
 
@@ -42,7 +49,38 @@ func New() *Executor {
 		Block:   map[string]bool{},
 		Err:     map[string]error{},
 		Default: executor.Result{Status: executor.StatusCompleted, Summary: DefaultSummary},
+		Answers: map[string]string{}, AdviceErr: map[string]error{},
 	}
+}
+
+// Default answers for Advise.
+const (
+	DefaultPlan   = `{"decision":"plan","plan":"Fake plan: change the obvious file."}`
+	DefaultReview = `{"verdict":"approve","summary":"Fake review: looks fine."}`
+)
+
+// Advise records the request and returns the scripted answer.
+func (e *Executor) Advise(_ context.Context, a executor.Advice) (json.RawMessage, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.advice = append(e.advice, a)
+	if err := e.AdviceErr[a.TicketKey]; err != nil {
+		return nil, err
+	}
+	if ans, ok := e.Answers[a.TicketKey]; ok {
+		return json.RawMessage(ans), nil
+	}
+	if a.Kind == executor.AdviceReview {
+		return json.RawMessage(DefaultReview), nil
+	}
+	return json.RawMessage(DefaultPlan), nil
+}
+
+// AdviceCalls returns every request Advise has received.
+func (e *Executor) AdviceCalls() []executor.Advice {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]executor.Advice(nil), e.advice...)
 }
 
 // Name implements executor.Executor.

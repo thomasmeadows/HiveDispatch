@@ -21,3 +21,6 @@ func (Host) FindPR(context.Context, string, string) (*githost.PR, error) { retur
 func (Host) OpenPR(context.Context, string, githost.Request) (*githost.PR, error) {
 	return nil, nil
 }
+
+// Review implements githost.GitHost; without a host there is no pull request.
+func (Host) Review(context.Context, string, int, string) error { return nil }

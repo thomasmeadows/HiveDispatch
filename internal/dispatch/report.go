@@ -70,3 +70,31 @@ func reportFailed(res executor.Result, attempts, maxAttempts int, branch string,
 func reportPRFailed(err error, branch string) string {
 	return fmt.Sprintf("%s Pushed branch `%s` but opening the PR failed: %v\n\nWill retry on the next poll.", Marker, branch, err)
 }
+
+func reportPlan(agent, plan string) string {
+	return fmt.Sprintf("%s Plan by agent %s. A coding agent will implement it; edit the ticket or comment before then to change course.\n\n%s", Marker, agent, strings.TrimSpace(plan))
+}
+
+func reportPlanningNeedsInfo(agent, question string) string {
+	return fmt.Sprintf("%s Agent %s needs more information to plan this:\n\n%s\n\nReply in this thread, then move the ticket back to Planning (or straight to Ready).", Marker, agent, question)
+}
+
+func reviewBody(agent string, approved bool, summary string) string {
+	verdict := "Changes requested"
+	if approved {
+		verdict = "Approved"
+	}
+	return fmt.Sprintf("**%s** by HiveDispatch review agent %s.\n\n%s", verdict, agent, strings.TrimSpace(summary))
+}
+
+func reportApproved(agent, prURL string) string {
+	return fmt.Sprintf("%s Agent %s reviewed %s and found nothing to change. Ready for a human to merge.", Marker, agent, prURL)
+}
+
+func reportChangesRequested(agent, prURL, summary string) string {
+	return fmt.Sprintf("%s Agent %s reviewed %s and asked for changes; a coding agent will make them.\n\n%s", Marker, agent, prURL, strings.TrimSpace(summary))
+}
+
+func reportReviewExhausted(agent, prURL, summary string, rounds int) string {
+	return fmt.Sprintf("%s Agent %s still asks for changes to %s after %d round(s) of fixes; a human should take over.\n\n%s", Marker, agent, prURL, rounds, strings.TrimSpace(summary))
+}

@@ -150,3 +150,23 @@ func writePolicy(dir string, body []byte) error {
 	}
 	return os.WriteFile(filepath.Join(dir, repoconfig.Dir, repoconfig.PolicyFile), body, 0o644)
 }
+
+func TestAdviseIsReadOnlyWithTheGivenSchema(t *testing.T) {
+	e, argsFile, stdinFile := fakeExec(t, "plan")
+	raw, err := e.Advise(context.Background(), executor.Advice{
+		Kind: executor.AdviceReview, TicketKey: "HIVE-1", Prompt: "review this", Workspace: t.TempDir(),
+		Schema: `{"type":"object","properties":{"verdict":{"type":"string"}}}`, Model: "opus",
+	})
+	if err != nil || !strings.Contains(string(raw), `"b.go"`) {
+		t.Fatalf("raw = %s, err = %v", raw, err)
+	}
+	args, _ := os.ReadFile(argsFile)
+	for _, want := range []string{"--permission-mode\nplan", `"verdict"`, "--model\nopus", "--no-session-persistence"} {
+		if !strings.Contains(string(args), want) {
+			t.Errorf("args lack %q:\n%s", want, args)
+		}
+	}
+	if in, _ := os.ReadFile(stdinFile); string(in) != "review this" {
+		t.Errorf("stdin = %q", in)
+	}
+}

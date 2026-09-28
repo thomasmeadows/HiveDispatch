@@ -43,7 +43,7 @@ func adminMux(fields []map[string]any, created *[]map[string]any, addedToScreen 
 		_ = json.NewEncoder(w).Encode(map[string]any{"fields": editable})
 	})
 	mux.HandleFunc("GET /rest/api/3/status", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`[{"name":"To Do"},{"name":"Ready"},{"name":"In Progress"},{"name":"Needs Info"},{"name":"In Review"},{"name":"Done"}]`))
+		_, _ = w.Write([]byte(`[{"name":"To Do"},{"name":"Planning"},{"name":"Ready"},{"name":"In Progress"},{"name":"Needs Info"},{"name":"In Review"},{"name":"Done"}]`))
 	})
 	mux.HandleFunc("POST /rest/api/3/search/jql", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any

@@ -18,6 +18,7 @@ type State string
 // Lifecycle states. Transient states (triaged, claimed, running) are not
 // tracker states; they live in the run file.
 const (
+	StatePlanning   State = "planning"
 	StateReady      State = "ready"
 	StateInProgress State = "in_progress"
 	StateNeedsInfo  State = "needs_info"
@@ -28,7 +29,7 @@ const (
 // Valid reports whether s is one of the defined states.
 func (s State) Valid() bool {
 	switch s {
-	case StateReady, StateInProgress, StateNeedsInfo, StateInReview, StateNeedsHuman:
+	case StatePlanning, StateReady, StateInProgress, StateNeedsInfo, StateInReview, StateNeedsHuman:
 		return true
 	}
 	return false
@@ -80,8 +81,9 @@ var (
 // Tracker is the issue-tracker boundary. All methods are safe for
 // concurrent use.
 type Tracker interface {
-	// Poll returns every ticket matching the configured trigger query.
-	Poll(ctx context.Context) ([]Ticket, error)
+	// Poll returns every ticket in the configured scope that is in state
+	// (Planning, Ready or In Review: the columns agents take work from).
+	Poll(ctx context.Context, state State) ([]Ticket, error)
 	// Get returns one ticket by key, or ErrNotFound.
 	Get(ctx context.Context, key string) (Ticket, error)
 	// Claim writes agentID and at to the ticket, then re-reads it. It

@@ -8,6 +8,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -82,9 +83,31 @@ type Result struct {
 	RetryAfter time.Time
 }
 
+// AdviceKind is what a read-only run is for.
+type AdviceKind string
+
+// The read-only runs planning and review agents make.
+const (
+	AdvicePlan   AdviceKind = "plan"   // a planning agent planning a ticket
+	AdviceReview AdviceKind = "review" // a review agent reviewing a pull request
+)
+
+// Advice is a read-only run: the agent may inspect Workspace but changes
+// nothing, and answers with JSON matching Schema.
+type Advice struct {
+	Kind      AdviceKind
+	TicketKey string
+	Prompt    string
+	Workspace string
+	Schema    string // JSON Schema of the answer
+	Model     string // the agent's model; wins over the repository policy's
+}
+
 // Executor wraps one coding-agent CLI. Timeouts ride on the context.
 type Executor interface {
 	Name() string
 	Plan(ctx context.Context, t Task) (Footprint, error)
 	Run(ctx context.Context, t Task) (Result, error)
+	// Advise makes a read-only run and returns its JSON answer.
+	Advise(ctx context.Context, a Advice) (json.RawMessage, error)
 }

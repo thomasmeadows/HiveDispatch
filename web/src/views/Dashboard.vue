@@ -93,7 +93,7 @@ onMounted(async () => {
                   <td><strong>{{ r.project }}</strong></td>
                   <td>{{ r.tracker }}</td>
                   <td>{{ r.name }}</td>
-                  <td>{{ (r.agents || []).map((a) => a.name).join(', ') }}</td>
+                  <td>{{ (r.agents || []).map((a) => `${a.name} (${a.role || 'coding'})`).join(', ') }}</td>
                   <td class="mono"><router-link :to="{ name: 'repo', query: { path: r.path } }">{{ r.path }}</router-link></td>
                 </tr>
                 <tr v-if="!(ov.repos || []).length"><td colspan="5" class="muted">None yet — enrol one from Repos.</td></tr>

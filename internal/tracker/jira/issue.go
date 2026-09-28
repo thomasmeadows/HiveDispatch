@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -41,13 +42,19 @@ func (c *Client) fields() []string {
 	}
 }
 
-// Poll runs the configured JQL and returns every matching ticket.
-func (c *Client) Poll(ctx context.Context) ([]tracker.Ticket, error) {
+// Poll returns the tickets in the configured scope (jira.jql) whose status
+// is the one mapped from state.
+func (c *Client) Poll(ctx context.Context, state tracker.State) ([]tracker.Ticket, error) {
+	status, err := c.statusName(state)
+	if err != nil {
+		return nil, err
+	}
+	jql := stageJQL(c.cfg.JQL, status)
 	var out []tracker.Ticket
 	token := ""
 	for page := 0; page < maxPollPages; page++ {
 		body := map[string]any{
-			"jql":        c.cfg.JQL,
+			"jql":        jql,
 			"fields":     c.fields(),
 			"maxResults": pollPageSize,
 		}
@@ -158,4 +165,19 @@ func parseTime(s string) time.Time {
 		return time.Time{}
 	}
 	return t.UTC()
+}
+
+// orderByRe finds a trailing ORDER BY clause, which must stay last.
+var orderByRe = regexp.MustCompile(`(?is)\s+order\s+by\s+.*$`)
+
+// stageJQL narrows the scope query to one status: (scope) AND status = "X",
+// keeping any ORDER BY at the end.
+func stageJQL(scope, status string) string {
+	order := orderByRe.FindString(scope)
+	scope = strings.TrimSpace(strings.TrimSuffix(scope, order))
+	q := fmt.Sprintf("status = %q", status)
+	if scope != "" {
+		q = "(" + scope + ") AND " + q
+	}
+	return q + order
 }

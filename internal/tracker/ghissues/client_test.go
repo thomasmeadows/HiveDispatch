@@ -13,7 +13,7 @@ import (
 
 func testCfg(url string) config.GitHubConfig {
 	return config.GitHubConfig{APIURL: url, Token: "tok", Labels: config.GitHubLabels{
-		Ready: "hive:ready", InProgress: "hive:in-progress", NeedsInfo: "hive:needs-info",
+		Planning: "hive:planning", Ready: "hive:ready", InProgress: "hive:in-progress", NeedsInfo: "hive:needs-info",
 		InReview: "hive:in-review", NeedsHuman: "hive:needs-human",
 	}}
 }

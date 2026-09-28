@@ -14,7 +14,9 @@ import (
 
 type broken struct{ *fake.Tracker }
 
-func (broken) Poll(context.Context) ([]tracker.Ticket, error) { return nil, errors.New("site down") }
+func (broken) Poll(context.Context, tracker.State) ([]tracker.Ticket, error) {
+	return nil, errors.New("site down")
+}
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
@@ -25,7 +27,7 @@ func TestRoutesByProjectAndUnionsPolls(t *testing.T) {
 	// A query shared across projects must not hand B's ticket to A's tracker.
 	a.Add(tracker.Ticket{Key: "BB-2"})
 	r := &Router{ByProject: map[string]tracker.Tracker{"AA": a, "BB": b}, Log: quiet()}
-	got, err := r.Poll(context.Background())
+	got, err := r.Poll(context.Background(), tracker.StateReady)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,12 +53,12 @@ func TestPollSurvivesOneBrokenTracker(t *testing.T) {
 	ok := fake.New()
 	ok.Add(tracker.Ticket{Key: "OK-1"})
 	r := &Router{ByProject: map[string]tracker.Tracker{"OK": ok, "BAD": broken{fake.New()}}, Log: quiet()}
-	got, err := r.Poll(context.Background())
+	got, err := r.Poll(context.Background(), tracker.StateReady)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("Poll = %+v, %v; one broken tracker must not stall the rest", got, err)
 	}
 	r = &Router{ByProject: map[string]tracker.Tracker{"BAD": broken{fake.New()}}, Log: quiet()}
-	if _, err := r.Poll(context.Background()); err == nil {
+	if _, err := r.Poll(context.Background(), tracker.StateReady); err == nil {
 		t.Error("every tracker failing is an error")
 	}
 }

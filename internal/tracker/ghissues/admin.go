@@ -106,7 +106,7 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 			sort.Strings(rep.MissingLabels[repo.Name])
 		}
 	}
-	tickets, err := c.Poll(ctx)
+	tickets, err := c.Poll(ctx, tracker.StateReady)
 	if err != nil {
 		return rep, fmt.Errorf("poll failed: %w", err)
 	}

@@ -86,6 +86,7 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 func (c *Client) projectColumns() map[tracker.State]string {
 	col := c.cfg.Project.Columns
 	return map[tracker.State]string{
+		tracker.StatePlanning:   col.Planning,
 		tracker.StateReady:      col.Ready,
 		tracker.StateInProgress: col.InProgress,
 		tracker.StateNeedsInfo:  col.NeedsInfo,

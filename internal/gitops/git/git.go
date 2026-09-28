@@ -145,3 +145,9 @@ func (w *Workspaces) Finalize(ctx context.Context, ws gitops.Workspace, message 
 	}
 	return true, nil
 }
+
+// Diff returns the branch's changes against its base, as git diff
+// base...HEAD shows them.
+func (w *Workspaces) Diff(ctx context.Context, ws gitops.Workspace) (string, error) {
+	return run(ctx, ws.Path, "diff", "--no-color", ws.Base+"...HEAD")
+}

@@ -22,7 +22,7 @@ ticket_prefix: HIVE
 ticket_tracker: jira
 jira:
   base_url: https://example.atlassian.net
-  jql: 'project = HIVE AND status = "Ready"'
+  jql: 'project = HIVE'
   fields:
     agent_id: customfield_10042
     claimed_at: customfield_10043
@@ -602,7 +602,7 @@ func TestAgentsDefaultToOneClaudeAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := cfg.Repos[0].Agents; len(got) != 1 || got[0] != (Agent{Name: "default", Executor: "claude"}) {
+	if got := cfg.Repos[0].Agents; len(got) != 1 || got[0] != (Agent{Name: "default", Role: RoleCoding, Executor: "claude"}) {
 		t.Errorf("agents = %+v", got)
 	}
 }
@@ -616,7 +616,7 @@ func TestAgentsFileIsReadAndValidated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Agent{{Name: "claude-1", Executor: "claude"}, {Name: "codex-fast", Executor: "codex", Model: "gpt-5-codex"}}
+	want := []Agent{{Name: "claude-1", Role: RoleCoding, Executor: "claude"}, {Name: "codex-fast", Role: RoleCoding, Executor: "codex", Model: "gpt-5-codex"}}
 	if got := cfg.Repos[0].Agents; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("agents = %+v", got)
 	}
@@ -733,5 +733,47 @@ func TestDefaultPrefixesMustNotCollide(t *testing.T) {
 	_, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n"))
 	if err == nil || !strings.Contains(err.Error(), `ticket_prefix "GITHUB" is also used by`) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestPlanningStateDefaults(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	p, _ := setup(t, "")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := cfg.Repos[0]
+	if r.GitHub.Labels.Planning != "hive:planning" || r.GitHub.Project.Columns.Planning != "Planning" || r.Jira.Statuses.Planning != "Planning" {
+		t.Errorf("planning defaults: label %q column %q status %q", r.GitHub.Labels.Planning, r.GitHub.Project.Columns.Planning, r.Jira.Statuses.Planning)
+	}
+	if cfg.MaxReviewRounds != 2 {
+		t.Errorf("max_review_rounds = %d, want 2", cfg.MaxReviewRounds)
+	}
+	p, _ = setup(t, "max_review_rounds: -1\n")
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "max_review_rounds") {
+		t.Errorf("negative rounds: %v", err)
+	}
+}
+
+func TestAgentRoles(t *testing.T) {
+	got, err := ParseAgents([]byte("agents:\n  - name: p\n    role: planning\n  - name: c\n  - name: r\n    role: review\n    executor: codex\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Role != RolePlanning || got[1].Role != RoleCoding || got[2].Role != RoleReview {
+		t.Errorf("roles = %+v", got)
+	}
+	if _, err := ParseAgents([]byte("agents:\n  - name: x\n    role: tester\n")); err == nil || !strings.Contains(err.Error(), "role") {
+		t.Errorf("bad role: %v", err)
+	}
+}
+
+func TestJiraJQLIsScopeOnly(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	p, code := setup(t, "")
+	makeRepo(t, filepath.Join(code, "hive"), strings.Replace(jiraRepoYAML, `jql: 'project = HIVE'`, `jql: 'project = HIVE AND status = "Ready"'`, 1))
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "jira.jql") || !strings.Contains(err.Error(), "status") {
+		t.Errorf("err = %v, want jql without a status clause", err)
 	}
 }

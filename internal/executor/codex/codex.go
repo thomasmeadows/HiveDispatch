@@ -63,52 +63,67 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 // Plan implements executor.Executor by running read-only with an output
 // schema and reading the declared file list from the final message.
 func (e *Executor) Plan(ctx context.Context, t executor.Task) (executor.Footprint, error) {
-	rc, err := repoconfig.Load(t.Workspace)
-	if err != nil {
-		return executor.Footprint{}, err
-	}
-	schema, err := os.CreateTemp("", "hivedispatch-codex-schema-*.json")
-	if err != nil {
-		return executor.Footprint{}, fmt.Errorf("plan: %w", err)
-	}
-	defer func() { _ = os.Remove(schema.Name()) }()
-	if _, err := schema.WriteString(planSchema); err != nil {
-		_ = schema.Close()
-		return executor.Footprint{}, fmt.Errorf("plan: %w", err)
-	}
-	if err := schema.Close(); err != nil {
-		return executor.Footprint{}, fmt.Errorf("plan: %w", err)
-	}
-	planPrompt := t.Prompt + "\n\nDo not make changes. List every file you would create or modify to complete this ticket, as repository-relative paths, in the requested JSON shape.\n"
-	tr, exit, _, err := codexcli.Run(ctx, codexcli.Cmd{
-		Binary: e.cfg.Binary, Dir: t.Workspace,
-		Args:  buildArgs(rc.Executor, t.Model, "", true, schema.Name()),
-		Stdin: planPrompt,
-		Env:   pathEnv(rc.Executor.ExtraPath()),
+	raw, err := e.Advise(ctx, executor.Advice{
+		TicketKey: t.TicketKey, Workspace: t.Workspace, Model: t.Model, Schema: planSchema,
+		Prompt: t.Prompt + "\n\nDo not make changes. List every file you would create or modify to complete this ticket, as repository-relative paths, in the requested JSON shape.\n",
 	})
 	if err != nil {
 		return executor.Footprint{}, fmt.Errorf("plan: %w", err)
 	}
+	var fp struct {
+		Files []string `json:"files"`
+	}
+	if err := json.Unmarshal(raw, &fp); err != nil {
+		return executor.Footprint{}, fmt.Errorf("plan: parse footprint: %w", err)
+	}
+	return executor.Footprint{Files: fp.Files}, nil
+}
+
+// Advise implements executor.Executor: codex exec in the read-only sandbox,
+// with the schema (written to a temporary file) shaping its final message.
+func (e *Executor) Advise(ctx context.Context, a executor.Advice) (json.RawMessage, error) {
+	rc, err := repoconfig.Load(a.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	schema, err := os.CreateTemp("", "hivedispatch-codex-schema-*.json")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.Remove(schema.Name()) }()
+	if _, err := schema.WriteString(a.Schema); err != nil {
+		_ = schema.Close()
+		return nil, err
+	}
+	if err := schema.Close(); err != nil {
+		return nil, err
+	}
+	tr, exit, _, err := codexcli.Run(ctx, codexcli.Cmd{
+		Binary: e.cfg.Binary, Dir: a.Workspace,
+		Args:  buildArgs(rc.Executor, a.Model, "", true, schema.Name()),
+		Stdin: withGuidance(a.Prompt, rc.Guidance),
+		Env:   pathEnv(rc.Executor.ExtraPath()),
+	})
+	if err != nil {
+		return nil, err
+	}
 	if tr.Error != "" {
-		return executor.Footprint{}, fmt.Errorf("plan: %s", truncate(tr.Error, 500))
+		return nil, errors.New(truncate(tr.Error, 500))
 	}
 	if exit.ExitErr != nil || !tr.TurnCompleted {
-		msg := "plan: codex exited without completing a turn"
+		msg := "codex exited without completing a turn"
 		if s := strings.TrimSpace(exit.Stderr); s != "" {
 			msg += ": " + truncate(s, 500)
 		}
 		if exit.ExitErr != nil {
-			return executor.Footprint{}, fmt.Errorf("%s: %w", msg, exit.ExitErr)
+			return nil, fmt.Errorf("%s: %w", msg, exit.ExitErr)
 		}
-		return executor.Footprint{}, errors.New(msg)
+		return nil, errors.New(msg)
 	}
-	var fp struct {
-		Files []string `json:"files"`
+	if !json.Valid([]byte(tr.LastMessage)) {
+		return nil, fmt.Errorf("answer is not JSON: %s", truncate(tr.LastMessage, 200))
 	}
-	if err := json.Unmarshal([]byte(tr.LastMessage), &fp); err != nil {
-		return executor.Footprint{}, fmt.Errorf("plan: parse footprint: %w", err)
-	}
-	return executor.Footprint{Files: fp.Files}, nil
+	return json.RawMessage(tr.LastMessage), nil
 }
 
 // pathEnv returns a PATH entry with dirs prepended, or nil when there is
@@ -118,4 +133,12 @@ func pathEnv(dirs []string) []string {
 		return nil
 	}
 	return []string{"PATH=" + strings.Join(dirs, string(os.PathListSeparator)) + string(os.PathListSeparator) + os.Getenv("PATH")}
+}
+
+// withGuidance appends the repository policy's guidance to a prompt.
+func withGuidance(prompt, guidance string) string {
+	if g := strings.TrimSpace(guidance); g != "" {
+		return prompt + "\n\n## Repository guidance\n\n" + g + "\n"
+	}
+	return prompt
 }

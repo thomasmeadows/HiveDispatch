@@ -70,7 +70,7 @@ func TestCheckReportsMissingLabels(t *testing.T) {
 	if rep.User != "thomas" || rep.SampleTickets != 2 {
 		t.Errorf("rep = %+v", rep)
 	}
-	if len(rep.MissingLabels["o/r"]) != 3 || len(rep.MissingLabels["o/other"]) != 5 {
+	if len(rep.MissingLabels["o/r"]) != 4 || len(rep.MissingLabels["o/other"]) != 6 {
 		t.Errorf("missing = %v", rep.MissingLabels)
 	}
 	if rep.OK() {
@@ -85,7 +85,7 @@ func TestCheckDetectsReadOnlyToken(t *testing.T) {
 	readOnlyToken = true
 	t.Cleanup(func() { readOnlyToken = false })
 	var created []string
-	labels := map[string][]string{"o/r": {"hive:ready", "hive:in-progress", "hive:needs-info", "hive:in-review", "hive:needs-human"}, "o/other": {"hive:ready", "hive:in-progress", "hive:needs-info", "hive:in-review", "hive:needs-human"}}
+	labels := map[string][]string{"o/r": {"hive:planning", "hive:ready", "hive:in-progress", "hive:needs-info", "hive:in-review", "hive:needs-human"}, "o/other": {"hive:planning", "hive:ready", "hive:in-progress", "hive:needs-info", "hive:in-review", "hive:needs-human"}}
 	c := newMultiClient(t, adminMux(labels, &created))
 	rep, err := c.Check(context.Background())
 	if err != nil {
@@ -98,10 +98,10 @@ func TestCheckDetectsReadOnlyToken(t *testing.T) {
 
 func TestEnsureLabelsCreatesOnlyMissing(t *testing.T) {
 	var created []string
-	labels := map[string][]string{"o/r": {"hive:ready", "hive:in-progress", "hive:needs-info", "hive:in-review", "hive:needs-human"}, "o/other": {"hive:ready"}}
+	labels := map[string][]string{"o/r": {"hive:planning", "hive:ready", "hive:in-progress", "hive:needs-info", "hive:in-review", "hive:needs-human"}, "o/other": {"hive:ready"}}
 	c := newMultiClient(t, adminMux(labels, &created))
 	n, err := c.EnsureLabels(context.Background())
-	if err != nil || n != 4 {
+	if err != nil || n != 5 {
 		t.Fatalf("n=%d err=%v created=%v", n, err, created)
 	}
 	for _, want := range []string{"o/other:hive:in-progress", "o/other:hive:needs-human"} {

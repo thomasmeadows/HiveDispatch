@@ -15,13 +15,15 @@ type Config struct {
 // planSchema is the structured output requested from Plan().
 const planSchema = `{"type":"object","properties":{"files":{"type":"array","items":{"type":"string"}}},"required":["files"]}`
 
-// buildArgs assembles the argv for a run or a plan. model is the agent's,
+// buildArgs assembles the argv for a run, or with a schema for a read-only
+// run (plan mode) that answers in that shape. model is the agent's,
 // which wins over the policy's. --bare is deliberately
 // absent: it skips credential loading.
-func buildArgs(rc repoconfig.ExecutorConfig, model, resume string, plan bool) []string {
+func buildArgs(rc repoconfig.ExecutorConfig, model, resume, schema string) []string {
 	args := []string{"-p"}
+	plan := schema != ""
 	if plan {
-		args = append(args, "--output-format", "json", "--permission-mode", "plan", "--json-schema", planSchema, "--no-session-persistence")
+		args = append(args, "--output-format", "json", "--permission-mode", "plan", "--json-schema", schema, "--no-session-persistence")
 	} else {
 		args = append(args, "--output-format", "stream-json", "--verbose", "--permission-mode", rc.PermissionMode)
 		if resume != "" {

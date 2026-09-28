@@ -42,8 +42,8 @@ func (p *Tracker) in(key string) (string, error) {
 }
 
 // Poll implements tracker.Tracker.
-func (p *Tracker) Poll(ctx context.Context) ([]tracker.Ticket, error) {
-	ts, err := p.Inner.Poll(ctx)
+func (p *Tracker) Poll(ctx context.Context, state tracker.State) ([]tracker.Ticket, error) {
+	ts, err := p.Inner.Poll(ctx, state)
 	for i := range ts {
 		ts[i] = p.out(ts[i])
 	}

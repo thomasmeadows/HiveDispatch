@@ -8,7 +8,7 @@ HiveDispatch turns tickets into pull requests. It polls each repository's issue 
 
 ## How a ticket flows
 
-1. **Poll** — the worker runs your trigger JQL (e.g. `status = Ready AND labels = hive`), or lists GitHub issues labelled `hive:ready`.
+1. **Poll** — the worker finds tickets in your Jira scope (e.g. `project = SCRUM AND labels = hive`) or GitHub issues by label, one board column at a time: **Planning**, **Ready** and **In Review**, each worked by that repository's planning, coding and review agents. Planning agents post a plan and move the ticket to Ready; review agents review the PR and pass it to a human or send it back. The steps below are the coding agent's.
 2. **Claim** — it writes its agent id to the ticket and reads it back; two workers racing resolve to one winner.
 3. **Triage** — Claude Code, read-only, inspects the repo and decides: dispatch with notes, ask one question, or reject.
 4. **Branch** — a git worktree on `hive/<name>`, e.g. `hive/github-issues-12-create-website`, resumed if it already exists.

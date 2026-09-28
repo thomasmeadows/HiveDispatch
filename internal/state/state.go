@@ -26,20 +26,30 @@ const (
 
 // Run is the per-ticket record.
 type Run struct {
-	Ticket      string    `json:"ticket"`
-	Name        string    `json:"name,omitempty"`     // readable name, fixed at first claim: github-issues-12-create-website
-	URL         string    `json:"url,omitempty"`      // the ticket this record belongs to; a key can be reused across trackers
-	Agent       string    `json:"agent"`              // worker/agent that last worked it
-	Executor    string    `json:"executor,omitempty"` // claude, codex or fake: whose session ResumeToken is
-	Branch      string    `json:"branch"`
-	Attempts    int       `json:"attempts"`
-	Phase       Phase     `json:"phase"`
-	LastStatus  string    `json:"lastStatus,omitempty"`
-	StopCause   string    `json:"stopCause,omitempty"`
-	ResumeToken string    `json:"resumeToken,omitempty"`
-	PRURL       string    `json:"prUrl,omitempty"`
-	QuestionAt  time.Time `json:"questionAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	Ticket      string `json:"ticket"`
+	Name        string `json:"name,omitempty"`     // readable name, fixed at first claim: github-issues-12-create-website
+	URL         string `json:"url,omitempty"`      // the ticket this record belongs to; a key can be reused across trackers
+	Agent       string `json:"agent"`              // worker/agent that last worked it
+	Executor    string `json:"executor,omitempty"` // claude, codex or fake: whose session ResumeToken is
+	Branch      string `json:"branch"`
+	Attempts    int    `json:"attempts"`
+	Phase       Phase  `json:"phase"`
+	LastStatus  string `json:"lastStatus,omitempty"`
+	StopCause   string `json:"stopCause,omitempty"`
+	ResumeToken string `json:"resumeToken,omitempty"`
+	PRURL       string `json:"prUrl,omitempty"`
+	// Planned: a planning agent planned it, so the coding agent skips triage.
+	Planned bool `json:"planned,omitempty"`
+	// ReviewedSHA is the pull request commit the review agent last reviewed.
+	ReviewedSHA string `json:"reviewedSha,omitempty"`
+	// ReviewRounds counts reviews that sent the ticket back for changes.
+	ReviewRounds int `json:"reviewRounds,omitempty"`
+	// ReviewFix: the last review asked for changes that Review describes;
+	// the next coding run makes them.
+	ReviewFix  bool      `json:"reviewFix,omitempty"`
+	Review     string    `json:"review,omitempty"`
+	QuestionAt time.Time `json:"questionAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 // LogEntry is one structured line in a ticket's event log.

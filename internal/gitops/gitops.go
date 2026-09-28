@@ -26,6 +26,8 @@ type Workspaces interface {
 	// branch if it has commits beyond the default branch. It reports
 	// whether anything was pushed.
 	Finalize(ctx context.Context, ws Workspace, message string) (pushed bool, err error)
+	// Diff is the branch's change against its base (what a review reads).
+	Diff(ctx context.Context, ws Workspace) (string, error)
 }
 
 // BranchName is the work branch for a ticket's readable name

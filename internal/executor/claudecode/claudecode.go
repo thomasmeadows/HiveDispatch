@@ -7,6 +7,7 @@ package claudecode
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -46,7 +47,7 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 	}
 	tr, exit, log, err := claudecli.Run(ctx, claudecli.Cmd{
 		Binary: e.cfg.Binary, Dir: t.Workspace,
-		Args:  buildArgs(rc.Executor, t.Model, t.ResumeToken, false),
+		Args:  buildArgs(rc.Executor, t.Model, t.ResumeToken, ""),
 		Stdin: promptText, StepBudget: t.StepBudget,
 		Env: pathEnv(rc.Executor.ExtraPath()),
 	})
@@ -61,39 +62,50 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 // Plan implements executor.Executor by running in plan mode with a JSON
 // schema and reading the declared file list.
 func (e *Executor) Plan(ctx context.Context, t executor.Task) (executor.Footprint, error) {
-	rc, err := repoconfig.Load(t.Workspace)
-	if err != nil {
-		return executor.Footprint{}, err
-	}
-	planPrompt := t.Prompt + "\n\nDo not make changes. List every file you would create or modify to complete this ticket, as repository-relative paths, in the requested JSON shape.\n"
-	cmd := claudecli.Command(ctx, claudecli.Cmd{
-		Binary: e.cfg.Binary, Dir: t.Workspace,
-		Args:  buildArgs(rc.Executor, t.Model, "", true),
-		Stdin: planPrompt,
-		Env:   pathEnv(rc.Executor.ExtraPath()),
+	raw, err := e.Advise(ctx, executor.Advice{
+		TicketKey: t.TicketKey, Workspace: t.Workspace, Model: t.Model, Schema: planSchema,
+		Prompt: t.Prompt + "\n\nDo not make changes. List every file you would create or modify to complete this ticket, as repository-relative paths, in the requested JSON shape.\n",
 	})
-	out, err := cmd.Output()
 	if err != nil {
 		return executor.Footprint{}, fmt.Errorf("plan: %w", err)
 	}
-	var r claudecli.ResultMsg
-	if err := json.Unmarshal(out, &r); err != nil {
-		return executor.Footprint{}, fmt.Errorf("plan: parse result: %w", err)
-	}
-	if r.IsError {
-		return executor.Footprint{}, fmt.Errorf("plan: %s", truncate(r.Result, 500))
-	}
 	var fp struct {
 		Files []string `json:"files"`
-	}
-	raw := []byte(r.Result)
-	if len(r.StructuredOutput) > 0 {
-		raw = r.StructuredOutput
 	}
 	if err := json.Unmarshal(raw, &fp); err != nil {
 		return executor.Footprint{}, fmt.Errorf("plan: parse footprint: %w", err)
 	}
 	return executor.Footprint{Files: fp.Files}, nil
+}
+
+// Advise implements executor.Executor: Claude Code in plan mode (it may
+// read the workspace but not change it) with a JSON schema for the answer.
+func (e *Executor) Advise(ctx context.Context, a executor.Advice) (json.RawMessage, error) {
+	rc, err := repoconfig.Load(a.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	cmd := claudecli.Command(ctx, claudecli.Cmd{
+		Binary: e.cfg.Binary, Dir: a.Workspace,
+		Args:  buildArgs(rc.Executor, a.Model, "", a.Schema),
+		Stdin: withGuidance(a.Prompt, rc.Guidance),
+		Env:   pathEnv(rc.Executor.ExtraPath()),
+	})
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var r claudecli.ResultMsg
+	if err := json.Unmarshal(out, &r); err != nil {
+		return nil, fmt.Errorf("parse result: %w", err)
+	}
+	if r.IsError {
+		return nil, errors.New(truncate(r.Result, 500))
+	}
+	if len(r.StructuredOutput) > 0 {
+		return r.StructuredOutput, nil
+	}
+	return json.RawMessage(r.Result), nil
 }
 
 // pathEnv returns a PATH entry with dirs prepended, or nil when there is
@@ -103,4 +115,12 @@ func pathEnv(dirs []string) []string {
 		return nil
 	}
 	return []string{"PATH=" + strings.Join(dirs, string(os.PathListSeparator)) + string(os.PathListSeparator) + os.Getenv("PATH")}
+}
+
+// withGuidance appends the repository policy's guidance to a prompt.
+func withGuidance(prompt, guidance string) string {
+	if g := strings.TrimSpace(guidance); g != "" {
+		return prompt + "\n\n## Repository guidance\n\n" + g + "\n"
+	}
+	return prompt
 }

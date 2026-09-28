@@ -30,6 +30,7 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 | `run_timeout` | `45m` | Wall-clock limit for one executor run |
 | `step_budget` | `200` | Tool calls per executor run before it is stopped |
 | `max_attempts` | `3` | Failed attempts before a ticket goes to Needs Human |
+| `max_review_rounds` | `2` | Times a review agent may send a ticket back for changes before it goes to Needs Human |
 | `retention_days` | `30` | Raw run logs and finished run records older than this are pruned at startup; `-1` never prunes |
 | `claude.binary` | `claude` | The Claude Code CLI to run |
 | `codex.binary` | `codex` | The Codex CLI to run (for agents with `executor: codex`) |
@@ -67,14 +68,14 @@ The key is the ticket's identity (run records, worktrees, routing to a repositor
 | `url` | `origin` remote | Clone URL your git credentials can push to |
 | `default_branch` | `origin/HEAD`, else `main` | Base for ticket branches and PRs |
 | `jira.base_url` | *(required for Jira)* | `https://<site>.atlassian.net` |
-| `jira.jql` | *(required for Jira)* | Trigger query: which tickets the worker may take |
+| `jira.jql` | *(required for Jira)* | Scope: which tickets are HiveDispatch's, e.g. `project = SCRUM AND labels = hive`. No status clause: each column's agents add the status from `jira.statuses` (a query that names a status is rejected) |
 | `jira.fields.agent_id` | *(by name)* | `customfield_NNNNN` of "HiveDispatch Agent"; leave empty to resolve by name |
 | `jira.fields.claimed_at` | *(by name)* | `customfield_NNNNN` of "HiveDispatch Claimed At" |
-| `jira.statuses.ready` … `needs_human` | `Ready`, `In Progress`, `Needs Info`, `In Review`, `Needs Human` | Workflow status names in your project |
-| `github.labels.ready` … `needs_human` | `hive:ready`, `hive:in-progress`, `hive:needs-info`, `hive:in-review`, `hive:needs-human` | State labels with `tracker: github` |
+| `jira.statuses.planning` … `needs_human` | `Planning`, `Ready`, `In Progress`, `Needs Info`, `In Review`, `Needs Human` | Workflow status names in your project. `Planning` must exist only when the repository has a planning agent |
+| `github.labels.planning` … `needs_human` | `hive:planning`, `hive:ready`, `hive:in-progress`, `hive:needs-info`, `hive:in-review`, `hive:needs-human` | State labels with `ticket_tracker: github` |
 | `github.project.owner`, `.number` | *(none = no board)* | A GitHub Projects (v2) board mirroring the labels: `github.com/users/OWNER/projects/N` |
 | `github.project.field` | `Status` | The board's single-select field |
-| `github.project.columns.ready` … `needs_human` | `Ready`, `In Progress`, `Needs Info`, `In Review`, `Needs Human` | That field's option per state |
+| `github.project.columns.planning` … `needs_human` | `Planning`, `Ready`, `In Progress`, `Needs Info`, `In Review`, `Needs Human` | That field's option per state (`Planning` only needed with a planning agent) |
 
 ## Agents — `.hive-dispatch/agents.yaml`
 
@@ -92,10 +93,21 @@ agents:
 | Key | Default | Meaning |
 |---|---|---|
 | `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<machine_id>/<name>` |
+| `agents[].role` | `coding` | Which board column the agent works: `planning`, `coding` or `review` (below) |
 | `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, or `fake` (no agent; useful for trying the pipeline) |
 | `agents[].model` | *(policy's model, then the CLI's)* | Model for this agent's runs; wins over the policy's `executor.model` / `executor.codex.model` |
 
-The agents are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets at once as it has agents. A ticket labelled `hive:agent:<name>` waits for that agent; a label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are made under the worker's `machine_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
+Each agent works one column of the board:
+
+| Role | Column | What it does |
+|---|---|---|
+| `planning` | Planning | Reads the repository without changing it and posts an implementation plan on the ticket, then moves it to Ready; its coding agent skips triage and reads the plan in the ticket thread. If the ticket is unclear it asks one question instead (Needs Info) |
+| `coding` | Ready | Triages the ticket (unless it was planned), implements it, pushes and opens the pull request, and moves the ticket to In Review. This is the only role that writes code |
+| `review` | In Review | Reviews each new version of the pull request once, from its diff, and posts the review on the PR (as a comment: GitHub will not let the account that opened a PR approve it). Approved: the ticket stays In Review for a human to merge. Changes requested: the ticket goes back to Ready and its coding agent continues its session with the findings, up to `max_review_rounds`, then Needs Human |
+
+Columns without an agent of that role are not polled: a repository with only the default agent works Ready as before, and tickets can skip Planning by starting in Ready. Planning and review runs are read-only (Claude Code in plan mode, Codex in its read-only sandbox) and follow the policy's model and guidance.
+
+Agents of a role are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets of a column at once as it has agents for it. A ticket labelled `hive:agent:<name>` waits for that agent in that agent's column; the other columns still use their whole pool, so one ticket can name both its coder and its reviewer. A label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are made under the worker's `machine_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
 
 `run -executor fake` (or `claude`, `codex`) makes every agent use that executor for one run.
 

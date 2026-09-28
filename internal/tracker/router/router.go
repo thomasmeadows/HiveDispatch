@@ -40,7 +40,7 @@ func (r *Router) pick(key string) (tracker.Tracker, error) {
 // by several repositories yields each ticket once. A failing tracker is
 // logged and skipped — one unreachable site must not stall the others —
 // and Poll errors only when every tracker fails.
-func (r *Router) Poll(ctx context.Context) ([]tracker.Ticket, error) {
+func (r *Router) Poll(ctx context.Context, state tracker.State) ([]tracker.Ticket, error) {
 	projects := make([]string, 0, len(r.ByProject))
 	for p := range r.ByProject {
 		projects = append(projects, p)
@@ -49,7 +49,7 @@ func (r *Router) Poll(ctx context.Context) ([]tracker.Ticket, error) {
 	var out []tracker.Ticket
 	var errs []error
 	for _, p := range projects {
-		tickets, err := r.ByProject[p].Poll(ctx)
+		tickets, err := r.ByProject[p].Poll(ctx, state)
 		if err != nil {
 			r.log().Warn("poll failed", "project", p, "err", err)
 			errs = append(errs, fmt.Errorf("%s: %w", p, err))

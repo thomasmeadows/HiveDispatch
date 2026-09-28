@@ -52,6 +52,8 @@ func (c *Client) Transition(ctx context.Context, key string, to tracker.State) e
 func (c *Client) statusName(s tracker.State) (string, error) {
 	st := c.cfg.Statuses
 	switch s {
+	case tracker.StatePlanning:
+		return st.Planning, nil
 	case tracker.StateReady:
 		return st.Ready, nil
 	case tracker.StateInProgress:

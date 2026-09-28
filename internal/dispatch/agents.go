@@ -32,23 +32,70 @@ func agentsOf(repo config.RepoConfig) []config.Agent {
 	return repo.Agents
 }
 
-// candidates are the agents that may work t: the one its hive:agent:<name>
-// label pins it to, else every agent of repo.
-func candidates(repo config.RepoConfig, t tracker.Ticket) ([]config.Agent, error) {
+// roleOf is an agent's role; an unset one (a hand-built RepoConfig) codes.
+func roleOf(a config.Agent) string {
+	if a.Role == "" {
+		return config.RoleCoding
+	}
+	return a.Role
+}
+
+// stateFor is the board column agents of role take work from.
+func stateFor(role string) tracker.State {
+	switch role {
+	case config.RolePlanning:
+		return tracker.StatePlanning
+	case config.RoleReview:
+		return tracker.StateInReview
+	}
+	return tracker.StateReady
+}
+
+// hasRole reports whether any repository has an agent of role, so columns
+// nobody works are not polled.
+func (d *Dispatcher) hasRole(role string) bool {
+	for _, r := range d.Cfg.Repos {
+		for _, a := range agentsOf(r) {
+			if roleOf(a) == role {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// candidates are the agents of role that may work t: the one a
+// hive:agent:<name> label pins it to, when that agent has this role, else
+// every agent of role. A label naming no agent of the repository at all is
+// an error; one naming an agent of another role pins the other column.
+func candidates(repo config.RepoConfig, t tracker.Ticket, role string) ([]config.Agent, error) {
 	agents := agentsOf(repo)
+	var pool []config.Agent
+	for _, a := range agents {
+		if roleOf(a) == role {
+			pool = append(pool, a)
+		}
+	}
 	for _, l := range t.Labels {
 		if len(l) <= len(config.PinLabelPrefix) || !strings.EqualFold(l[:len(config.PinLabelPrefix)], config.PinLabelPrefix) {
 			continue
 		}
 		name := l[len(config.PinLabelPrefix):]
+		known := false
 		for _, a := range agents {
-			if strings.EqualFold(a.Name, name) {
+			if !strings.EqualFold(a.Name, name) {
+				continue
+			}
+			known = true
+			if roleOf(a) == role {
 				return []config.Agent{a}, nil
 			}
 		}
-		return nil, fmt.Errorf("labelled %s, but %s has no agent %q in %s/%s", l, repo.Name, name, config.RepoDir, config.AgentsFileName)
+		if !known {
+			return nil, fmt.Errorf("labelled %s, but %s has no agent %q in %s/%s", l, repo.Name, name, config.RepoDir, config.AgentsFileName)
+		}
 	}
-	return agents, nil
+	return pool, nil
 }
 
 // takeAgent reserves the first free agent among cands, waiting for one when
