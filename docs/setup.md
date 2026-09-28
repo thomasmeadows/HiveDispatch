@@ -48,7 +48,11 @@ opens a chat with an assistant built into the binary. It has read these docs, se
 
 ## 1. API token
 
-Create one at https://id.atlassian.com/manage-profile/security/api-tokens. Export it:
+Create one at https://id.atlassian.com/manage-profile/security/api-tokens with **Create API token** — not *Create API token with scopes*: scoped tokens only work through the `api.atlassian.com` gateway, and HiveDispatch talks to your site's `base_url` directly.
+
+![Atlassian API Tokens page with the Create API token button](setting-images/jira_token.jpg)
+
+Export it:
 
 ```sh
 export HIVE_JIRA_TOKEN=...
@@ -160,7 +164,15 @@ GitHub has two kinds of personal access token. HiveDispatch does not care which 
 
 Recommendation: a fine-grained token scoped to the repositories HiveDispatch works in, unless you mirror state to a board under your personal account — then one classic token with `repo` + `project` does everything. (`gh auth login` followed by `gh auth refresh -s project` yields such a token, and the worker picks it up automatically when `HIVE_GITHUB_TOKEN` is unset.)
 
-To create a fine-grained token: https://github.com/settings/personal-access-tokens → *Generate new token*, choose the repositories, and grant the permissions from the table. For a classic token: https://github.com/settings/tokens → *Generate new token (classic)* and tick the scopes. Then:
+To create a fine-grained token: https://github.com/settings/personal-access-tokens → *Generate new token*, choose the repositories, and grant the permissions from the table. For GitHub Issues without a Projects board, that is *Issues* and *Pull requests* at *Read and write* (*Metadata: Read-only* is added automatically):
+
+![Fine-grained token repository permissions: Issues and Pull requests set to Read and write](setting-images/github_fine_gain_token_without_projects.jpg)
+
+For a classic token: https://github.com/settings/tokens → *Generate new token (classic)* and tick the scopes. For a board under your personal account, tick `project` alongside the repository scope — `public_repo` as here if every repository is public, otherwise the whole `repo` box:
+
+![Classic token scopes with public_repo and project ticked](setting-images/github_classic_token_with_projects.jpg)
+
+Then:
 
 ```sh
 export HIVE_GITHUB_TOKEN=...
