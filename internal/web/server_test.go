@@ -563,7 +563,7 @@ func TestAgentsDefaultAndSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(raw)
-	if !strings.Contains(s, "# The coding agents") || !strings.Contains(s, "name: codex-1\n    executor: codex\n    model: o3") {
+	if !strings.Contains(s, "# The agents that work") || !strings.Contains(s, "name: codex-1\n    executor: codex\n    model: o3") {
 		t.Errorf("agents.yaml = %q, want the starter's header and name-first entries", s)
 	}
 	if code := e.get(t, q, &got); code != 200 || !got.Exists || got.Agents[1].Model != "o3" {
