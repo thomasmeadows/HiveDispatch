@@ -59,7 +59,11 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "TICKET\tPHASE\tSTATUS\tATTEMPTS\tAGENT\tUPDATED\tPR")
 	for _, r := range runs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n", r.Ticket, r.Phase, r.LastStatus, r.Attempts, r.Agent, r.UpdatedAt.Local().Format("2006-01-02 15:04"), r.PRURL)
+		name := r.Name
+		if name == "" {
+			name = r.Ticket // recorded before tickets had names
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n", name, r.Phase, r.LastStatus, r.Attempts, r.Agent, r.UpdatedAt.Local().Format("2006-01-02 15:04"), r.PRURL)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)

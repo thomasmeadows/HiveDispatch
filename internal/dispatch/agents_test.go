@@ -132,3 +132,22 @@ func TestResumeOnSameExecutorKeepsToken(t *testing.T) {
 		t.Errorf("phase = %v", got.Phase)
 	}
 }
+
+func TestNameAndBranchAreFixedAtFirstClaim(t *testing.T) {
+	h := newHarness(t)
+	h.ex.Results["HIVE-1"] = executor.Result{Status: executor.StatusFailed, Summary: "try again"}
+	h.handle(t)
+	r := h.run(t)
+	if r.Name != "hive-1-one" || r.Branch != "hive/hive-1-one" {
+		t.Fatalf("name = %q branch = %q", r.Name, r.Branch)
+	}
+	h.tr.Add(tracker.Ticket{Key: "HIVE-1", Summary: "One, retitled"})
+	delete(h.ex.Results, "HIVE-1")
+	h.handle(t)
+	if r := h.run(t); r.Name != "hive-1-one" || r.Branch != "hive/hive-1-one" {
+		t.Errorf("after a retitle: name = %q branch = %q, want them unchanged", r.Name, r.Branch)
+	}
+	if calls := h.ex.Calls(); len(calls) != 2 || calls[1].Workspace != calls[0].Workspace {
+		t.Errorf("the ticket must keep its workspace: %+v", calls)
+	}
+}

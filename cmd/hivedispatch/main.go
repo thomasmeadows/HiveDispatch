@@ -23,6 +23,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
 	"github.com/thomasmeadows/hivedispatch/internal/statusline"
+	"github.com/thomasmeadows/hivedispatch/internal/tracker"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/ghissues"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
 )
@@ -51,7 +52,8 @@ commands:
                               (-placeholder makes the fake executor write a file so
                               the branch/PR path is exercised)
   once  KEY [same flags as run]
-                              handle one ticket by key, ignoring the trigger query and run windows
+                              handle one ticket by key (GITHUB-MYREPO-12, or its full name
+                              github-myrepo-12-create-website), ignoring the trigger query and run windows
   status [-config P] [-json]  list run records from the state branch(es)
   supervisor [-config P] [-provider anthropic|openai|deepseek|huggingface|ollama] [-model M] [-resume | -session FILE]
                               chat with the built-in assistant that helps configure and run HiveDispatch;
@@ -218,7 +220,8 @@ func githubPreflight(ctx context.Context, client *ghissues.Client, stdout, stder
 // jiraPreflight runs the live Jira check and prints the report. It returns
 // false when something would prevent a run.
 func jiraPreflight(ctx context.Context, client *jira.Client, repo config.RepoConfig, stdout, stderr io.Writer) bool {
-	rep, err := client.Check(ctx, []string{repo.Project})
+	// The Jira projects are whatever the JQL selects; the ticket_prefix is ours.
+	rep, err := client.Check(ctx, nil)
 	if err != nil {
 		fmt.Fprintln(stderr, "jira check failed:", err)
 		return false
@@ -316,11 +319,11 @@ func initRepo(dir, kind, cfgPath string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if written {
-		what := "project"
+		what := "Check it (ticket_prefix defaults to GITHUB)"
 		if kind == "jira" {
-			what = "project, jira.base_url and jira.jql (and jira.email in " + cfgPath + ")"
+			what = "Fill in jira.base_url and jira.jql (and jira.email in " + cfgPath + ")"
 		}
-		fmt.Fprintf(stdout, "wrote %s and policy.yaml beside it.\nFill in %s, commit both, then run `hivedispatch init -%s %s` again.\n", file, what, kind, dir)
+		fmt.Fprintf(stdout, "wrote %s, with agents.yaml and policy.yaml beside it.\n%s, commit them, then run `hivedispatch init -%s %s` again.\n", file, what, kind, dir)
 		enrolHint(stdout, cfg, dir, cfgPath)
 		return 0
 	}
@@ -330,7 +333,7 @@ func initRepo(dir, kind, cfgPath string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if repo.Tracker != kind {
-		fmt.Fprintf(stderr, "%s says tracker: %s — run `hivedispatch init -%s`, or change the tracker there\n", file, repo.Tracker, repo.Tracker)
+		fmt.Fprintf(stderr, "%s says ticket_tracker: %s — run `hivedispatch init -%s`, or change ticket_tracker there\n", file, repo.Tracker, repo.Tracker)
 		return 1
 	}
 	if kind == "github" {
@@ -350,7 +353,7 @@ func initRepo(dir, kind, cfgPath string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "init failed:", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "%s: github labels ready (%d created). Put %q on an issue to queue it; it becomes %s-<number>.\n", repo.Name, n, repo.GitHub.Labels.Ready, repo.Project)
+		fmt.Fprintf(stdout, "%s: github labels ready (%d created). Put %q on an issue to queue it; issue #12 becomes %s-%s-12.\n", repo.Name, n, repo.GitHub.Labels.Ready, repo.Project, ghissues.Board(repo.GitHub.Project))
 	} else {
 		client, err := jira.New(repo.Jira)
 		if err != nil {
@@ -410,7 +413,7 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PATH\tSTATUS\tPROJECT\tTRACKER\tREPO")
+	fmt.Fprintln(tw, "PATH\tSTATUS\tPREFIX\tTRACKER\tREPO")
 	enrolled := 0
 	for _, r := range rows {
 		status := "-"
@@ -603,9 +606,10 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	project, _, _ := strings.Cut(key, "-")
+	candidates := tracker.KeyCandidates(key)
+	project, _, _ := strings.Cut(candidates[0], "-")
 	if cfg.RepoByProject(project) == nil {
-		fmt.Fprintf(stderr, "%s: no enrolled repository has project %q in its .hive-dispatch/repo.yaml\n", key, project)
+		fmt.Fprintf(stderr, "%s: no enrolled repository has ticket_prefix %q in its .hive-dispatch/repo.yaml\n", key, project)
 		return 1
 	}
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
@@ -615,11 +619,17 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	ticket, err := w.tracker.Get(ctx, key)
+	var ticket tracker.Ticket
+	for _, k := range candidates {
+		if ticket, err = w.tracker.Get(ctx, k); err == nil {
+			break
+		}
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	key = ticket.Key
 	runCtx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	out, err := w.d.Handle(runCtx, ticket)

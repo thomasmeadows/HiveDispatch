@@ -81,7 +81,14 @@ func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.R
 		d.log().Info("previous session belongs to another executor; starting fresh", "ticket", t.Key, "was", run.Executor, "agent", agent.Name)
 		run.ResumeToken = ""
 	}
-	run.Branch = gitops.BranchName(t.Key)
+	// The name and branch are fixed when the ticket is first worked, so a
+	// retitled ticket keeps its branch and pull request.
+	if run.Name == "" {
+		run.Name = tracker.Name(t.Key, t.Summary)
+	}
+	if run.Branch == "" {
+		run.Branch = gitops.BranchName(run.Name)
+	}
 	d.setPhase(ctx, run, state.PhaseClaimed)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -90,7 +97,7 @@ func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.R
 
 	// The worktree comes first: triage needs a checkout to inspect, and a
 	// dispatched run works in the same one.
-	ws, err := d.Workspaces.Prepare(ctx, repo, t.Key)
+	ws, err := d.Workspaces.Prepare(ctx, repo, t.Key, run.Branch)
 	if err != nil {
 		run.Attempts++
 		res := executor.Result{Status: executor.StatusFailed, StopCause: executor.CauseError, Summary: "workspace: " + err.Error()}
@@ -316,7 +323,7 @@ func (d *Dispatcher) ensurePR(ctx context.Context, repo config.RepoConfig, t tra
 	}
 	body := fmt.Sprintf("Resolves %s.\n\n%s\n\nOpened by HiveDispatch worker %s.", t.Key, t.URL, run.Agent)
 	return d.Host.OpenPR(ctx, repo.Name, githost.Request{
-		Title: fmt.Sprintf("%s: %s", t.Key, t.Summary),
+		Title: run.Name,
 		Body:  body,
 		Head:  run.Branch,
 		Base:  repo.DefaultBranch,

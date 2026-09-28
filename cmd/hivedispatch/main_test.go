@@ -204,7 +204,7 @@ func TestInitGitHubOnFreshMachineWritesStarters(t *testing.T) {
 		}
 	}
 	raw, err := os.ReadFile(filepath.Join(repo, ".hive-dispatch", "repo.yaml"))
-	if err != nil || !strings.Contains(string(raw), "tracker: github") {
+	if err != nil || !strings.Contains(string(raw), "ticket_tracker: github") {
 		t.Errorf("repo.yaml = %q, %v", raw, err)
 	}
 	for _, want := range []string{"wrote starter config", "repo.yaml", "init -github " + repo, "will not pick up", "- path: " + repo} {
@@ -230,12 +230,12 @@ func TestInitRelativeDirIsMadeAbsolute(t *testing.T) {
 func TestInitRejectsTrackerMismatch(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	repo := writeRepo(t, t.TempDir(), "project: HD\ntracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n")
+	repo := writeRepo(t, t.TempDir(), "ticket_prefix: HD\nticket_tracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n")
 	var out, errb bytes.Buffer
 	if code := run([]string{"init", "-jira", repo}, &out, &errb); code != 1 {
 		t.Fatalf("exit %d: %s", code, errb.String())
 	}
-	if !strings.Contains(errb.String(), "tracker: github") || !strings.Contains(errb.String(), "init -github") {
+	if !strings.Contains(errb.String(), "ticket_tracker: github") || !strings.Contains(errb.String(), "init -github") {
 		t.Errorf("stderr = %q", errb.String())
 	}
 }
@@ -300,8 +300,8 @@ func writeValidConfigWith(t *testing.T, extra string) string {
 	t.Helper()
 	dir := t.TempDir()
 	repo := writeRepo(t, filepath.Join(dir, "r"), `
-project: X
-tracker: jira
+ticket_prefix: X
+ticket_tracker: jira
 name: o/r
 url: git@github.com:o/r.git
 default_branch: main
@@ -361,7 +361,7 @@ func TestCheckGithubTrackerNeedsToken(t *testing.T) {
 	t.Setenv("HIVE_GITHUB_TOKEN", "")
 	t.Setenv("PATH", t.TempDir()) // no gh, no git credential helper
 	dir := t.TempDir()
-	repo := writeRepo(t, filepath.Join(dir, "r"), "project: HD\ntracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n")
+	repo := writeRepo(t, filepath.Join(dir, "r"), "ticket_prefix: HD\nticket_tracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n")
 	p := filepath.Join(dir, "c.yaml")
 	if err := os.WriteFile(p, []byte("machine_id: w\nrepos:\n  - path: "+repo+"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -385,7 +385,7 @@ func TestScanListsReposAndEnrolment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(code, "old", ".hivedispatch.yaml"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeRepo(t, filepath.Join(code, "new"), "project: NW\ntracker: github\nname: o/new\nurl: git@github.com:o/new.git\ndefault_branch: main\n")
+	writeRepo(t, filepath.Join(code, "new"), "ticket_prefix: NW\nticket_tracker: github\nname: o/new\nurl: git@github.com:o/new.git\ndefault_branch: main\n")
 	p := filepath.Join(t.TempDir(), "c.yaml")
 	if err := os.WriteFile(p, []byte("machine_id: w\ncode_dirs: ["+code+"]\n"), 0o600); err != nil {
 		t.Fatal(err)

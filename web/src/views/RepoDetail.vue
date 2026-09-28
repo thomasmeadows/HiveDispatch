@@ -93,7 +93,7 @@ watch(() => props.path, load, { immediate: true })
           <span v-if="row.problem" class="badge bad">needs attention</span>
           <span v-else-if="!row.picked_up" class="badge warn">outside code_dirs</span>
           <span v-else class="badge ok">enrolled</span>
-          <span v-if="row.project" class="muted">project <strong>{{ row.project }}</strong> · {{ row.tracker }}</span>
+          <span v-if="row.project" class="muted">prefix <strong>{{ row.project }}</strong> · {{ row.tracker }}</span>
           <div class="spacer" />
           <button :disabled="busy || !!row.problem" :title="row.tracker === 'jira' ? 'Create the claim custom fields in Jira' : 'Create the hive:* labels on GitHub'" @click="setup">
             {{ busy ? 'Working…' : row.tracker === 'jira' ? 'Create Jira claim fields' : 'Create GitHub labels' }}

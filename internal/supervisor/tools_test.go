@@ -16,7 +16,7 @@ func call(t *testing.T, tool Tool, args string) (string, error) {
 }
 
 const validWorkerConfig = `machine_id: w
-tracker: github
+ticket_tracker: github
 repos:
   - {name: o/r, url: git@github.com:o/r.git, project: X}
 `
@@ -139,7 +139,7 @@ func TestReadRepoFileReadsFromTheLocalCheckout(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repo, ".hive-dispatch"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "project: HD\ntracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n"
+	body := "ticket_prefix: HD\nticket_tracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n"
 	if err := os.WriteFile(filepath.Join(repo, ".hive-dispatch", "repo.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

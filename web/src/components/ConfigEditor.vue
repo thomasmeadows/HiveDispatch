@@ -24,6 +24,9 @@ const saving = ref(false)
 const saveError = ref('')
 const savedNote = ref('')
 
+// placeholderOf lets a field's placeholder depend on the other inputs
+// (the ticket prefix shows the chosen tracker's name).
+const placeholderOf = (f) => (typeof f.placeholder === 'function' ? f.placeholder(values.value) : f.placeholder)
 const get = (obj, key) => key.split('.').reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), obj)
 
 const fields = computed(() => props.schema.flatMap((s) => s.fields))
@@ -162,8 +165,9 @@ watch(() => [props.kind, props.path], load, { immediate: true })
                 <option v-for="o in f.options" :key="o" :value="o">{{ o || `default${f.placeholder ? ' (' + f.placeholder + ')' : ''}` }}</option>
               </select>
               <span v-else-if="f.type === 'bool'" class="check"><input v-model="values[f.key]" type="checkbox" /> enabled</span>
-              <textarea v-else-if="f.type === 'textarea' || f.type === 'list' || f.type === 'pathlist'" v-model="values[f.key]" :rows="f.type === 'textarea' ? 4 : 3" :placeholder="f.placeholder" />
-              <input v-else v-model="values[f.key]" type="text" :inputmode="f.type === 'number' ? 'decimal' : undefined" :placeholder="f.placeholder" />
+              <textarea v-else-if="f.type === 'textarea' || f.type === 'list' || f.type === 'pathlist'" v-model="values[f.key]" :rows="f.type === 'textarea' ? 4 : 3" :placeholder="placeholderOf(f)" />
+              <input v-else v-model="values[f.key]" type="text" :inputmode="f.type === 'number' ? 'decimal' : undefined" :placeholder="placeholderOf(f)" :list="f.suggestions ? `dl-${f.key}` : undefined" />
+              <datalist v-if="f.suggestions" :id="`dl-${f.key}`"><option v-for="o in f.suggestions" :key="o" :value="o" /></datalist>
               <span v-if="f.help" class="help muted">{{ f.help }}</span>
             </label>
           </div>

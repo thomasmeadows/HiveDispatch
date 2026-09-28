@@ -78,10 +78,22 @@ export const workerSchema = [
 
 export const repoSchema = [
   {
+    title: 'Tickets',
+    fields: [
+      { key: 'ticket_tracker', label: 'Ticket Tracker', type: 'select', options: ['github', 'jira'], help: 'Where this repository’s tickets come from: its GitHub Issues, or a Jira site.' },
+      {
+        key: 'ticket_prefix',
+        label: 'Ticket Prefix',
+        type: 'text',
+        suggestions: ['GITHUB', 'JIRA'],
+        placeholder: (v) => (v.ticket_tracker || 'github').toUpperCase(),
+        help: 'First part of every ticket’s name: prefix-board-number-title, e.g. github-issues-12-create-website or jira-scrum-4-create-website. Empty uses the tracker’s name; set one when two repositories here use the same tracker.',
+      },
+    ],
+  },
+  {
     title: 'Repository',
     fields: [
-      { key: 'project', label: 'Project key', type: 'text', help: 'Ticket key prefix, e.g. HD for HD-12.' },
-      { key: 'tracker', label: 'Tracker', type: 'select', options: ['github', 'jira'] },
       { key: 'name', label: 'Name', type: 'text', help: 'owner/repo; empty uses the origin remote.' },
       { key: 'url', label: 'Clone URL', type: 'text', help: 'Empty uses the origin remote.' },
       { key: 'default_branch', label: 'Default branch', type: 'text', help: 'Empty uses origin/HEAD, else main.' },
@@ -89,18 +101,18 @@ export const repoSchema = [
   },
   {
     title: 'GitHub Issues',
-    when: (v) => v.tracker !== 'jira',
+    when: (v) => v.ticket_tracker !== 'jira',
     fields: [
       ...states.map(([k, l]) => ({ key: `github.labels.${k}`, label: `${l} label`, type: 'text', placeholder: `hive:${k.replace('_', '-')}` })),
       { key: 'github.project.owner', label: 'Project board owner', type: 'text', help: 'Optional Projects board that mirrors the labels.' },
-      { key: 'github.project.number', label: 'Project board number', type: 'number' },
+      { key: 'github.project.number', label: 'Project board number', type: 'number', help: 'Also names the board in ticket names: github-project2-12-… instead of github-issues-12-….' },
       { key: 'github.project.field', label: 'Board field', type: 'text', placeholder: 'Status' },
       ...states.map(([k, l]) => ({ key: `github.project.columns.${k}`, label: `${l} column`, type: 'text' })),
     ],
   },
   {
     title: 'Jira',
-    when: (v) => v.tracker === 'jira',
+    when: (v) => v.ticket_tracker === 'jira',
     fields: [
       { key: 'jira.base_url', label: 'Site URL', type: 'text', placeholder: 'https://example.atlassian.net' },
       { key: 'jira.jql', label: 'Trigger JQL', type: 'textarea' },

@@ -87,9 +87,9 @@ Ready · In Progress · Needs Info · In Review · Needs Human
 
 Any names work; map them under `jira.statuses`. The workflow must allow transitions between them from every state HiveDispatch uses (Ready → In Progress, In Progress → Needs Info/In Review/Needs Human/Ready, Needs Info → Ready). The simplest workflow allows all transitions.
 
-## 4. Project key
+## 4. Ticket prefix
 
-`project` in `repo.yaml` is the Jira **project key** — the letters before the dash in ticket keys (`SCRUM` for `SCRUM-4`). Tickets in that project are dispatched into that repository. `check -jira` lists the keys on your site if the configured one does not exist.
+Jira tickets keep their own keys inside HiveDispatch's: `SCRUM-4` becomes `JIRA-SCRUM-4`, named `jira-scrum-4-create-website`, where `JIRA` is `ticket_prefix` in `repo.yaml` (default: `JIRA`). Which Jira projects a repository takes tickets from is up to `jira.jql`.
 
 ## 4b. Trigger query
 
@@ -117,8 +117,7 @@ jira:
 `~/code/yourrepo/.hive-dispatch/repo.yaml`, a Jira repository:
 
 ```yaml
-project: HIVE
-tracker: jira
+ticket_tracker: jira             # ticket_prefix defaults to JIRA
 jira:
   base_url: https://yoursite.atlassian.net
   jql: 'project = HIVE AND status = "Ready" AND labels = hive'
@@ -127,8 +126,8 @@ jira:
 `~/work/other-repo/.hive-dispatch/repo.yaml`, a GitHub Issues repository on the same worker:
 
 ```yaml
-project: OTHER
-tracker: github
+ticket_tracker: github
+ticket_prefix: OTHER             # the default, GITHUB, would clash if another repository used it
 ```
 
 ## 5. GitHub
@@ -173,7 +172,7 @@ If you use GitHub Enterprise, set `github.api_url` in the worker config (default
 
 ```
 <workroot>/repos/<owner>__<repo>/repo      base clone (no checkout)
-<workroot>/repos/<owner>__<repo>/<KEY>     worktree for one ticket, branch hive/<KEY>
+<workroot>/repos/<owner>__<repo>/<KEY>     worktree for one ticket, branch hive/<name>
 <workroot>/repos/<owner>__<repo>/.state    worktree of the hive/state branch
 ```
 
@@ -203,7 +202,7 @@ hivedispatch init -github     # creates hive:ready, hive:in-progress, hive:needs
 hivedispatch check -live
 ```
 
-To queue an issue, add the **`hive:ready`** label (one tap in the GitHub mobile app). The worker swaps the label as the ticket moves: `hive:in-progress` while it works, `hive:needs-info` when it has a question — answer in the thread and put `hive:ready` back — `hive:in-review` when a pull request is open, `hive:needs-human` when it will not attempt the issue. Ticket keys are `<project>-<issue number>` with `project` from `repo.yaml`, so issue #12 in a repo with `project: HD` is `HD-12` and its branch is `hive/HD-12`.
+To queue an issue, add the **`hive:ready`** label (one tap in the GitHub mobile app). The worker swaps the label as the ticket moves: `hive:in-progress` while it works, `hive:needs-info` when it has a question — answer in the thread and put `hive:ready` back — `hive:in-review` when a pull request is open, `hive:needs-human` when it will not attempt the issue. Ticket keys are `<ticket_prefix>-ISSUES-<issue number>` (`-PROJECT<N>-` when `github.project.number` is set), so issue #12 titled "Create website" is `GITHUB-ISSUES-12` and its branch is `hive/github-issues-12-create-website`.
 
 Label names are configurable under `github.labels` in `repo.yaml`.
 
@@ -234,7 +233,7 @@ Every option must already exist on the board; `hivedispatch check -live` lists t
 
 On each transition the worker adds the issue to the board if it is not there yet and sets the field; labels remain the queue and the source of truth, so a board that cannot be reached is logged and never blocks a run.
 
-Choose a `project` that no other repository on the same worker uses (`check` rejects duplicates). Ticket keys are the identity for branches, run records and worktrees; `SCRUM-5` from Jira and issue #5 in a repo with `project: SCRUM` would share all three.
+Each repository on a worker needs its own `ticket_prefix` (`check` rejects duplicates): the prefix is how a ticket key finds its repository. Two repositories using the same tracker cannot both keep the default.
 
 ## 9. Claude Code
 

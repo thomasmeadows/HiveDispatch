@@ -77,12 +77,12 @@ onMounted(load)
           <button :class="{ active: filter === 'other' }" @click="filter = 'other'">Not enrolled {{ counts.all - counts.enrolled }}</button>
         </div>
         <div class="spacer" />
-        <input v-model="search" class="search" placeholder="Filter by path, project or name" />
+        <input v-model="search" class="search" placeholder="Filter by path, prefix or name" />
       </div>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Path</th><th>Status</th><th>Project</th><th>Tracker</th><th>Repository</th></tr>
+            <tr><th>Path</th><th>Status</th><th>Ticket Prefix</th><th>Ticket Tracker</th><th>Repository</th></tr>
           </thead>
           <tbody>
             <tr v-for="r in rows" :key="r.path" class="clickable" @click="open(r)">

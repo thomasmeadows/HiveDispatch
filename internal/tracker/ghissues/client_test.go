@@ -23,11 +23,23 @@ var testRepos = []config.RepoConfig{
 	{Name: "o/other", Project: "OT"},
 }
 
+// newTestClient serves o/r alone, as the worker does; newMultiClient serves
+// both test repositories (label checks and polling span them).
 func newTestClient(t *testing.T, mux *http.ServeMux, opts ...Option) *Client {
+	t.Helper()
+	return newClientFor(t, mux, testRepos[:1], opts...)
+}
+
+func newMultiClient(t *testing.T, mux *http.ServeMux) *Client {
+	t.Helper()
+	return newClientFor(t, mux, testRepos)
+}
+
+func newClientFor(t *testing.T, mux *http.ServeMux, repos []config.RepoConfig, opts ...Option) *Client {
 	t.Helper()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	c, err := New(testCfg(srv.URL), testRepos, opts...)
+	c, err := New(testCfg(srv.URL), repos, opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,19 +47,34 @@ func newTestClient(t *testing.T, mux *http.ServeMux, opts ...Option) *Client {
 }
 
 func TestKeyMapping(t *testing.T) {
-	c := newTestClient(t, http.NewServeMux())
-	repo, n, err := c.keyToRef("HD-12")
+	c, err := New(testCfg("http://unused"), testRepos[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, n, err := c.keyToRef("issues-12")
 	if err != nil || repo != "o/r" || n != 12 {
 		t.Errorf("keyToRef = %q %d %v", repo, n, err)
 	}
-	if _, _, err := c.keyToRef("NOPE-1"); err == nil {
-		t.Error("unknown project should error")
+	if _, _, err := c.keyToRef("PROJECT2-1"); err == nil {
+		t.Error("another board should error")
 	}
-	if _, _, err := c.keyToRef("HD-x"); err == nil {
+	if _, _, err := c.keyToRef("ISSUES-x"); err == nil {
 		t.Error("non-numeric should error")
 	}
-	if key, ok := c.refToKey("o/other", 3); !ok || key != "OT-3" {
+	if key, ok := c.refToKey("o/r", 3); !ok || key != "ISSUES-3" {
 		t.Errorf("refToKey = %q %v", key, ok)
+	}
+	if _, _, err := newMultiClient(t, http.NewServeMux()).keyToRef("ISSUES-1"); err == nil {
+		t.Error("a key is ambiguous across two repositories")
+	}
+}
+
+func TestBoardNamesTheProjectWhenSet(t *testing.T) {
+	if got := Board(config.GitHubProject{}); got != "ISSUES" {
+		t.Errorf("no board = %q", got)
+	}
+	if got := Board(config.GitHubProject{Owner: "o", Number: 2}); got != "PROJECT2" {
+		t.Errorf("board 2 = %q", got)
 	}
 }
 
@@ -58,7 +85,7 @@ func TestDoMapsNotFound(t *testing.T) {
 		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
 	})
 	c := newTestClient(t, mux)
-	_, err := c.Get(context.Background(), "HD-99")
+	_, err := c.Get(context.Background(), "ISSUES-99")
 	if !errors.Is(err, tracker.ErrNotFound) {
 		t.Errorf("err = %v", err)
 	}

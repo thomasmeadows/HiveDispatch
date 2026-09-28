@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -28,5 +29,34 @@ func TestStateValid(t *testing.T) {
 	}
 	if State("bogus").Valid() {
 		t.Error("bogus should be invalid")
+	}
+}
+
+func TestName(t *testing.T) {
+	for _, tc := range []struct{ key, summary, want string }{
+		{"JIRA-SCRUM-4", "Create website", "jira-scrum-4-create-website"},
+		{"GITHUB-HIVEDISPATCH-12", "Add `--version` flag (CLI)!", "github-hivedispatch-12-add-version-flag-cli"},
+		{"GITHUB-R-1", "", "github-r-1"},
+		{"GITHUB-R-1", "   ¿¡ ", "github-r-1"},
+		{"GITHUB-R-2", "Make the worker poll every repository in parallel and report back quickly", "github-r-2-make-the-worker-poll-every-repository-in"},
+	} {
+		if got := Name(tc.key, tc.summary); got != tc.want {
+			t.Errorf("Name(%q, %q) = %q, want %q", tc.key, tc.summary, got, tc.want)
+		}
+	}
+}
+
+func TestKeyCandidates(t *testing.T) {
+	for in, want := range map[string][]string{
+		"jira-scrum-4-create-website": {"JIRA-SCRUM-4"},
+		"GITHUB-APP-2-12":             {"GITHUB-APP-2", "GITHUB-APP-2-12"},
+		"github-app-2-12-fix-bug-3":   {"GITHUB-APP-2", "GITHUB-APP-2-12", "GITHUB-APP-2-12-FIX-BUG-3"},
+		"HIVE-1":                      {"HIVE-1"},
+		"nonsense":                    {"NONSENSE"},
+	} {
+		got := KeyCandidates(in)
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("KeyCandidates(%q) = %v, want %v", in, got, want)
+		}
 	}
 }

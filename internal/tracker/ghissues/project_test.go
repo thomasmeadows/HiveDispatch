@@ -114,7 +114,7 @@ func newProjectClient(t *testing.T, mux *http.ServeMux) *Client {
 func TestTransitionAddsIssueToBoardAndSetsColumn(t *testing.T) {
 	board := &fakeBoard{options: strings.Split(allColumns, ","), items: map[string]string{}}
 	c := newProjectClient(t, labelMux(t, board))
-	if err := c.Transition(context.Background(), "HD-12", tracker.StateInProgress); err != nil {
+	if err := c.Transition(context.Background(), "PROJECT2-12", tracker.StateInProgress); err != nil {
 		t.Fatal(err)
 	}
 	if len(board.added) != 1 || board.added[0] != "I_12" {
@@ -124,7 +124,7 @@ func TestTransitionAddsIssueToBoardAndSetsColumn(t *testing.T) {
 		t.Errorf("moved = %v", board.moved)
 	}
 	// Already on the board: no second add, project resolved once.
-	if err := c.Transition(context.Background(), "HD-12", tracker.StateInReview); err != nil {
+	if err := c.Transition(context.Background(), "PROJECT2-12", tracker.StateInReview); err != nil {
 		t.Fatal(err)
 	}
 	if len(board.added) != 1 || strings.Join(board.moved, ",") != "item_I_12=optb,item_I_12=optd" || board.lookups != 1 {
@@ -135,7 +135,7 @@ func TestTransitionAddsIssueToBoardAndSetsColumn(t *testing.T) {
 func TestTransitionWithoutProjectNeverCallsGraphQL(t *testing.T) {
 	board := &fakeBoard{items: map[string]string{}}
 	c := newTestClient(t, labelMux(t, board))
-	if err := c.Transition(context.Background(), "HD-12", tracker.StateInProgress); err != nil {
+	if err := c.Transition(context.Background(), "ISSUES-12", tracker.StateInProgress); err != nil {
 		t.Fatal(err)
 	}
 	if board.lookups != 0 || len(board.added) != 0 || len(board.moved) != 0 {
@@ -146,10 +146,10 @@ func TestTransitionWithoutProjectNeverCallsGraphQL(t *testing.T) {
 func TestTransitionReportsMissingColumnAfterRefresh(t *testing.T) {
 	board := &fakeBoard{options: []string{"Ready", "In Progress"}, items: map[string]string{}}
 	c := newProjectClient(t, labelMux(t, board))
-	if err := c.Transition(context.Background(), "HD-12", tracker.StateInProgress); err != nil {
+	if err := c.Transition(context.Background(), "PROJECT2-12", tracker.StateInProgress); err != nil {
 		t.Fatal(err)
 	}
-	err := c.Transition(context.Background(), "HD-12", tracker.StateInReview)
+	err := c.Transition(context.Background(), "PROJECT2-12", tracker.StateInReview)
 	if err == nil || !strings.Contains(err.Error(), `"In Review"`) || !strings.Contains(err.Error(), "Hive Dispatch Issues") {
 		t.Errorf("missing column must name the option and the board: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestTransitionReportsMissingColumnAfterRefresh(t *testing.T) {
 	board.mu.Lock()
 	board.options = append(board.options, "Needs Info", "In Review")
 	board.mu.Unlock()
-	if err := c.Transition(context.Background(), "HD-12", tracker.StateInReview); err != nil {
+	if err := c.Transition(context.Background(), "PROJECT2-12", tracker.StateInReview); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -168,7 +168,7 @@ func TestTransitionReportsMissingColumnAfterRefresh(t *testing.T) {
 func TestTransitionExplainsMissingProjectScope(t *testing.T) {
 	board := &fakeBoard{options: strings.Split(allColumns, ","), items: map[string]string{}, scopeErr: true}
 	c := newProjectClient(t, labelMux(t, board))
-	err := c.Transition(context.Background(), "HD-12", tracker.StateInProgress)
+	err := c.Transition(context.Background(), "PROJECT2-12", tracker.StateInProgress)
 	if err == nil || !strings.Contains(err.Error(), "gh auth refresh -s project") {
 		t.Errorf("scope error must say how to fix the token: %v", err)
 	}
