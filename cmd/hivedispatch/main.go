@@ -155,7 +155,7 @@ func printRepos(w io.Writer, cfg *config.Config) {
 	for _, r := range cfg.Repos {
 		names := make([]string, 0, len(r.Agents))
 		for _, a := range r.Agents {
-			names = append(names, a.Name+" ("+a.Executor+")")
+			names = append(names, a.Name+" ("+a.Role+", "+a.Executor+")")
 		}
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\tagents: %s\n", r.Project, r.Tracker, r.Name, r.Path, strings.Join(names, ", "))
 	}
@@ -185,11 +185,21 @@ func prPreflight(ctx context.Context, cfg *config.Config, stdout, stderr io.Writ
 }
 
 // githubPreflight runs the live GitHub Issues check and prints the report.
-func githubPreflight(ctx context.Context, client *ghissues.Client, stdout, stderr io.Writer) bool {
+func githubPreflight(ctx context.Context, client *ghissues.Client, repo config.RepoConfig, stdout, stderr io.Writer) bool {
 	rep, err := client.Check(ctx)
 	if err != nil {
 		fmt.Fprintln(stderr, "github check failed:", err)
 		return false
+	}
+	if !hasRole(repo, config.RolePlanning) {
+		// Nothing polls the Planning column, so its label and board column
+		// need not exist yet.
+		for r, labels := range rep.MissingLabels {
+			if rep.MissingLabels[r] = without(labels, repo.GitHub.Labels.Planning); len(rep.MissingLabels[r]) == 0 {
+				delete(rep.MissingLabels, r)
+			}
+		}
+		rep.MissingColumns = without(rep.MissingColumns, repo.GitHub.Project.Columns.Planning)
 	}
 	fmt.Fprintf(stdout, "github issues ok: authenticated as %s; %d repo(s); %d issue(s) labelled ready\n", rep.User, len(rep.Repos), rep.SampleTickets)
 	for _, r := range rep.MissingRepos {
@@ -217,6 +227,27 @@ func githubPreflight(ctx context.Context, client *ghissues.Client, stdout, stder
 	return rep.OK()
 }
 
+// hasRole reports whether repo has an agent of role.
+func hasRole(repo config.RepoConfig, role string) bool {
+	for _, a := range repo.Agents {
+		if a.Role == role {
+			return true
+		}
+	}
+	return false
+}
+
+// without returns list with every entry equal to drop removed.
+func without(list []string, drop string) []string {
+	var out []string
+	for _, v := range list {
+		if !strings.EqualFold(v, drop) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // jiraPreflight runs the live Jira check and prints the report. It returns
 // false when something would prevent a run.
 func jiraPreflight(ctx context.Context, client *jira.Client, repo config.RepoConfig, stdout, stderr io.Writer) bool {
@@ -225,6 +256,9 @@ func jiraPreflight(ctx context.Context, client *jira.Client, repo config.RepoCon
 	if err != nil {
 		fmt.Fprintln(stderr, "jira check failed:", err)
 		return false
+	}
+	if !hasRole(repo, config.RolePlanning) {
+		rep.MissingStatuses = without(rep.MissingStatuses, repo.Jira.Statuses.Planning)
 	}
 	fmt.Fprintf(stdout, "jira ok: authenticated as %s; trigger JQL matches %d ticket(s)\n", rep.User, rep.SampleTickets)
 	for _, p := range rep.UnknownProjects {

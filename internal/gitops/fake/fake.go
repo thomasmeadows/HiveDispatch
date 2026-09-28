@@ -51,3 +51,8 @@ func (w *Workspaces) Finalized() []string {
 	defer w.mu.Unlock()
 	return append([]string(nil), w.finalized...)
 }
+
+// Diff implements gitops.Workspaces with a placeholder diff.
+func (w *Workspaces) Diff(_ context.Context, ws gitops.Workspace) (string, error) {
+	return "diff --git a/" + filepath.Base(ws.Path) + " (fake)\n", nil
+}

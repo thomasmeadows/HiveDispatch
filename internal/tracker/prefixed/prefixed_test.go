@@ -16,7 +16,7 @@ func TestKeysGainAndLoseThePrefix(t *testing.T) {
 	p := New(inner, "jira")
 	ctx := context.Background()
 
-	got, err := p.Poll(ctx)
+	got, err := p.Poll(ctx, tracker.StateReady)
 	if err != nil || len(got) != 1 || got[0].Key != "JIRA-SCRUM-4" {
 		t.Fatalf("Poll = %+v, %v", got, err)
 	}

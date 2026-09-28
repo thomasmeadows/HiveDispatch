@@ -6,6 +6,8 @@ package dispatch
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"strings"
@@ -33,6 +35,7 @@ type Config struct {
 	PollJitter        time.Duration
 	StepBudget        int
 	MaxAttempts       int
+	MaxReviewRounds   int // review send-backs per ticket before a human; <1 means 1
 	MaxConcurrent     int // tickets worked at once, each in its own worktree; <1 means 1
 	Repos             []config.RepoConfig
 }
@@ -48,6 +51,7 @@ func ConfigFrom(c *config.Config) Config {
 		PollJitter:        c.PollJitter,
 		StepBudget:        c.StepBudget,
 		MaxAttempts:       c.MaxAttempts,
+		MaxReviewRounds:   c.MaxReviewRounds,
 		MaxConcurrent:     c.MaxConcurrent,
 		Repos:             c.Repos,
 	}
@@ -129,6 +133,9 @@ const (
 	OutcomeCompleted  Outcome = "completed"
 	OutcomeNeedsInput Outcome = "needs_input"
 	OutcomeFailed     Outcome = "failed"
+	OutcomePlanned    Outcome = "planned"
+	OutcomeApproved   Outcome = "approved"
+	OutcomeSentBack   Outcome = "sent_back"
 )
 
 func (d *Dispatcher) now() time.Time {
@@ -184,30 +191,59 @@ func (d *Dispatcher) poll(ctx context.Context, wait bool, wg *sync.WaitGroup, ha
 		d.log().Debug("paused after budget stop; not polling", "until", until)
 		return nil
 	}
-	tickets, err := d.Tracker.Poll(ctx)
-	if err != nil {
-		return err
+	// Each board column with agents to work it is polled: planning first,
+	// then review, then coding, so the quick read-only runs are not starved
+	// by long coding runs.
+	var errs []error
+	polled := false
+	seen := map[string]bool{} // a ticket moved by one stage waits for the next poll
+	for _, role := range []string{config.RolePlanning, config.RoleReview, config.RoleCoding} {
+		if ctx.Err() != nil || !d.hasRole(role) {
+			continue
+		}
+		tickets, err := d.Tracker.Poll(ctx, stateFor(role))
+		if err != nil {
+			errs = append(errs, fmt.Errorf("poll %s: %w", stateFor(role), err))
+			continue
+		}
+		polled = true
+		if !d.startAll(ctx, role, tickets, seen, wait, wg, handled) {
+			break // every slot is busy, or new work is paused
+		}
 	}
-	if d.Polled != nil {
+	if polled && d.Polled != nil {
 		d.Polled(d.now())
 	}
+	return errors.Join(errs...)
+}
+
+// startAll starts a goroutine for each ticket that has a free agent of
+// role. It reports false when no more work can start this poll.
+func (d *Dispatcher) startAll(ctx context.Context, role string, tickets []tracker.Ticket, seen map[string]bool, wait bool, wg *sync.WaitGroup, handled *atomic.Int64) bool {
 	for _, t := range tickets {
 		if ctx.Err() != nil {
-			break
+			return false
+		}
+		if seen[t.Key] {
+			continue
 		}
 		repo, ok := d.repoFor(t.Key)
 		if !ok {
 			d.log().Warn("no repo configured for ticket", "ticket", t.Key)
 			continue
 		}
-		cands, err := candidates(repo, t)
+		cands, err := candidates(repo, t, role)
 		if err != nil {
 			d.log().Warn("ticket skipped", "ticket", t.Key, "err", err)
 			continue
 		}
+		if len(cands) == 0 {
+			continue // this repository has no agent for this column
+		}
 		if !d.markInFlight(t.Key) {
 			continue // already being worked by this worker
 		}
+		seen[t.Key] = true
 		agent, ok := d.takeAgent(ctx, repo, cands, wait)
 		if !ok {
 			d.unmarkInFlight(t.Key)
@@ -216,14 +252,14 @@ func (d *Dispatcher) poll(ctx context.Context, wait bool, wg *sync.WaitGroup, ha
 		if !d.takeSlot(ctx, wait) {
 			d.releaseAgent(repo, agent)
 			d.unmarkInFlight(t.Key)
-			break // every slot is busy: the rest wait for the next poll
+			return false // every slot is busy: the rest wait for the next poll
 		}
 		// A run that finished while we waited may have hit the budget.
 		if until := d.PausedUntil(); d.now().Before(until) {
 			d.releaseSlot()
 			d.releaseAgent(repo, agent)
 			d.unmarkInFlight(t.Key)
-			break
+			return false
 		}
 		d.running.Add(1)
 		if wg != nil {
@@ -248,7 +284,7 @@ func (d *Dispatcher) poll(ctx context.Context, wait bool, wg *sync.WaitGroup, ha
 			}
 		}(t)
 	}
-	return nil
+	return true
 }
 
 func (d *Dispatcher) markInFlight(key string) bool {

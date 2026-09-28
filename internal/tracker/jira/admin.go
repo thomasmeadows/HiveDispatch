@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/thomasmeadows/hivedispatch/internal/tracker"
 )
 
 // Names of the custom fields HiveDispatch creates for the claim protocol
@@ -154,7 +156,7 @@ func (c *Client) Check(ctx context.Context, projects []string) (CheckReport, err
 		return rep, err
 	}
 	st := c.cfg.Statuses
-	for _, want := range []string{st.Ready, st.InProgress, st.NeedsInfo, st.InReview, st.NeedsHuman} {
+	for _, want := range []string{st.Planning, st.Ready, st.InProgress, st.NeedsInfo, st.InReview, st.NeedsHuman} {
 		found := false
 		for _, s := range statuses {
 			if strings.EqualFold(s.Name, want) {
@@ -193,9 +195,9 @@ func (c *Client) Check(ctx context.Context, projects []string) (CheckReport, err
 	}
 	projects = valid
 
-	tickets, err := c.Poll(ctx)
+	tickets, err := c.Poll(ctx, tracker.StateReady)
 	if err != nil {
-		return rep, fmt.Errorf("trigger JQL failed: %w", err)
+		return rep, fmt.Errorf("jira.jql failed: %w", err)
 	}
 	rep.SampleTickets = len(tickets)
 	sample := ""

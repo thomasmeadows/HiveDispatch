@@ -64,7 +64,7 @@ func repoTracker(ctx context.Context, repo config.RepoConfig, preflight bool, st
 			return nil, false, err
 		}
 		if preflight {
-			return prefixed.New(gh, repo.Project), githubPreflight(ctx, gh, stdout, stderr), nil
+			return prefixed.New(gh, repo.Project), githubPreflight(ctx, gh, repo, stdout, stderr), nil
 		}
 		return prefixed.New(gh, repo.Project), true, nil
 	case "jira":

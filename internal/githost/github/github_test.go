@@ -105,3 +105,31 @@ func TestProbePRWrite(t *testing.T) {
 		t.Errorf("403 should be reported with the permission to grant: %v", err)
 	}
 }
+
+func TestFindPRReportsItsHeadCommit(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /repos/o/r/pulls", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[{"number":7,"html_url":"https://github.com/o/r/pull/7","head":{"sha":"abc123"}}]`))
+	})
+	pr, err := newClient(t, mux).FindPR(context.Background(), "o/r", "hive/x")
+	if err != nil || pr == nil || pr.HeadSHA != "abc123" {
+		t.Fatalf("pr=%+v err=%v", pr, err)
+	}
+}
+
+func TestReviewPostsACommentReview(t *testing.T) {
+	mux := http.NewServeMux()
+	var got map[string]any
+	mux.HandleFunc("POST /repos/o/r/pulls/7/reviews", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"id":1}`))
+	})
+	if err := newClient(t, mux).Review(context.Background(), "o/r", 7, "Looks good."); err != nil {
+		t.Fatal(err)
+	}
+	// COMMENT, never APPROVE or REQUEST_CHANGES: the token that opened the
+	// PR is not allowed to approve or block its own pull request.
+	if got["event"] != "COMMENT" || got["body"] != "Looks good." {
+		t.Errorf("review = %v", got)
+	}
+}

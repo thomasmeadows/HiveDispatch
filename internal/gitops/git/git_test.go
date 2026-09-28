@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -188,5 +189,28 @@ func TestParallelTicketsShareOneBaseClone(t *testing.T) {
 		if got := gittest.Git(t, remote, "log", "-1", "--format=%s", "hive/"+key); got != "hive: "+key+"\n" {
 			t.Errorf("%s on remote: %q", key, got)
 		}
+	}
+}
+
+func TestDiffShowsTheBranchAgainstItsBase(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	w := New(t.TempDir())
+	ctx := context.Background()
+	ws, err := w.Prepare(ctx, repoCfg(remote), "HIVE-9", "hive/hive-9-add-notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws.Path, "NOTES.md"), []byte("new notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Finalize(ctx, ws, "add notes"); err != nil {
+		t.Fatal(err)
+	}
+	diff, err := w.Diff(ctx, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(diff, "+new notes") || !strings.Contains(diff, "NOTES.md") {
+		t.Errorf("diff = %q", diff)
 	}
 }

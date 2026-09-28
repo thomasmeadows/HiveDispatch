@@ -44,6 +44,7 @@ type commentJSON struct {
 func (c *Client) stateLabels() map[tracker.State]string {
 	l := c.cfg.Labels
 	return map[tracker.State]string{
+		tracker.StatePlanning:   l.Planning,
 		tracker.StateReady:      l.Ready,
 		tracker.StateInProgress: l.InProgress,
 		tracker.StateNeedsInfo:  l.NeedsInfo,
@@ -96,11 +97,15 @@ func (j *jsonRaw) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Poll returns open issues carrying the ready label across every repo.
-func (c *Client) Poll(ctx context.Context) ([]tracker.Ticket, error) {
+// Poll returns open issues carrying state's label across every repo.
+func (c *Client) Poll(ctx context.Context, state tracker.State) ([]tracker.Ticket, error) {
+	label, ok := c.stateLabels()[state]
+	if !ok || label == "" {
+		return nil, fmt.Errorf("ghissues: no label for state %q", state)
+	}
 	var out []tracker.Ticket
 	for _, repo := range c.repos {
-		q := url.Values{"state": {"open"}, "labels": {c.cfg.Labels.Ready}, "per_page": {"100"}}
+		q := url.Values{"state": {"open"}, "labels": {label}, "per_page": {"100"}}
 		var issues []issueJSON
 		err := c.getAll(ctx, "/repos/"+repo.Name+"/issues?"+q.Encode(), func(raw []byte) error {
 			var page []issueJSON

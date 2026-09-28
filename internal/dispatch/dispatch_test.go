@@ -487,6 +487,7 @@ func TestOnceOutsideWindowDoesNotReportPoll(t *testing.T) {
 type nonePRHost struct{}
 
 func (nonePRHost) FindPR(context.Context, string, string) (*githost.PR, error) { return nil, nil }
+func (nonePRHost) Review(context.Context, string, int, string) error           { return nil }
 func (nonePRHost) OpenPR(context.Context, string, githost.Request) (*githost.PR, error) {
 	return nil, nil
 }

@@ -64,7 +64,7 @@ func TestPollPaginatesSkipsPRsAndSpansRepos(t *testing.T) {
 	})
 	mux.HandleFunc("GET /repos/{o}/{r}/issues/{n}/comments", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`[]`)) })
 	c := newMultiClient(t, mux)
-	got, err := c.Poll(context.Background())
+	got, err := c.Poll(context.Background(), tracker.StateReady)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,5 +115,23 @@ func TestCommentAndTransition(t *testing.T) {
 	}
 	if err := c.Transition(context.Background(), "ISSUES-12", tracker.State("bogus")); err == nil {
 		t.Error("invalid state must error")
+	}
+}
+
+func TestPollAsksForTheStagesLabel(t *testing.T) {
+	var asked []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /repos/o/r/issues", func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Query().Get("labels"))
+		_, _ = w.Write([]byte(`[]`))
+	})
+	c := newTestClient(t, mux)
+	for _, st := range []tracker.State{tracker.StatePlanning, tracker.StateReady, tracker.StateInReview} {
+		if _, err := c.Poll(context.Background(), st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Join(asked, ",") != "hive:planning,hive:ready,hive:in-review" {
+		t.Errorf("labels asked = %v", asked)
 	}
 }

@@ -35,6 +35,7 @@ type Config struct {
 	RunTimeout        time.Duration `yaml:"run_timeout"`
 	StepBudget        int           `yaml:"step_budget"`
 	MaxAttempts       int           `yaml:"max_attempts"`
+	MaxReviewRounds   int           `yaml:"max_review_rounds"` // review agent send-backs per ticket before a human; default 2
 	PollJitter        time.Duration `yaml:"poll_jitter"`
 	RunWindows        RunWindows    `yaml:"run_windows"`
 	StateStore        string        `yaml:"state_store"`    // "branch" (default) or "local"
@@ -84,6 +85,7 @@ type JiraFields struct {
 
 // JiraStatuses maps HiveDispatch states to Jira workflow status names.
 type JiraStatuses struct {
+	Planning   string `yaml:"planning"`
 	Ready      string `yaml:"ready"`
 	InProgress string `yaml:"in_progress"`
 	NeedsInfo  string `yaml:"needs_info"`
@@ -123,6 +125,7 @@ type GitHubConfig struct {
 // GitHubLabels are the issue labels that carry HiveDispatch state when the
 // tracker is GitHub Issues. Exactly one is on an issue at a time.
 type GitHubLabels struct {
+	Planning   string `yaml:"planning"`
 	Ready      string `yaml:"ready"`
 	InProgress string `yaml:"in_progress"`
 	NeedsInfo  string `yaml:"needs_info"`
@@ -144,6 +147,7 @@ type GitHubProject struct {
 
 // GitHubProjectColumns are the Status options (board columns) per state.
 type GitHubProjectColumns struct {
+	Planning   string `yaml:"planning"`
 	Ready      string `yaml:"ready"`
 	InProgress string `yaml:"in_progress"`
 	NeedsInfo  string `yaml:"needs_info"`
@@ -182,6 +186,9 @@ type WindowConfig struct {
 	End   string   `yaml:"end"`   // HH:MM, exclusive
 }
 
+// jqlStatusRe finds a status clause in JQL.
+var jqlStatusRe = regexp.MustCompile(`(?i)\bstatus(category)?\s*(=|!=|~|\bin\b|\bnot\b|\bwas\b|\bchanged\b)`)
+
 // projectKeyRe matches Jira project keys: letters first, then letters,
 // digits or underscores.
 var projectKeyRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
@@ -207,6 +214,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.StepBudget == 0 {
 		c.StepBudget = 200
+	}
+	if c.MaxReviewRounds == 0 {
+		c.MaxReviewRounds = 2
 	}
 	if c.MaxAttempts == 0 {
 		c.MaxAttempts = 3
@@ -241,11 +251,13 @@ func (r *RepoConfig) applyDefaults() {
 	def(&r.DefaultBranch, "main")
 	s := &r.Jira.Statuses
 	def(&s.Ready, "Ready")
+	def(&s.Planning, "Planning")
 	def(&s.InProgress, "In Progress")
 	def(&s.NeedsInfo, "Needs Info")
 	def(&s.InReview, "In Review")
 	def(&s.NeedsHuman, "Needs Human")
 	l := &r.GitHub.Labels
+	def(&l.Planning, "hive:planning")
 	def(&l.Ready, "hive:ready")
 	def(&l.InProgress, "hive:in-progress")
 	def(&l.NeedsInfo, "hive:needs-info")
@@ -253,6 +265,7 @@ func (r *RepoConfig) applyDefaults() {
 	def(&l.NeedsHuman, "hive:needs-human")
 	p := &r.GitHub.Project
 	def(&p.Field, "Status")
+	def(&p.Columns.Planning, "Planning")
 	def(&p.Columns.Ready, "Ready")
 	def(&p.Columns.InProgress, "In Progress")
 	def(&p.Columns.NeedsInfo, "Needs Info")
@@ -372,7 +385,10 @@ func (c *Config) repoProblems(r RepoConfig) []string {
 	switch r.Tracker {
 	case "jira":
 		need(r.Jira.BaseURL, "jira.base_url", "your Jira Cloud site, e.g. https://yourteam.atlassian.net")
-		need(r.Jira.JQL, "jira.jql", `the query that selects work, e.g. project = KEY AND status = "Ready" AND labels = hive`)
+		need(r.Jira.JQL, "jira.jql", `the scope of the work, e.g. project = KEY AND labels = hive (HiveDispatch adds the status for each stage)`)
+		if jqlStatusRe.MatchString(r.Jira.JQL) {
+			add("jira.jql selects a status; it is now the scope only (e.g. project = KEY AND labels = hive) — HiveDispatch adds the status for each stage from jira.statuses")
+		}
 		placeholder(r.Jira.BaseURL, "jira.base_url")
 		placeholder(r.Jira.JQL, "jira.jql")
 		for _, f := range []struct{ v, name string }{{r.Jira.Fields.AgentID, "jira.fields.agent_id"}, {r.Jira.Fields.ClaimedAt, "jira.fields.claimed_at"}} {
@@ -406,6 +422,9 @@ func (c *Config) workerProblems() []string {
 	}
 	if c.RetentionDays < -1 {
 		problems = append(problems, "retention_days must be -1 (never prune), or a number of days")
+	}
+	if c.MaxReviewRounds < 0 {
+		problems = append(problems, "max_review_rounds must be 1 or more — how often a review agent may send a ticket back before a human takes over")
 	}
 	if c.ScanDepth < 0 {
 		problems = append(problems, "scan_depth must be 0 (only the code dirs themselves) or more")

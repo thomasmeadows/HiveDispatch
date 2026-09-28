@@ -91,7 +91,7 @@ func TestPollFollowsNextPageToken(t *testing.T) {
 		_, _ = w.Write(fixture(t, "search_page1.json"))
 	})
 	c := newTestClient(t, mux)
-	got, err := c.Poll(context.Background())
+	got, err := c.Poll(context.Background(), tracker.StateReady)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestPollFollowsNextPageToken(t *testing.T) {
 	if len(bodies) != 2 {
 		t.Fatalf("requests = %d", len(bodies))
 	}
-	if bodies[0]["jql"] != `project = HIVE AND status = "Ready"` {
+	if bodies[0]["jql"] != `(project = HIVE) AND status = "Ready"` {
 		t.Errorf("jql = %v", bodies[0]["jql"])
 	}
 	if _, has := bodies[0]["nextPageToken"]; has {
@@ -123,11 +123,23 @@ func TestPollStopsAtPageLimit(t *testing.T) {
 		_, _ = w.Write([]byte(`{"issues":[],"nextPageToken":"again","isLast":false}`))
 	})
 	c := newTestClient(t, mux)
-	_, err := c.Poll(context.Background())
+	_, err := c.Poll(context.Background(), tracker.StateReady)
 	if err == nil {
 		t.Fatal("expected error when pagination never terminates")
 	}
 	if calls != maxPollPages {
 		t.Errorf("calls = %d, want %d", calls, maxPollPages)
+	}
+}
+
+func TestStageJQLNarrowsTheScope(t *testing.T) {
+	for _, tc := range []struct{ scope, want string }{
+		{"project = HIVE AND labels = hive", `(project = HIVE AND labels = hive) AND status = "Planning"`},
+		{"project = HIVE ORDER BY created ASC", `(project = HIVE) AND status = "Planning" ORDER BY created ASC`},
+		{"", `status = "Planning"`},
+	} {
+		if got := stageJQL(tc.scope, "Planning"); got != tc.want {
+			t.Errorf("stageJQL(%q) = %q, want %q", tc.scope, got, tc.want)
+		}
 	}
 }

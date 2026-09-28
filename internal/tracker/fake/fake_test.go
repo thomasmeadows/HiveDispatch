@@ -20,7 +20,7 @@ func seeded() *Tracker {
 
 func TestPollReturnsOnlyReady(t *testing.T) {
 	f := seeded()
-	got, err := f.Poll(context.Background())
+	got, err := f.Poll(context.Background(), tracker.StateReady)
 	if err != nil {
 		t.Fatal(err)
 	}

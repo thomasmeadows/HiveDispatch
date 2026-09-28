@@ -50,10 +50,20 @@ type prJSON struct {
 	Number  int    `json:"number"`
 	HTMLURL string `json:"html_url"`
 	Draft   bool   `json:"draft"`
+	Head    struct {
+		SHA string `json:"sha"`
+	} `json:"head"`
 }
 
 func (p prJSON) toPR() *githost.PR {
-	return &githost.PR{URL: p.HTMLURL, Number: p.Number, Draft: p.Draft}
+	return &githost.PR{URL: p.HTMLURL, Number: p.Number, Draft: p.Draft, HeadSHA: p.Head.SHA}
+}
+
+// Review posts body as a COMMENT review. It is never APPROVE or
+// REQUEST_CHANGES: GitHub refuses both from the account that opened the pull
+// request, which is the worker's own; the verdict is in the text.
+func (c *Client) Review(ctx context.Context, repo string, number int, body string) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/repos/%s/pulls/%d/reviews", repo, number), map[string]any{"event": "COMMENT", "body": body}, nil)
 }
 
 // FindPR returns the open PR whose head branch is head, or nil.

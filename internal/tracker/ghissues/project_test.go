@@ -15,7 +15,7 @@ import (
 func testProjectCfg(url string) config.GitHubConfig {
 	cfg := testCfg(url)
 	cfg.Project = config.GitHubProject{Owner: "thomasmeadows", Number: 2, Field: "Status", Columns: config.GitHubProjectColumns{
-		Ready: "Ready", InProgress: "In Progress", NeedsInfo: "Needs Info", InReview: "In Review", NeedsHuman: "Needs Human",
+		Planning: "Planning", Ready: "Ready", InProgress: "In Progress", NeedsInfo: "Needs Info", InReview: "In Review", NeedsHuman: "Needs Human",
 	}}
 	return cfg
 }
@@ -90,7 +90,7 @@ func (b *fakeBoard) handle(t *testing.T, w http.ResponseWriter, r *http.Request)
 	}
 }
 
-const allColumns = "Ready,In Progress,Needs Info,In Review,Needs Human"
+const allColumns = "Planning,Ready,In Progress,Needs Info,In Review,Needs Human"
 
 func labelMux(t *testing.T, board *fakeBoard) *http.ServeMux {
 	t.Helper()
@@ -120,14 +120,14 @@ func TestTransitionAddsIssueToBoardAndSetsColumn(t *testing.T) {
 	if len(board.added) != 1 || board.added[0] != "I_12" {
 		t.Errorf("added = %v", board.added)
 	}
-	if strings.Join(board.moved, ",") != "item_I_12=optb" {
+	if strings.Join(board.moved, ",") != "item_I_12=optc" {
 		t.Errorf("moved = %v", board.moved)
 	}
 	// Already on the board: no second add, project resolved once.
 	if err := c.Transition(context.Background(), "PROJECT2-12", tracker.StateInReview); err != nil {
 		t.Fatal(err)
 	}
-	if len(board.added) != 1 || strings.Join(board.moved, ",") != "item_I_12=optb,item_I_12=optd" || board.lookups != 1 {
+	if len(board.added) != 1 || strings.Join(board.moved, ",") != "item_I_12=optc,item_I_12=opte" || board.lookups != 1 {
 		t.Errorf("added=%v moved=%v lookups=%d", board.added, board.moved, board.lookups)
 	}
 }
@@ -177,7 +177,7 @@ func TestTransitionExplainsMissingProjectScope(t *testing.T) {
 func TestCheckReportsBoardAndMissingColumns(t *testing.T) {
 	board := &fakeBoard{options: []string{"Ready", "In Progress", "Done"}, items: map[string]string{}}
 	var created []string
-	labels := map[string][]string{"o/r": strings.Split("hive:ready,hive:in-progress,hive:needs-info,hive:in-review,hive:needs-human", ","), "o/other": strings.Split("hive:ready,hive:in-progress,hive:needs-info,hive:in-review,hive:needs-human", ",")}
+	labels := map[string][]string{"o/r": strings.Split("hive:planning,hive:ready,hive:in-progress,hive:needs-info,hive:in-review,hive:needs-human", ","), "o/other": strings.Split("hive:planning,hive:ready,hive:in-progress,hive:needs-info,hive:in-review,hive:needs-human", ",")}
 	mux := adminMux(labels, &created)
 	mux.HandleFunc("POST /graphql", func(w http.ResponseWriter, r *http.Request) { board.handle(t, w, r) })
 	c := newProjectClient(t, mux)
@@ -185,7 +185,7 @@ func TestCheckReportsBoardAndMissingColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Project != "Hive Dispatch Issues" || strings.Join(rep.MissingColumns, ",") != "In Review,Needs Human,Needs Info" || rep.OK() {
+	if rep.Project != "Hive Dispatch Issues" || strings.Join(rep.MissingColumns, ",") != "In Review,Needs Human,Needs Info,Planning" || rep.OK() {
 		t.Errorf("rep = %+v", rep)
 	}
 	board.mu.Lock()
@@ -203,7 +203,7 @@ func TestCheckReportsBoardAndMissingColumns(t *testing.T) {
 
 func TestCheckReportsUnreachableBoard(t *testing.T) {
 	var created []string
-	labels := map[string][]string{"o/r": strings.Split("hive:ready,hive:in-progress,hive:needs-info,hive:in-review,hive:needs-human", ","), "o/other": strings.Split("hive:ready,hive:in-progress,hive:needs-info,hive:in-review,hive:needs-human", ",")}
+	labels := map[string][]string{"o/r": strings.Split("hive:planning,hive:ready,hive:in-progress,hive:needs-info,hive:in-review,hive:needs-human", ","), "o/other": strings.Split("hive:planning,hive:ready,hive:in-progress,hive:needs-info,hive:in-review,hive:needs-human", ",")}
 	mux := adminMux(labels, &created)
 	mux.HandleFunc("POST /graphql", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":{"repositoryOwner":{"projectV2":null}},"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a ProjectV2 with the number 2."}]}`))

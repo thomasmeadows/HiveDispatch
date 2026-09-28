@@ -18,10 +18,10 @@ func testCfg(baseURL string) config.JiraConfig {
 		BaseURL: baseURL,
 		Email:   "me@example.com",
 		Token:   "tok",
-		JQL:     `project = HIVE AND status = "Ready"`,
+		JQL:     `project = HIVE`,
 		Fields:  config.JiraFields{AgentID: "customfield_10042", ClaimedAt: "customfield_10043"},
 		Statuses: config.JiraStatuses{
-			Ready: "Ready", InProgress: "In Progress", NeedsInfo: "Needs Info",
+			Planning: "Planning", Ready: "Ready", InProgress: "In Progress", NeedsInfo: "Needs Info",
 			InReview: "In Review", NeedsHuman: "Needs Human",
 		},
 	}

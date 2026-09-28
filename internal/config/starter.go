@@ -130,7 +130,7 @@ jira:
   base_url: https://YOURTEAM.atlassian.net
   # Which tickets the worker may take. Using a label as well as a status means a
   # human opts each ticket in.
-  jql: 'project = KEY AND status = "Ready" AND labels = hive'
+  jql: 'project = KEY AND labels = hive'
   # Claim fields. HiveDispatch marks a ticket it is working on by writing two custom
   # fields on the issue:
   #   agent_id    which worker holds the ticket ("HiveDispatch Agent")
