@@ -1,6 +1,6 @@
 # Setup
 
-HiveDispatch needs: an issue tracker per repository — its GitHub Issues, or a Jira Cloud site (API token, two custom fields for the claim protocol, five workflow statuses) — a GitHub token for opening pull requests, git credentials that can clone and push the repositories it works in, and a logged-in Claude Code CLI (or Codex CLI, with `executor: codex`).
+HiveDispatch needs: an issue tracker per repository — its GitHub Issues, or a Jira Cloud site (API token, two custom fields for the claim protocol, five workflow statuses) — a GitHub token for opening pull requests, git credentials that can clone and push the repositories it works in, and a logged-in Claude Code CLI (or Codex CLI, for agents with `executor: codex`).
 
 ## 0. Start here
 
@@ -263,14 +263,14 @@ The run log for each attempt is saved to the state branch under `logs/<KEY>/<tim
 
 ### Codex instead of Claude Code
 
-Set `executor: codex` in the worker config to run tickets with the Codex CLI (`codex exec`). Log in once as the user that runs the worker (`codex login`). Optional worker keys: `codex.binary` (default `codex`) and `codex.model`.
+Give a repository an agent with `executor: codex` in its `.hive-dispatch/agents.yaml` (or the website's Agents tab) to run its tickets with the Codex CLI (`codex exec`). Log in once as the user that runs the worker (`codex login`). Optional worker key: `codex.binary` (default `codex`).
 
 Per-repo policy for Codex is its own block, because the keys above are Claude Code vocabulary:
 
 ```yaml
 executor:
   codex:
-    model: gpt-5-codex          # optional; default is the worker's codex.model, then the CLI default
+    model: gpt-5-codex          # optional; an agent's own model wins, else the CLI default
     sandbox: workspace-write    # read-only | workspace-write | danger-full-access
     network: false              # allow outbound network inside workspace-write
   path: ["~/go/bin"]            # shared with Claude Code

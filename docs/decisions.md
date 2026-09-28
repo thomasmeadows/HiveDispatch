@@ -289,3 +289,17 @@ The supervisor keeps its guardrail in code. The conversation was split from the 
 Decided: `hivedispatch website` serves the embedded production build. `hivedispatch website -dev` starts Vite's dev server as a child process on a private loopback port, and the Go server proxies every non-API request to it, including the HMR websocket. The browser talks only to the Go server in both modes. The host and origin checks apply in development too, and so will a future login gate, because it belongs in the same `ServeHTTP` that every request already passes through. `-dev` finds `web/` from the working directory upward, or takes `-web DIR`. Stopping the server stops Vite.
 
 Rejected: running `vite` as the front server and proxying `/api` to Go. Development would then sit behind a different server than production, and auth would have to be duplicated in Node or left out of dev. Also rejected: a watch build served from disk (`vite build --watch` plus Go serving the files). Go stays in front, but you lose hot module replacement, and every edit costs a full page reload and the page's state.
+
+## 2026-09-28 — Supervisor settings back in the worker config
+
+Supersedes "Segregated: one directory, its own config file" (2026-09-21), for the settings only. The notes and session transcripts stay in `<config dir>/supervisor/`.
+
+Decided: the supervisor's provider, model, key variable and limits are a `supervisor:` block in `config.yaml`. The operator asked for one file to manage, and the website's Configuration page is now a single form. The old `supervisor/config.yaml` is rejected with a message naming the file and where its keys go. Rejected: reading both locations, for the same reason as the tracker-settings move (two layouts to maintain for a single operator). The earlier worry, that the assistant's own settings would sit in the file it rewrites, is covered by the confirmation step: every `write_config` shows the operator the diff, including any change to `supervisor:`.
+
+## 2026-09-28 — Agents: a pool per repository
+
+Decided: each repository lists its coding agents in `.hive-dispatch/agents.yaml`, each with a name, an executor (claude/codex/fake) and an optional model. A repository without the file has one `default` Claude agent. Agents are pool slots: each works one ticket at a time, and `max_concurrent` still caps the machine. A `hive:agent:<name>` label pins a ticket to one agent. The agent's model wins over the policy's. The worker-level `executor`, `claude.model` and `codex.model` moved into agents and are rejected in `config.yaml`. The binaries stay machine settings.
+
+`agents.yaml` is read from the local checkout, like `repo.yaml`, and `policy.yaml` is unchanged: one policy per repository, read from the worktree, which every agent follows. An earlier draft put a policy in each agent. It was dropped at the operator's call, because a second place to define what an agent may do risks the two drifting apart. Since permissions stay in the reviewed policy, the agent list can apply on save.
+
+Claims on the tracker stay under the worker's `agent_id`, so the claim protocol and every tracker are untouched. The agent shows up as `<agent_id>/<name>` on run records and pull requests. Run records now say which executor made a session, and a question/answer resume continues only on an agent with the same executor, because a Claude session id means nothing to Codex. Rejected: routing tickets only by label (several agents would bring no parallelism), and a pool with no way to choose an agent.

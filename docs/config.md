@@ -1,12 +1,13 @@
 # Configuration reference
 
-A worker config for the machine, two files in each repository, and a handful of environment variables.
+A worker config for the machine, three files in each repository, and a handful of environment variables.
 
 | File | Where | Holds | Read from |
 |---|---|---|---|
-| Worker config | `~/.config/hivedispatch/config.yaml` | This machine: agent id, where to find repositories, schedule, executor, account names | disk |
+| Worker config | `~/.config/hivedispatch/config.yaml` | This machine: agent id, where to find repositories, schedule, CLI binaries, account names, the supervisor's settings | disk |
 | Repository settings | `.hive-dispatch/repo.yaml` in each repository | Ticket-key prefix, which tracker holds the queue, that tracker's settings | the local checkout |
-| Agent policy | `.hive-dispatch/policy.yaml` in each repository | Model, tools, budget, guidance for the coding agent | the ticket's worktree (the committed copy) |
+| Agents | `.hive-dispatch/agents.yaml` in each repository | The pool of coding agents that work its tickets: name, executor, model | the local checkout |
+| Agent policy | `.hive-dispatch/policy.yaml` in each repository | Model, tools, budget, guidance that every agent of the repository follows | the ticket's worktree (the committed copy) |
 
 Each repository picks its own tracker, so one worker can serve a Jira project and several GitHub Issues queues at once.
 
@@ -30,11 +31,8 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 | `step_budget` | `200` | Tool calls per executor run before it is stopped |
 | `max_attempts` | `3` | Failed attempts before a ticket goes to Needs Human |
 | `retention_days` | `30` | Raw run logs and finished run records older than this are pruned at startup; `-1` never prunes |
-| `executor` | `claude` | `claude`, `codex`, or `fake` (no agent; useful for trying the pipeline) |
 | `claude.binary` | `claude` | The Claude Code CLI to run |
-| `claude.model` | *(CLI default)* | Model for the executor when the repo policy sets none |
-| `codex.binary` | `codex` | The Codex CLI to run (`executor: codex`) |
-| `codex.model` | *(CLI default)* | Model for the codex executor when the repo policy sets none |
+| `codex.binary` | `codex` | The Codex CLI to run (for agents with `executor: codex`) |
 | `triage.kind` | `claude` | `claude` (read-only model triage) or `passthrough` (dispatch everything) |
 | `triage.step_budget` | `40` | Tool calls the triager may make |
 | `triage.timeout` | `5m` | Wall-clock limit for triage |
@@ -68,19 +66,42 @@ Written by `hivedispatch init -github [DIR]` or `init -jira [DIR]` (DIR defaults
 | `github.project.field` | `Status` | The board's single-select field |
 | `github.project.columns.ready` … `needs_human` | `Ready`, `In Progress`, `Needs Info`, `In Review`, `Needs Human` | That field's option per state |
 
-## Agent policy — `.hive-dispatch/policy.yaml`
+## Agents — `.hive-dispatch/agents.yaml`
 
-Read from the ticket's worktree, so it is versioned with the code and can differ per branch. A repository that still has the old `.hivedispatch.yaml` at its root and no `policy.yaml` fails the run with a message to move it; the keys are unchanged.
+The coding agents that work this repository's tickets, read from the local checkout like `repo.yaml` (commit it so other clones have the same pool). Without the file a repository has one agent, `default`, running Claude Code. The website's Agents tab edits it.
+
+```yaml
+agents:
+  - name: claude-1
+    executor: claude
+  - name: codex-1
+    executor: codex
+    model: gpt-5-codex
+```
 
 | Key | Default | Meaning |
 |---|---|---|
-| `executor.model` | worker `claude.model` | Model for Claude Code runs in this repo |
+| `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<agent_id>/<name>` |
+| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, or `fake` (no agent; useful for trying the pipeline) |
+| `agents[].model` | *(policy's model, then the CLI's)* | Model for this agent's runs; wins over the policy's `executor.model` / `executor.codex.model` |
+
+The agents are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets at once as it has agents. A ticket labelled `hive:agent:<name>` waits for that agent; a label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are still made under the worker's `agent_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
+
+`run -executor fake` (or `claude`, `codex`) makes every agent use that executor for one run.
+
+## Agent policy — `.hive-dispatch/policy.yaml`
+
+Every agent of the repository follows it. Read from the ticket's worktree, so it is versioned with the code and can differ per branch. A repository that still has the old `.hivedispatch.yaml` at its root and no `policy.yaml` fails the run with a message to move it; the keys are unchanged.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `executor.model` | *(CLI default)* | Model for Claude Code runs in this repo, unless the agent sets its own |
 | `executor.permission_mode` | `dontAsk` | Claude Code permission mode: `acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan`. `dontAsk` fails closed |
 | `executor.tools` | `[default]` | Claude Code built-in tool set, or a list to restrict |
 | `executor.allowed_tools` | *(none)* | Claude Code pre-approved patterns for `dontAsk`, e.g. `Edit`, `"Bash(go test:*)"` |
 | `executor.max_budget_usd` | *(none)* | Claude Code per-run spend cap (API-billed accounts) |
 | `executor.path` | *(none)* | Directories prepended to the agent's `PATH` (`~` and `$VAR` expand), e.g. `["~/go/bin"]` so `golangci-lint` resolves. Applies to every executor |
-| `executor.codex.model` | worker `codex.model` | Model for Codex runs in this repo |
+| `executor.codex.model` | *(CLI default)* | Model for Codex runs in this repo, unless the agent sets its own |
 | `executor.codex.sandbox` | `workspace-write` | Codex sandbox for runs: `read-only`, `workspace-write`, `danger-full-access`. Approvals are always off (`approval_policy=never`); a command the sandbox refuses fails |
 | `executor.codex.network` | `false` | Allow outbound network inside `workspace-write` (e.g. for `go mod download`) |
 | `guidance` | *(none)* | Text appended to every prompt for this repo: conventions, required checks, where decisions are recorded. Applies to every executor |
@@ -93,14 +114,14 @@ The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budg
 |---|---|---|
 | `HIVE_JIRA_TOKEN` | when a repository uses Jira | Atlassian API token for `jira.email` |
 | `HIVE_GITHUB_TOKEN` | when a repository uses GitHub Issues | Token for opening PRs and, for repositories with `tracker: github`, for reading and writing issues. Classic or fine-grained, interchangeably — see the token table in `docs/setup.md` §5 for which permissions each needs; a user-owned Projects board requires a classic token. If unset, `gh auth token` and the git credential helper are tried; with none and Jira, branches are pushed and the ticket asks a human to open the PR |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` / `HF_TOKEN` | with `hivedispatch supervisor` | the supervisor's model key; which one is read is `api_key_env` in the supervisor config (see below) |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` / `HF_TOKEN` | with `hivedispatch supervisor` | the supervisor's model key; which one is read is `supervisor.api_key_env` (see below) |
 
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `init` | Write the starter worker config (never overwrites a non-empty file) |
-| `init -github [DIR]` | In the repository at DIR (default: the one you are in): write `.hive-dispatch/repo.yaml` and `policy.yaml` starters the first time; once filled in, create the repository's state labels. Says how to enrol DIR if the worker would not pick it up |
+| `init -github [DIR]` | In the repository at DIR (default: the one you are in): write `.hive-dispatch/repo.yaml`, `agents.yaml` and `policy.yaml` starters the first time; once filled in, create the repository's state labels. Says how to enrol DIR if the worker would not pick it up |
 | `init -jira [DIR]` | The same for a Jira repository; once filled in, create the two claim fields on its Jira site |
 | `scan [DIR…]` | List git repositories under DIR (default `code_dirs`, else your home directory): path, enrolled or not, project, tracker, `owner/repo` |
 | `check [-live]` | Validate the worker config and every enrolled repository, and list them; with `-live`, verify each repository's tracker (Jira: credentials, fields, editability, statuses, project, trigger query; GitHub: token, repo, labels, board) and PR access |
@@ -110,17 +131,17 @@ The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budg
 | `supervisor [-config P] [-provider anthropic\|openai\|deepseek\|huggingface\|ollama] [-model M] [-resume \| -session FILE]` | Run the built-in assistant that helps configure and run HiveDispatch. `-session` takes either a file name looked up under `sessions/` in the supervisor directory, or a path to use as-is |
 | `version` | Print the version |
 
-## Supervisor config — `~/.config/hivedispatch/supervisor/config.yaml`
+## Supervisor — `supervisor:` in the worker config
 
-Settings for `hivedispatch supervisor`, the built-in assistant. Optional: with no file, the provider is chosen from the environment (`ANTHROPIC_API_KEY` → anthropic, else `OPENAI_API_KEY` → openai, else `DEEPSEEK_API_KEY` → deepseek, else `HF_TOKEN` → huggingface, else a local Ollama). The file lives beside the worker config, so `-config PATH` moves it to `<dir of PATH>/supervisor/config.yaml`; the assistant's notes (`memory.md`) and session transcripts (`sessions/`) are in the same directory.
+Settings for the built-in assistant (`hivedispatch supervisor` and the chat in `hivedispatch website`), under a `supervisor:` key in `config.yaml`. Optional: without them, the provider is chosen from the environment (`ANTHROPIC_API_KEY` → anthropic, else `OPENAI_API_KEY` → openai, else `DEEPSEEK_API_KEY` → deepseek, else `HF_TOKEN` → huggingface, else a local Ollama). The assistant's notes (`memory.md`) and session transcripts (`sessions/`) live in a `supervisor/` directory beside the worker config. The separate `supervisor/config.yaml` of earlier versions is no longer read: the supervisor refuses to start until its keys are moved under `supervisor:`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `provider` | *(from environment)* | `anthropic`, `openai`, `deepseek`, `huggingface` or `ollama`. The last four share the OpenAI-style `chat/completions` API |
-| `model` | *(per provider)* | `claude-sonnet-5` · `gpt-5-mini` · `deepseek-flash` · `Qwen/Qwen3-32B` · `qwen3`. Best-effort names: check your provider's catalogue and set this explicitly |
-| `base_url` | *(per provider)* | `https://api.anthropic.com` · `https://api.openai.com/v1` · `https://api.deepseek.com/v1` · `https://router.huggingface.co/v1` · `http://localhost:11434/v1`. Any OpenAI-compatible server works under `openai` |
-| `api_key_env` | *(per provider)* | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `DEEPSEEK_API_KEY` · `HF_TOKEN` · none for Ollama. The variable that holds the key; the key itself never goes in YAML |
-| `max_tokens` | `4096` | Reply length limit per model call |
-| `step_budget` | `20` | Tool calls the assistant may make per message before it stops and asks to continue |
+| `supervisor.provider` | *(from environment)* | `anthropic`, `openai`, `deepseek`, `huggingface` or `ollama`. The last four share the OpenAI-style `chat/completions` API |
+| `supervisor.model` | *(per provider)* | `claude-sonnet-5` · `gpt-5-mini` · `deepseek-flash` · `Qwen/Qwen3-32B` · `qwen3`. Best-effort names: check your provider's catalogue and set this explicitly |
+| `supervisor.base_url` | *(per provider)* | `https://api.anthropic.com` · `https://api.openai.com/v1` · `https://api.deepseek.com/v1` · `https://router.huggingface.co/v1` · `http://localhost:11434/v1`. Any OpenAI-compatible server works under `openai` |
+| `supervisor.api_key_env` | *(per provider)* | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `DEEPSEEK_API_KEY` · `HF_TOKEN` · none for Ollama. The variable that holds the key; the key itself never goes in YAML |
+| `supervisor.max_tokens` | `4096` | Reply length limit per model call |
+| `supervisor.step_budget` | `20` | Tool calls the assistant may make per message before it stops and asks to continue |
 
-`-provider` and `-model` on the command line override the file for one session.
+`-provider` and `-model` on the command line override these for one session.
