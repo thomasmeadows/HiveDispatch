@@ -83,23 +83,23 @@ which adds both fields (if missing) and puts them on the default screen so they 
 
 ## 3. Workflow statuses
 
-Ready · In Progress · Needs Info · In Review · Needs Human
+Planning · Ready · In Progress · Needs Info · In Review · Needs Human
 
-Any names work; map them under `jira.statuses`. The workflow must allow transitions between them from every state HiveDispatch uses (Ready → In Progress, In Progress → Needs Info/In Review/Needs Human/Ready, Needs Info → Ready). The simplest workflow allows all transitions.
+Any names work; map them under `jira.statuses`. Planning is needed only when a repository has a planning agent. The workflow must allow transitions between them from every state HiveDispatch uses (Planning → Ready/Needs Info, Ready → In Progress, In Progress → Needs Info/In Review/Needs Human/Ready, In Review → Ready/Needs Human, Needs Info → Ready or Planning). The simplest workflow allows all transitions.
 
 ## 4. Ticket prefix
 
 Jira tickets keep their own keys inside HiveDispatch's: `SCRUM-4` becomes `JIRA-SCRUM-4`, named `jira-scrum-4-create-website`, where `JIRA` is `ticket_prefix` in `repo.yaml` (default: `JIRA`). Which Jira projects a repository takes tickets from is up to `jira.jql`.
 
-## 4b. Trigger query
+## 4b. Scope query
 
-`jira.jql` in `repo.yaml` selects what HiveDispatch may work on, e.g.
+`jira.jql` in `repo.yaml` selects which tickets are HiveDispatch's, without a status, e.g.
 
 ```
-project = HIVE AND status = "Ready" AND labels = hive
+project = HIVE AND labels = hive
 ```
 
-Using a label as well as a status means a human explicitly opts each ticket in.
+Each column's agents add its status from `jira.statuses`: planning agents look at `status = "Planning"`, coding agents at `status = "Ready"`, review agents at `status = "In Review"`. Using a label means a human explicitly opts each ticket in; moving it to a column says what should happen next.
 
 ## Example configuration
 
@@ -120,7 +120,7 @@ jira:
 ticket_tracker: jira             # ticket_prefix defaults to JIRA
 jira:
   base_url: https://yoursite.atlassian.net
-  jql: 'project = HIVE AND status = "Ready" AND labels = hive'
+  jql: 'project = HIVE AND labels = hive'
 ```
 
 `~/work/other-repo/.hive-dispatch/repo.yaml`, a GitHub Issues repository on the same worker:

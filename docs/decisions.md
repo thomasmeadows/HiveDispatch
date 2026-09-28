@@ -331,3 +331,26 @@ Rejected:
 The prefix must still be unique per worker, so two repositories using the same tracker cannot both keep the default; `check` says so.
 
 Consequence for existing installs: keys changed shape. Run records and branches from before this change are not picked up; a ticket in flight starts over under its new name. The old `project`/`tracker` keys are rejected with a rename hint, the same clean break as earlier moves.
+
+## 2026-09-28 — Planning, coding and review agents, one board column each
+
+Decided: an agent in `agents.yaml` has a `role`, and each role works one column of the board:
+- **`planning` works Planning.** This is a new state, with the label `hive:planning`, the board column `Planning`, and the Jira status `Planning`. A read-only run posts a plan on the ticket and moves it to Ready, or asks one question and moves it to Needs Info.
+- **`coding` works Ready.** This is the default and today's agent. It skips triage for a planned ticket, because the plan in the thread is its brief.
+- **`review` works In Review.** A read-only run reviews each new version of the PR once, from its diff. An approval leaves the ticket In Review for a human to merge. A request for changes sends it back to Ready, and the coding agent resumes its session with the findings, up to `max_review_rounds` (default 2), then Needs Human.
+
+The column decides the role. `hive:agent:<name>` picks an agent within that role's column, so one ticket can name both its coder and its reviewer.
+
+A column no repository has agents for is not polled. Planning is optional: a ticket may start in Ready as before, and triage still runs there. `check` requires the Planning label, column or status only where a planning agent exists.
+
+Reviews are posted as COMMENT reviews. GitHub refuses APPROVE and REQUEST_CHANGES from the account that opened the pull request, which is the worker's own. The verdict is in the text, and the ticket's column carries it.
+
+Planning and review are read-only runs through a new `Executor.Advise`: Claude Code in plan mode, or Codex in its read-only sandbox, answering in a JSON schema. That is the same mechanism as triage and `Plan`, so either CLI can serve any role. The review agent's tools are read-only file tools, so the diff is put in its prompt, capped at 100 KiB.
+
+`jira.jql` becomes the scope only: HiveDispatch adds `status = "<column>"` for each stage from `jira.statuses`. A query that still names a status is rejected rather than silently matching nothing. This supersedes "trigger JQL" in the setup docs.
+
+Rejected:
+- **Tracker assignee fields for assigning agents:** that needs a real account per agent on every tracker.
+- **Planning replacing triage:** tickets that need no plan would pay for one.
+- **Review comments that never move the ticket:** the send-back loop is what makes a review agent more than a linter.
+- **Posting REQUEST_CHANGES:** GitHub would reject it from the PR's own author.

@@ -208,14 +208,23 @@ executor:
 `
 
 // AgentsStarter is the agents.yaml written next to a new repo.yaml.
-const AgentsStarter = `# The coding agents that work this repository's tickets, read by the worker from
-# this checkout. They form a pool: each works one ticket at a time (the worker's
-# max_concurrent caps them all), and a ticket labelled hive:agent:<name> waits
-# for that agent. Every agent follows policy.yaml; model overrides its model.
+const AgentsStarter = `# The agents that work this repository's tickets, read by the worker from this
+# checkout. Each works one board column by its role:
+#   planning   Planning:  posts a plan, moves the ticket to Ready
+#   coding     Ready:     implements it and opens a pull request (the default)
+#   review     In Review: reviews the pull request; passes it or sends it back
+# Each works one ticket at a time (the worker's max_concurrent caps them all), and
+# a ticket labelled hive:agent:<name> waits for that agent in its column. Every
+# agent follows policy.yaml; model overrides its model.
 agents:
   - name: default
+    role: coding
     executor: claude       # claude, codex, or fake (no agent; for trying the pipeline)
     # model: sonnet
+  # - name: planner
+  #   role: planning
+  # - name: reviewer
+  #   role: review
 `
 
 // RepoStarter is the commented repo.yaml for tracker ("jira" or "github").
