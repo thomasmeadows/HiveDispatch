@@ -351,3 +351,79 @@ func (s *Server) postFile(w http.ResponseWriter, r *http.Request) {
 		"changed": changed, "applied": in.Apply && changed, "content": string(staged.New),
 	})
 }
+
+// agentsPath is the repository's agents.yaml.
+func agentsPath(dir string) string { return filepath.Join(dir, config.RepoDir, config.AgentsFileName) }
+
+// getAgents lists a repository's agents: its agents.yaml, or the default
+// pool when there is none.
+func (s *Server) getAgents(w http.ResponseWriter, r *http.Request) {
+	row, err := s.knownRepo(r.URL.Query().Get("path"))
+	if err != nil {
+		repoError(w, err)
+		return
+	}
+	file := agentsPath(row.Path)
+	raw, err := os.ReadFile(file)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		writeJSON(w, http.StatusOK, map[string]any{"path": file, "exists": false, "agents": config.DefaultAgents()})
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	out := map[string]any{"path": file, "exists": true}
+	agents, err := config.ParseAgents(raw)
+	if err != nil {
+		out["problem"] = err.Error()
+		agents = []config.Agent{}
+	}
+	out["agents"] = agents
+	writeJSON(w, http.StatusOK, out)
+}
+
+// postAgents replaces the repository's agent list. The list is patched into
+// agents.yaml, so its comments survive; an invalid list is refused.
+func (s *Server) postAgents(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Agents []config.Agent `json:"agents"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	row, err := s.knownRepo(r.URL.Query().Get("path"))
+	if err != nil {
+		repoError(w, err)
+		return
+	}
+	file := agentsPath(row.Path)
+	cur, err := os.ReadFile(file)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		cur = []byte(config.AgentsStarter)
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	content, err := yamlfile.Patch(cur, map[string]any{"agents": in.Agents})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	agents, err := config.ParseAgents(content)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	staged, err := yamlfile.Stage(file, content, nil)
+	if err == nil {
+		err = staged.Commit()
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"path": file, "exists": true, "agents": agents})
+}

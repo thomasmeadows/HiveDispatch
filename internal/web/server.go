@@ -77,6 +77,8 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/repos", s.repos)
 	m.HandleFunc("POST /api/repos/enrol", s.enrol)
 	m.HandleFunc("POST /api/repos/setup", s.setupRepo)
+	m.HandleFunc("GET /api/repos/agents", s.getAgents)
+	m.HandleFunc("POST /api/repos/agents", s.postAgents)
 	m.HandleFunc("GET /api/files/{kind}", s.getFile)
 	m.HandleFunc("POST /api/files/{kind}", s.postFile)
 	m.HandleFunc("GET /api/chat", s.chatState)

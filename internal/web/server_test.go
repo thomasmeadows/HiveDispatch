@@ -16,6 +16,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/state"
 	"github.com/thomasmeadows/hivedispatch/internal/supervisor"
 	"github.com/thomasmeadows/hivedispatch/internal/supervisor/model/fake"
@@ -531,5 +532,62 @@ func TestChatEventsStream(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("no reply event streamed")
+	}
+}
+
+type agentsBody struct {
+	Path   string         `json:"path"`
+	Exists bool           `json:"exists"`
+	Agents []config.Agent `json:"agents"`
+	Error  string         `json:"error"`
+}
+
+func TestAgentsDefaultAndSave(t *testing.T) {
+	e := newEnv(t, Options{})
+	q := "/api/repos/agents?path=" + e.repo
+	var got agentsBody
+	if code := e.get(t, q, &got); code != 200 || got.Exists || len(got.Agents) != 1 || got.Agents[0].Name != "default" {
+		t.Fatalf("GET without a file = %d %+v", code, got)
+	}
+	file := filepath.Join(e.repo, ".hive-dispatch", "agents.yaml")
+	body := map[string]any{"agents": []config.Agent{{Name: "claude-1", Executor: "claude"}, {Name: "codex-1", Executor: "codex", Model: "o3"}}}
+	if code := e.post(t, q, body, &got); code != 200 || len(got.Agents) != 2 {
+		t.Fatalf("POST = %d %+v", code, got)
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	if !strings.Contains(s, "# The coding agents") || !strings.Contains(s, "name: codex-1\n    executor: codex\n    model: o3") {
+		t.Errorf("agents.yaml = %q, want the starter's header and name-first entries", s)
+	}
+	if code := e.get(t, q, &got); code != 200 || !got.Exists || got.Agents[1].Model != "o3" {
+		t.Errorf("GET after save = %d %+v", code, got)
+	}
+	dup := map[string]any{"agents": []config.Agent{{Name: "a", Executor: "claude"}, {Name: "A", Executor: "codex"}}}
+	if code := e.post(t, q, dup, &got); code != http.StatusBadRequest || !strings.Contains(got.Error, "twice") {
+		t.Errorf("duplicate names = %d %+v", code, got)
+	}
+	if after, _ := os.ReadFile(file); string(after) != s {
+		t.Error("a rejected save changed the file")
+	}
+	if code := e.get(t, "/api/repos/agents?path="+t.TempDir(), nil); code != http.StatusForbidden {
+		t.Errorf("outside the scan = %d", code)
+	}
+}
+
+func TestWorkerFileChecksSupervisorBlock(t *testing.T) {
+	e := newEnv(t, Options{Getenv: func(string) string { return "" }})
+	raw, _ := os.ReadFile(e.cfgPath)
+	var res struct{ Problems string }
+	if code := e.post(t, "/api/files/worker", map[string]any{"content": string(raw) + "supervisor:\n  provider: bard\n"}, &res); code != 200 || !strings.Contains(res.Problems, "supervisor.provider") {
+		t.Errorf("bad provider = %d %+v", code, res)
+	}
+	if code := e.post(t, "/api/files/worker", map[string]any{"content": string(raw) + "supervisor:\n  provider: deepseek\n"}, &res); code != 200 || !strings.Contains(res.Problems, "DEEPSEEK_API_KEY") {
+		t.Errorf("missing key = %d %+v", code, res)
+	}
+	if code := e.get(t, "/api/files/supervisor", nil); code != http.StatusBadRequest {
+		t.Errorf("the separate supervisor file is gone: %d", code)
 	}
 }
