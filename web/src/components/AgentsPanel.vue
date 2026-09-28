@@ -12,6 +12,12 @@ const busy = ref(false)
 const modal = ref(null) // { index: -1 for new, form: { name, executor, model }, error }
 
 const executors = ['claude', 'codex', 'fake']
+const roles = [
+  { value: 'planning', label: 'Planning', column: 'Planning', does: 'reads the repository, posts a plan and moves the ticket to Ready' },
+  { value: 'coding', label: 'Coding', column: 'Ready', does: 'implements the ticket and opens a pull request' },
+  { value: 'review', label: 'Review', column: 'In Review', does: 'reviews the pull request: passes it to a human to merge, or sends it back for changes' },
+]
+const roleOf = (v) => roles.find((r) => r.value === (v || 'coding')) || roles[1]
 const agents = computed(() => (data.value ? data.value.agents : []))
 
 async function load() {
@@ -36,11 +42,11 @@ async function save(list) {
 }
 
 function openNew() {
-  modal.value = { index: -1, form: { name: uniqueName('agent'), executor: 'claude', model: '' }, error: '' }
+  modal.value = { index: -1, form: { name: uniqueName('agent'), role: 'coding', executor: 'claude', model: '' }, error: '' }
 }
 
 function openEdit(i) {
-  modal.value = { index: i, form: { ...agents.value[i] }, error: '' }
+  modal.value = { index: i, form: { role: 'coding', ...agents.value[i] }, error: '' }
 }
 
 // uniqueName adds (or bumps) a -N suffix until no agent has the name:
@@ -64,7 +70,7 @@ async function duplicate(i) {
 
 async function submit() {
   const f = modal.value.form
-  const agent = { name: f.name.trim(), executor: f.executor, model: (f.model || '').trim() }
+  const agent = { name: f.name.trim(), role: f.role, executor: f.executor, model: (f.model || '').trim() }
   const list = [...agents.value]
   if (modal.value.index < 0) list.push(agent)
   else list[modal.value.index] = agent
@@ -89,9 +95,10 @@ watch(() => props.path, load, { immediate: true })
     <template v-if="data">
       <div class="row head">
         <p class="muted intro">
-          Agents work this repository’s tickets as a pool: each takes one ticket at a time, up to the worker’s
-          <em>Tickets at once</em>. Label a ticket <code>hive:agent:&lt;name&gt;</code> to have that agent work it.
-          All agents follow the Agent Policies tab; a model set here overrides the policy’s.
+          Each agent works one board column: planning agents take <em>Planning</em>, coding agents <em>Ready</em>,
+          review agents <em>In Review</em>. Each works one ticket at a time, up to the worker’s <em>Tickets at once</em>.
+          Label a ticket <code>hive:agent:&lt;name&gt;</code> to choose which agent of a column works it. All agents
+          follow the Agent Policies tab; a model set here overrides the policy’s.
         </p>
         <div class="spacer" />
         <button class="primary" :disabled="busy" @click="openNew">New agent</button>
@@ -106,11 +113,12 @@ watch(() => props.path, load, { immediate: true })
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Name</th><th>Executor</th><th>Model</th><th>Pin label</th><th /></tr>
+            <tr><th>Name</th><th>Role</th><th>Executor</th><th>Model</th><th>Pin label</th><th /></tr>
           </thead>
           <tbody>
             <tr v-for="(a, i) in agents" :key="a.name">
               <td><button class="link name" @click="openEdit(i)">{{ a.name }}</button></td>
+              <td><span class="badge" :class="`role-${roleOf(a.role).value}`" :title="`Works the ${roleOf(a.role).column} column`">{{ roleOf(a.role).label }}</span></td>
               <td><span class="badge">{{ a.executor }}</span></td>
               <td>
                 <span v-if="a.model">{{ a.model }}</span>
@@ -134,6 +142,13 @@ watch(() => props.path, load, { immediate: true })
           <span class="label">Name</span>
           <input v-model="modal.form.name" required autofocus />
           <span class="help muted">Letters, digits, <code>.</code>, <code>-</code> or <code>_</code>. Used in the pin label.</span>
+        </label>
+        <label class="field">
+          <span class="label">Role</span>
+          <select v-model="modal.form.role">
+            <option v-for="r in roles" :key="r.value" :value="r.value">{{ r.label }} — works the {{ r.column }} column</option>
+          </select>
+          <span class="help muted">A {{ roleOf(modal.form.role).label.toLowerCase() }} agent {{ roleOf(modal.form.role).does }}.</span>
         </label>
         <label class="field">
           <span class="label">Executor</span>
@@ -165,6 +180,8 @@ watch(() => props.path, load, { immediate: true })
 .head { align-items: flex-start; margin-bottom: 12px; }
 .intro { margin: 0; max-width: 640px; font-size: 13px; }
 .name { font-weight: 600; font-size: 14px; }
+.role-planning { background: var(--accent-soft); color: var(--warn); }
+.role-review { background: var(--ok-soft); color: var(--ok); }
 .actions { text-align: right; }
 .small { font-size: 12px; margin: 12px 0 0; overflow-wrap: anywhere; }
 .field { display: flex; flex-direction: column; gap: 4px; }

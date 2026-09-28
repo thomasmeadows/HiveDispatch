@@ -6,6 +6,7 @@
 // pathlist (repos: - path:), textarea.
 
 const states = [
+  ['planning', 'Planning'],
   ['ready', 'Ready'],
   ['in_progress', 'In progress'],
   ['needs_info', 'Needs info'],
@@ -45,13 +46,14 @@ export const workerSchema = [
     ],
   },
   {
-    title: 'Coding agents and triage',
+    title: 'Agents and triage',
     fields: [
       { key: 'claude.binary', label: 'Claude binary', type: 'text', placeholder: 'claude', help: 'Which agents run it, and with which model, is set per repository under Repos → Agents.' },
       { key: 'codex.binary', label: 'Codex binary', type: 'text', placeholder: 'codex' },
       { key: 'triage.kind', label: 'Triage', type: 'select', options: ['', 'claude', 'passthrough'], placeholder: 'claude' },
       { key: 'triage.model', label: 'Triage model', type: 'text' },
       { key: 'triage.step_budget', label: 'Triage step budget', type: 'number', placeholder: '40' },
+      { key: 'max_review_rounds', label: 'Review rounds', type: 'number', placeholder: '2', help: 'How often a review agent may send a ticket back for changes before a human takes over.' },
       { key: 'triage.timeout', label: 'Triage timeout', type: 'text', placeholder: '5m' },
     ],
   },
@@ -115,7 +117,7 @@ export const repoSchema = [
     when: (v) => v.ticket_tracker === 'jira',
     fields: [
       { key: 'jira.base_url', label: 'Site URL', type: 'text', placeholder: 'https://example.atlassian.net' },
-      { key: 'jira.jql', label: 'Trigger JQL', type: 'textarea' },
+      { key: 'jira.jql', label: 'Scope JQL', type: 'textarea', placeholder: 'project = SCRUM AND labels = hive', help: 'Which tickets are HiveDispatch’s, without a status: each agent’s column adds the status from the statuses below.' },
       { key: 'jira.fields.agent_id', label: 'Agent field id', type: 'text', help: 'Optional; found by name when empty.' },
       { key: 'jira.fields.claimed_at', label: 'Claimed-at field id', type: 'text' },
       ...states.map(([k, l]) => ({ key: `jira.statuses.${k}`, label: `${l} status`, type: 'text', placeholder: l.replace(/\b\w/g, (c) => c.toUpperCase()) })),
