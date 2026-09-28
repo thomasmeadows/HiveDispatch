@@ -2,7 +2,15 @@
 
 Ticket-driven orchestration for autonomous coding agents.
 
-HiveDispatch turns tickets into pull requests. It polls each repository's issue tracker (Jira Cloud or GitHub Issues — one worker can serve both), triages each ticket, claims it, branches, runs a coding-agent CLI (Claude Code or Codex) in an isolated worktree, commits, opens a PR, and reports back on the ticket — so steering development work needs nothing but a ticket and a comment thread, including from a phone.
+HiveDispatch is a code orchestration agent that lets your tickets command coding agents. Instead of sitting in a terminal driving Claude Code or Codex yourself, you write a Jira ticket or a GitHub issue, and HiveDispatch takes it from there: it picks the ticket up, works it in an isolated branch, and opens a pull request. You talk to the agents through the ticket system you already use. When an agent needs to know something, it asks in a comment and waits. You answer in the thread, and it carries on. All of that works from a phone.
+
+**The human in the loop sits at the end, at pull request review.** Nothing merges without you. If you want an agent to change something in the PR, say so in a comment and move the ticket back to Ready. The agent picks it up again, reads your feedback, and pushes a new round to the same branch. You stay in control of what ships. The agents do the typing.
+
+**Several agents, several steps.** A repository can have planning agents that turn a rough ticket into a plan, coding agents that implement it, and review agents that check the PR before it reaches you. Each agent can use a different executor (Claude Code or Codex) and a different model. For example, one model writes the code and another reviews it, so one model's blind spots are caught by another before a human looks. Several agents can work on different tickets at the same time, each in its own worktree.
+
+**Local or remote.** The worker is a single binary. Run it on your laptop next to your checkouts, or on a server or VM that stays up while you're away. Because all coordination goes through the tracker, where you run it doesn't change how you use it: you work with tickets either way. Several workers on different machines can share one board. Each one claims a ticket before touching it, so no ticket is worked twice, and each ticket shows which machine has it.
+
+Under the hood it polls each repository's issue tracker (Jira Cloud or GitHub Issues, and one worker can serve both), triages each ticket, claims it, branches, runs a coding-agent CLI in an isolated git worktree, commits, opens a PR, and reports back on the ticket.
 
 **v0.1.0 — alpha.** The single-worker MVP is complete and has run end to end on a real Jira project, GitHub repository, and Claude Code — including this repository's own tickets: a Jira ticket is triaged by Claude Code (dispatch / ask / reject), claimed, implemented by Claude Code in an isolated worktree, pushed, and opened as a GitHub PR — with questions posted back to the ticket and the run resumed when a human answers.
 
@@ -20,7 +28,7 @@ HiveDispatch turns tickets into pull requests. It polls each repository's issue 
 
 - It never merges. Agents branch and open PRs; a human merges. Always.
 - It does not replace the coding agent. Claude Code and Codex already ship memory, session resume, and context management; HiveDispatch wraps them.
-- It is not a hosted service. Self-hosted, runs from a laptop, no infrastructure beyond git and an agent CLI.
+- It is not a hosted service. Self-hosted on your laptop or your own server, no infrastructure beyond git and an agent CLI.
 
 ## Design
 
@@ -56,7 +64,27 @@ hivedispatch once jira-scrum-42                       # drive one ticket by hand
 hivedispatch status                                  # what has run, from the state branch
 ```
 
-Or do all of that in a browser: `hivedispatch website -open` serves a local UI on `http://localhost:7878`. It has a **Dashboard** (check output, enrolled repositories, recent runs), a **Repos** list of everything `scan` finds (enrol a repository and edit its ticket settings, agents and agent policies), and a **Configuration** page for the worker config, supervisor settings included. On the right is a chat with the supervisor. Every save shows a diff and whatever the loader still objects to, keeps a `.bak`, and preserves comments. The supervisor asks for approval in the chat before it changes anything. The site answers only on loopback.
+## The configuration website
+
+Or do all of that in a browser: `hivedispatch website -open` serves a UI on `http://localhost:7878`. Every save shows a diff and whatever the loader still objects to, keeps a `.bak`, and preserves comments.
+
+The **Dashboard** shows this worker at a glance: its machine name, how many agents and tickets it runs at once, the enrolled repositories, and recent runs with their pull requests. On the right is a chat with the supervisor, an assistant that has read these docs and can explain a failing check or edit the config for you. It asks for approval in the chat before it changes anything.
+
+![HiveDispatch dashboard with recent runs and the supervisor chat](docs/setting-images/hivedispatch_website_dashboard_screenshot.jpg)
+
+**Repos** lists every git repository `scan` finds under your code directories and shows which ones are enrolled. Enrol one from here.
+
+![Repos page listing enrolled and not-enrolled repositories](docs/setting-images/hivedispatch_website_repos_screenshot.jpg)
+
+Each repository has tabs for its ticket settings, its **Agents**, and its agent policies. Add planning, coding and review agents, choose Claude Code or Codex and a model for each, and pin a ticket to a specific agent with a `hive:agent:<name>` label.
+
+![A repository's Agents tab with its default coding agent](docs/setting-images/hivedispatch_website_repo_agents_screenshot.jpg)
+
+The **Configuration** page edits the worker config, supervisor settings included.
+
+By default the site listens only on loopback. On a remote worker, reach it through an SSH tunnel (`ssh -L 7878:localhost:7878 worker-host`) rather than binding `-addr` to a public interface: anyone who can reach the site can edit your config.
+
+## Downloads and docs
 
 Prebuilt binaries for Linux and macOS are on the [releases page](https://github.com/thomasmeadows/HiveDispatch/releases). Every step's prerequisites are in [`docs/setup.md`](docs/setup.md); every key in [`docs/config.md`](docs/config.md).
 
