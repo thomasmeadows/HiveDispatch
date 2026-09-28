@@ -168,9 +168,9 @@ To create a fine-grained token: https://github.com/settings/personal-access-toke
 
 ![Fine-grained token repository permissions: Issues and Pull requests set to Read and write](setting-images/github_fine_gain_token_without_projects.jpg)
 
-For a classic token: https://github.com/settings/tokens → *Generate new token (classic)* and tick the scopes. For a board under your personal account, tick `project` alongside the repository scope — `public_repo` as here if every repository is public, otherwise the whole `repo` box:
+For a classic token: https://github.com/settings/tokens → *Generate new token (classic)* and tick the scopes. For a board under your personal account, tick `repo` and `project` (`public_repo` instead of `repo` is enough if every repository is public):
 
-![Classic token scopes with public_repo and project ticked](setting-images/github_classic_token_with_projects.jpg)
+![Classic token scopes with repo and project ticked](setting-images/github_classic_token_with_projects.jpg)
 
 Then:
 
