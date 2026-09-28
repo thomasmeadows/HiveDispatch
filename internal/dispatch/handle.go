@@ -23,24 +23,43 @@ const releaseTimeout = 30 * time.Second
 // Handle takes one ticket from polled to a terminal state. Every path that
 // claims the ticket also releases it and leaves a comment explaining what
 // happened.
+//
+// Handle waits for a free agent of the ticket's repository (the one its
+// hive:agent:<name> label names, if any); the poll loop reserves one itself
+// and calls handle.
 func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, error) {
-	now := d.now()
 	repo, ok := d.repoFor(t.Key)
 	if !ok {
 		d.log().Warn("no repo configured for ticket", "ticket", t.Key)
 		return OutcomeSkipped, nil
 	}
-	if t.Claim.Fresh(now, d.Cfg.ClaimTimeout) && t.Claim.AgentID != d.Cfg.AgentID {
+	cands, err := candidates(repo, t)
+	if err != nil {
+		d.log().Warn("ticket skipped", "ticket", t.Key, "err", err)
 		return OutcomeSkipped, nil
 	}
-	won, err := d.Tracker.Claim(ctx, t.Key, d.Cfg.AgentID, now)
+	agent, ok := d.takeAgent(ctx, repo, cands, true)
+	if !ok {
+		return OutcomeSkipped, ctx.Err()
+	}
+	defer d.releaseAgent(repo, agent)
+	return d.handle(ctx, t, repo, agent)
+}
+
+// handle works t with agent, which the caller has reserved.
+func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, agent config.Agent) (Outcome, error) {
+	now := d.now()
+	if t.Claim.Fresh(now, d.Cfg.ClaimTimeout) && t.Claim.AgentID != d.Cfg.MachineID {
+		return OutcomeSkipped, nil
+	}
+	won, err := d.Tracker.Claim(ctx, t.Key, d.Cfg.MachineID, now)
 	if err != nil {
 		return OutcomeSkipped, fmt.Errorf("claim %s: %w", t.Key, err)
 	}
 	if !won {
 		return OutcomeClaimLost, nil
 	}
-	d.log().Info("picked up ticket", "ticket", t.Key, "summary", t.Summary)
+	d.log().Info("picked up ticket", "ticket", t.Key, "agent", agent.Name, "summary", t.Summary)
 	defer d.release(ctx, t.Key)
 
 	run, err := d.Store.Load(ctx, t.Key)
@@ -56,7 +75,12 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 	}
 	run.URL = t.URL
 	priorPhase := run.Phase // where the last run stopped, before we overwrite it
-	run.Agent = d.Cfg.AgentID
+	run.Agent = d.Cfg.MachineID + "/" + agent.Name
+	if run.ResumeToken != "" && run.Executor != "" && run.Executor != agent.Executor {
+		// A session id means nothing to another CLI: this agent starts over.
+		d.log().Info("previous session belongs to another executor; starting fresh", "ticket", t.Key, "was", run.Executor, "agent", agent.Name)
+		run.ResumeToken = ""
+	}
 	run.Branch = gitops.BranchName(t.Key)
 	d.setPhase(ctx, run, state.PhaseClaimed)
 
@@ -122,7 +146,7 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 	}
 
 	d.transition(ctx, t.Key, tracker.StateInProgress)
-	return d.execute(runCtx, t, repo, run, ws, taskPrompt)
+	return d.execute(runCtx, t, repo, agent, run, ws, taskPrompt)
 }
 
 // canResume reports whether the last run asked a question that a human has
@@ -141,15 +165,16 @@ func (d *Dispatcher) canResume(t tracker.Ticket, run *state.Run) bool {
 
 // execute runs the executor and reports the result. ctx is the run context:
 // cancelled on shutdown or on losing the claim.
-func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, run *state.Run, ws gitops.Workspace, taskPrompt string) (Outcome, error) {
+func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, agent config.Agent, run *state.Run, ws gitops.Workspace, taskPrompt string) (Outcome, error) {
 	run.Attempts++
+	run.Executor = agent.Executor
 	d.setPhase(ctx, run, state.PhaseWorking)
-	d.log().Info("work started", "ticket", t.Key, "attempt", d.attempt(run), "resume", run.ResumeToken != "")
+	d.log().Info("work started", "ticket", t.Key, "agent", agent.Name, "attempt", d.attempt(run), "resume", run.ResumeToken != "")
 
 	execCtx, cancelExec := context.WithTimeout(ctx, d.Cfg.RunTimeout)
-	res, err := d.Executor.Run(execCtx, executor.Task{
+	res, err := d.executorFor(agent).Run(execCtx, executor.Task{
 		TicketKey: t.Key, Prompt: taskPrompt, Workspace: ws.Path,
-		ResumeToken: run.ResumeToken, StepBudget: d.Cfg.StepBudget,
+		ResumeToken: run.ResumeToken, StepBudget: d.Cfg.StepBudget, Model: agent.Model,
 	})
 	cancelExec()
 	if err != nil {
@@ -289,7 +314,7 @@ func (d *Dispatcher) ensurePR(ctx context.Context, repo config.RepoConfig, t tra
 	if pr != nil {
 		return pr, nil
 	}
-	body := fmt.Sprintf("Resolves %s.\n\n%s\n\nOpened by HiveDispatch worker %s.", t.Key, t.URL, d.Cfg.AgentID)
+	body := fmt.Sprintf("Resolves %s.\n\n%s\n\nOpened by HiveDispatch worker %s.", t.Key, t.URL, run.Agent)
 	return d.Host.OpenPR(ctx, repo.Name, githost.Request{
 		Title: fmt.Sprintf("%s: %s", t.Key, t.Summary),
 		Body:  body,
@@ -308,7 +333,7 @@ func (d *Dispatcher) heartbeat(ctx context.Context, key string, lost context.Can
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			err := d.Tracker.Heartbeat(ctx, key, d.Cfg.AgentID)
+			err := d.Tracker.Heartbeat(ctx, key, d.Cfg.MachineID)
 			if errors.Is(err, tracker.ErrNotClaimHolder) {
 				d.log().Error("claim lost mid-run; cancelling", "ticket", key)
 				lost()
@@ -331,7 +356,7 @@ func (d *Dispatcher) background(ctx context.Context) context.Context {
 func (d *Dispatcher) release(ctx context.Context, key string) {
 	bg, cancel := context.WithTimeout(d.background(ctx), releaseTimeout)
 	defer cancel()
-	err := d.Tracker.Release(bg, key, d.Cfg.AgentID)
+	err := d.Tracker.Release(bg, key, d.Cfg.MachineID)
 	if err != nil && !errors.Is(err, tracker.ErrNotClaimHolder) {
 		d.log().Error("release failed", "ticket", key, "err", err)
 	}
@@ -361,7 +386,7 @@ func (d *Dispatcher) save(ctx context.Context, run *state.Run) {
 }
 
 func (d *Dispatcher) event(ctx context.Context, run *state.Run, ev, msg string) {
-	e := state.LogEntry{Time: d.now(), Agent: d.Cfg.AgentID, Event: ev, Phase: string(run.Phase), Cause: run.StopCause, Message: msg}
+	e := state.LogEntry{Time: d.now(), Agent: d.Cfg.MachineID, Event: ev, Phase: string(run.Phase), Cause: run.StopCause, Message: msg}
 	if err := d.Store.AppendLog(ctx, run.Ticket, e); err != nil {
 		d.log().Error("append log failed", "ticket", run.Ticket, "err", err)
 	}

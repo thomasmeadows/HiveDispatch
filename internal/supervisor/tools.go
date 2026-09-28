@@ -11,11 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/thomasmeadows/hivedispatch/docs"
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/supervisor/model"
+	"github.com/thomasmeadows/hivedispatch/internal/yamlfile"
 )
 
 const noArgs = `{"type":"object","properties":{}}`
@@ -85,32 +84,16 @@ func (w writeConfig) Call(ctx context.Context, args json.RawMessage) (string, er
 	if err := decode(args, &in); err != nil {
 		return "", err
 	}
-	if strings.TrimSpace(in.Content) == "" {
-		return "", errors.New("content is empty")
-	}
-	var probe map[string]any
-	if err := yaml.Unmarshal([]byte(in.Content), &probe); err != nil {
-		return "", fmt.Errorf("not valid YAML, nothing written: %w", err)
-	}
-	old, err := os.ReadFile(w.path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	staged, err := yamlfile.Stage(w.path, []byte(in.Content), func(tmp string) error {
+		_, err := config.Load(tmp)
+		return err
+	})
+	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(w.path), 0o755); err != nil {
-		return "", err
-	}
-	tmp := w.path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(in.Content), 0o600); err != nil {
-		return "", err
-	}
-	defer func() { _ = os.Remove(tmp) }()
-	problems := ""
-	if _, err := config.Load(tmp); err != nil {
-		problems = strings.ReplaceAll(err.Error(), tmp, w.path)
-	}
-	prompt := Diff(filepath.Base(w.path), string(old), in.Content)
-	if problems != "" {
-		prompt += "\nThe config still has problems:\n" + problems + "\n"
+	prompt := staged.Diff
+	if staged.Problems != "" {
+		prompt += "\nThe config still has problems:\n" + staged.Problems + "\n"
 	}
 	prompt += "\nApply to " + w.path + "?"
 	if ctx.Err() != nil {
@@ -119,17 +102,12 @@ func (w writeConfig) Call(ctx context.Context, args json.RawMessage) (string, er
 	if !w.confirm(prompt) {
 		return "declined by user; the config is unchanged", nil
 	}
-	if old != nil {
-		if err := os.WriteFile(w.path+".bak", old, 0o600); err != nil {
-			return "", err
-		}
-	}
-	if err := os.Rename(tmp, w.path); err != nil {
+	if err := staged.Commit(); err != nil {
 		return "", err
 	}
 	out := "wrote " + w.path
-	if problems != "" {
-		out += "\n\nIt is not complete yet:\n" + problems
+	if staged.Problems != "" {
+		out += "\n\nIt is not complete yet:\n" + staged.Problems
 	}
 	return out, nil
 }

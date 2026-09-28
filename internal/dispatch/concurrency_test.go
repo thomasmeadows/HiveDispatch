@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker"
 )
 
@@ -24,6 +25,7 @@ func TestOnceRunsUpToMaxConcurrentTicketsAtOnce(t *testing.T) {
 	h := newHarness(t)
 	h.d.Cfg.MaxConcurrent = 2
 	h.d.Cfg.RunTimeout = time.Minute
+	h.setAgents(config.Agent{Name: "a", Executor: "claude"}, config.Agent{Name: "b", Executor: "claude"}, config.Agent{Name: "c", Executor: "claude"})
 	h.tr.Add(tracker.Ticket{Key: "HIVE-2", Summary: "two"})
 	h.tr.Add(tracker.Ticket{Key: "HIVE-3", Summary: "three"})
 	gate := make(chan struct{})

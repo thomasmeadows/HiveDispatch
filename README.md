@@ -12,7 +12,7 @@ HiveDispatch turns tickets into pull requests. It polls each repository's issue 
 2. **Claim** — it writes its agent id to the ticket and reads it back; two workers racing resolve to one winner.
 3. **Triage** — Claude Code, read-only, inspects the repo and decides: dispatch with notes, ask one question, or reject.
 4. **Branch** — a git worktree on `hive/<KEY>`, resumed if it already exists.
-5. **Run** — Claude Code (or Codex, with `executor: codex`) implements the ticket under the repo's `.hive-dispatch/policy.yaml`, with a step budget and a wall-clock timeout.
+5. **Run** — one of the repository's agents (`.hive-dispatch/agents.yaml`: Claude Code or Codex, one ticket each) implements the ticket under the repo's `.hive-dispatch/policy.yaml`, with a step budget and a wall-clock timeout.
 6. **Commit and push** — the agent commits as it goes; the worker safety-commits anything left and pushes.
 7. **PR and report** — a pull request is opened (or found), and the ticket gets a comment and a status change. Every stop, including budget and timeout, leaves the ticket in a state a human understands.
 
@@ -35,7 +35,7 @@ go install github.com/thomasmeadows/hivedispatch/cmd/hivedispatch@latest
 
 hivedispatch init                 # writes ~/.config/hivedispatch/config.yaml, fully commented
 hivedispatch supervisor           # or: chat with the built-in assistant, which edits the config and runs the checks for you
-$EDITOR ~/.config/hivedispatch/config.yaml   # agent_id, and code_dirs: [~/code]
+$EDITOR ~/.config/hivedispatch/config.yaml   # code_dirs: [~/code] (machine_id defaults to the hostname)
 
 # Enrol each repository; each one picks its own tracker.
 cd ~/code/yourrepo
@@ -55,6 +55,8 @@ hivedispatch run                                     # the real thing
 hivedispatch once SCRUM-42                           # drive one ticket by hand
 hivedispatch status                                  # what has run, from the state branch
 ```
+
+Or do all of that in a browser: `hivedispatch website -open` serves a local UI on `http://localhost:7878`. It has a **Dashboard** (check output, enrolled repositories, recent runs), a **Repos** list of everything `scan` finds (enrol a repository and edit its ticket settings, agents and agent policies), and a **Configuration** page for the worker config, supervisor settings included. On the right is a chat with the supervisor. Every save shows a diff and whatever the loader still objects to, keeps a `.bak`, and preserves comments. The supervisor asks for approval in the chat before it changes anything. The site answers only on loopback.
 
 Prebuilt binaries for Linux and macOS are on the [releases page](https://github.com/thomasmeadows/HiveDispatch/releases). Every step's prerequisites are in [`docs/setup.md`](docs/setup.md); every key in [`docs/config.md`](docs/config.md).
 

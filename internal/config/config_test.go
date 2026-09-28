@@ -11,7 +11,7 @@ import (
 )
 
 const workerYAML = `
-agent_id: worker-a
+machine_id: worker-a
 workroot: ~/hive-work
 jira:
   email: me@example.com
@@ -178,7 +178,7 @@ func TestNoReposIsAnError(t *testing.T) {
 
 func TestLoadWorkerNeedsNoRepos(t *testing.T) {
 	cfg, err := LoadWorker(writeTemp(t, workerYAML))
-	if err != nil || len(cfg.Repos) != 0 || cfg.AgentID != "worker-a" {
+	if err != nil || len(cfg.Repos) != 0 || cfg.MachineID != "worker-a" {
 		t.Fatalf("LoadWorker = %+v, %v", cfg, err)
 	}
 }
@@ -186,7 +186,7 @@ func TestLoadWorkerNeedsNoRepos(t *testing.T) {
 func TestLegacyLayoutIsRejected(t *testing.T) {
 	legacy := `
 tracker: github
-agent_id: w
+machine_id: w
 jira:
   base_url: https://x.atlassian.net
 github:
@@ -229,7 +229,7 @@ func TestJiraTokenOnlyNeededForJiraRepos(t *testing.T) {
 	fakeOrigin(t)
 	code := t.TempDir()
 	makeRepo(t, filepath.Join(code, "gh"), githubRepoYAML)
-	if _, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n")); err != nil {
+	if _, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n")); err != nil {
 		t.Fatalf("github-only worker must not need jira settings: %v", err)
 	}
 }
@@ -239,7 +239,7 @@ func TestJiraEmailRequiredForJiraRepos(t *testing.T) {
 	fakeOrigin(t)
 	code := t.TempDir()
 	makeRepo(t, filepath.Join(code, "hive"), jiraRepoYAML)
-	_, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n"))
+	_, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n"))
 	if err == nil || !strings.Contains(err.Error(), "jira.email") {
 		t.Fatalf("err = %v", err)
 	}
@@ -278,7 +278,7 @@ func TestValidateReportsEveryMissingField(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	for _, want := range []string{"agent_id", "repositories", "docs/setup.md"} {
+	for _, want := range []string{"machine_id", "repositories", "docs/setup.md"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err, want)
 		}
@@ -366,13 +366,13 @@ func TestLoadExecutorAndTriageDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Executor != "claude" || cfg.Claude.Binary != "claude" || cfg.Codex.Binary != "codex" {
+	if cfg.Claude.Binary != "claude" || cfg.Codex.Binary != "codex" {
 		t.Errorf("cfg = %+v", cfg)
 	}
 	if cfg.Triage.Kind != "claude" || cfg.Triage.StepBudget != 40 || cfg.Triage.Timeout != 5*time.Minute {
 		t.Errorf("triage = %+v", cfg.Triage)
 	}
-	for extra, want := range map[string]string{"executor: gpt\n": "executor", "triage: {kind: coinflip}\n": "triage.kind", "max_concurrent: -1\n": "max_concurrent", "scan_depth: -1\n": "scan_depth"} {
+	for extra, want := range map[string]string{"triage: {kind: coinflip}\n": "triage.kind", "max_concurrent: -1\n": "max_concurrent", "scan_depth: -1\n": "scan_depth"} {
 		p, _ := setup(t, extra)
 		if _, err := Load(p); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: err = %v", extra, err)
@@ -440,7 +440,7 @@ func TestGitHubRepoDefaultsAndProject(t *testing.T) {
 	fakeOrigin(t)
 	code := t.TempDir()
 	makeRepo(t, filepath.Join(code, "gh"), githubRepoYAML)
-	cfg, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n"))
+	cfg, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestGitHubRepoDefaultsAndProject(t *testing.T) {
 		t.Errorf("no project block must mean disabled: %+v", r.GitHub.Project)
 	}
 	makeRepo(t, filepath.Join(code, "gh"), githubRepoYAML+"github:\n  project:\n    owner: thomasmeadows\n    number: 2\n")
-	cfg, err = Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n"))
+	cfg, err = Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +464,7 @@ func TestGitHubRepoDefaultsAndProject(t *testing.T) {
 		t.Errorf("project = %+v", p)
 	}
 	makeRepo(t, filepath.Join(code, "gh"), githubRepoYAML+"github:\n  project:\n    number: 2\n")
-	if _, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n")); err == nil || !strings.Contains(err.Error(), "github.project.owner") {
+	if _, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n")); err == nil || !strings.Contains(err.Error(), "github.project.owner") {
 		t.Errorf("missing owner: %v", err)
 	}
 }
@@ -474,7 +474,7 @@ func TestTrackerRequiredAndChecked(t *testing.T) {
 	for body, want := range map[string]string{"project: HD\n": "tracker is required", "project: HD\ntracker: trello\n": "trello"} {
 		code := t.TempDir()
 		makeRepo(t, filepath.Join(code, "r"), body)
-		if _, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n")); err == nil || !strings.Contains(err.Error(), want) {
+		if _, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n")); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: err = %v", body, err)
 		}
 	}
@@ -492,7 +492,7 @@ func TestValidateRejectsDuplicateProjects(t *testing.T) {
 
 func TestLoadRepoResolvesOneRepo(t *testing.T) {
 	fakeOrigin(t)
-	worker, err := LoadWorker(writeTemp(t, "agent_id: w\n"))
+	worker, err := LoadWorker(writeTemp(t, "machine_id: w\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,5 +524,158 @@ func TestMaxConcurrentAboveOne(t *testing.T) {
 	cfg, err := Load(p)
 	if err != nil || cfg.MaxConcurrent != 3 {
 		t.Fatalf("cfg.MaxConcurrent = %v, err %v", cfg, err)
+	}
+}
+
+func TestParseRepoChecksContentWithoutWriting(t *testing.T) {
+	fakeOrigin(t)
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	worker, err := LoadWorker(writeTemp(t, "machine_id: w\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := makeRepo(t, filepath.Join(t.TempDir(), "gh"), "")
+	r, err := worker.ParseRepo(dir, []byte(githubRepoYAML))
+	if err != nil || r.Name != "o/gh" || r.Project != "HD" {
+		t.Fatalf("ParseRepo = %+v, %v", r, err)
+	}
+	_, err = worker.ParseRepo(dir, []byte("project: HD\ntracker: github\njira:\n  email: me@x\n"))
+	if err == nil || !strings.Contains(err.Error(), filepath.Join(dir, RepoDir, RepoFileName)) {
+		t.Errorf("worker key in repo.yaml: %v, want an error naming the file", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, RepoDir)); !errors.Is(err, os.ErrNotExist) {
+		t.Error("ParseRepo must not write anything")
+	}
+}
+
+func TestScanRowsDescribesEachRepository(t *testing.T) {
+	cfgPath, code := setup(t, "")
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	makeRepo(t, filepath.Join(code, "plain"), "")
+	makeRepo(t, filepath.Join(code, "broken"), "project: HD\ntracker: gitlab\n")
+	worker, err := LoadWorker(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots, home, err := worker.ScanRoots(nil)
+	if err != nil || home || len(roots) != 1 {
+		t.Fatalf("ScanRoots = %v, %v, %v", roots, home, err)
+	}
+	rows, err := worker.ScanRows(roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]ScanRow{}
+	for _, r := range rows {
+		byName[filepath.Base(r.Path)] = r
+	}
+	if r := byName["hive"]; !r.Enrolled || !r.PickedUp || r.Problem != "" || r.Project != "HIVE" || r.Tracker != "jira" {
+		t.Errorf("hive = %+v", r)
+	}
+	if r := byName["plain"]; r.Enrolled || r.Problem != "" {
+		t.Errorf("plain = %+v", r)
+	}
+	if r := byName["broken"]; !r.Enrolled || r.Problem == "" {
+		t.Errorf("broken = %+v", r)
+	}
+	bare, err := LoadWorker(writeTemp(t, "machine_id: w\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", code)
+	if roots, home, err := bare.ScanRoots(nil); err != nil || !home || len(roots) != 1 || roots[0] != code {
+		t.Errorf("no code_dirs: ScanRoots = %v, %v, %v; want the home directory", roots, home, err)
+	}
+}
+
+func writeAgents(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, RepoDir, AgentsFileName), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAgentsDefaultToOneClaudeAgent(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	p, _ := setup(t, "")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Repos[0].Agents; len(got) != 1 || got[0] != (Agent{Name: "default", Executor: "claude"}) {
+		t.Errorf("agents = %+v", got)
+	}
+}
+
+func TestAgentsFileIsReadAndValidated(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	p, code := setup(t, "")
+	repo := filepath.Join(code, "hive")
+	writeAgents(t, repo, "# ours\nagents:\n  - name: claude-1\n    executor: claude\n  - name: codex-fast\n    executor: codex\n    model: gpt-5-codex\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Agent{{Name: "claude-1", Executor: "claude"}, {Name: "codex-fast", Executor: "codex", Model: "gpt-5-codex"}}
+	if got := cfg.Repos[0].Agents; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("agents = %+v", got)
+	}
+	for body, want := range map[string]string{
+		"agents: []\n": "at least one agent",
+		"agents:\n  - name: a\n    executor: claude\n  - name: A\n    executor: codex\n": "twice",
+		"agents:\n  - name: bad name\n    executor: claude\n":                            "name",
+		"agents:\n  - name: a\n    executor: gpt\n":                                      "executor",
+		"agents:\n  - name: a\n    executor: claude\n    permission_mode: auto\n":        "permission_mode",
+	} {
+		writeAgents(t, repo, body)
+		_, err := Load(p)
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), AgentsFileName) {
+			t.Errorf("%q: err = %v, want %q and the file name", body, err, want)
+		}
+	}
+}
+
+func TestParseAgentsDefaultsExecutor(t *testing.T) {
+	got, err := ParseAgents([]byte("agents:\n  - name: solo\n"))
+	if err != nil || len(got) != 1 || got[0].Executor != "claude" {
+		t.Errorf("ParseAgents = %+v, %v", got, err)
+	}
+}
+
+func TestExecutorKeysMovedIntoAgents(t *testing.T) {
+	for _, extra := range []string{"executor: codex\n", "claude:\n  model: opus\n", "codex:\n  model: gpt-5-codex\n"} {
+		p, _ := setup(t, extra)
+		if _, err := LoadWorker(p); err == nil || !strings.Contains(err.Error(), AgentsFileName) {
+			t.Errorf("%q: err = %v, want a pointer to %s", extra, err, AgentsFileName)
+		}
+	}
+	p, _ := setup(t, "claude:\n  binary: /opt/claude\ncodex:\n  binary: /opt/codex\n")
+	cfg, err := LoadWorker(p)
+	if err != nil || cfg.Claude.Binary != "/opt/claude" || cfg.Codex.Binary != "/opt/codex" {
+		t.Errorf("binaries stay in the worker config: %+v, %v", cfg, err)
+	}
+}
+
+func TestMachineIDDefaultsToHostname(t *testing.T) {
+	old := hostname
+	t.Cleanup(func() { hostname = old })
+	hostname = func() (string, error) { return "desk-7", nil }
+	cfg, err := LoadWorker(writeTemp(t, "code_dirs: [/tmp]\n"))
+	if err != nil || cfg.MachineID != "desk-7" {
+		t.Fatalf("machine_id = %q, %v; want the hostname", cfg.MachineID, err)
+	}
+	if cfg, err := LoadWorker(writeTemp(t, "machine_id: laptop-1\n")); err != nil || cfg.MachineID != "laptop-1" {
+		t.Errorf("explicit machine_id = %q, %v", cfg.MachineID, err)
+	}
+	hostname = func() (string, error) { return "", errors.New("no hostname") }
+	if _, err := LoadWorker(writeTemp(t, "code_dirs: [/tmp]\n")); err == nil || !strings.Contains(err.Error(), "machine_id is required") {
+		t.Errorf("no hostname: %v", err)
+	}
+}
+
+func TestAgentIDIsRenamedMachineID(t *testing.T) {
+	_, err := LoadWorker(writeTemp(t, "agent_id: worker-1\n"))
+	if err == nil || !strings.Contains(err.Error(), "machine_id") || !strings.Contains(err.Error(), "agent_id") {
+		t.Errorf("err = %v, want a hint to rename agent_id to machine_id", err)
 	}
 }

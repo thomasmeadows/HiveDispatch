@@ -46,7 +46,8 @@ commands:
                               which are enrolled
   run   [-config P] [-once] [-executor claude|codex|fake] [-triage claude|passthrough]
         [-placeholder] [-skip-preflight]
-                              verify each repository's tracker, then poll and dispatch; -executor and -triage override the config
+                              verify each repository's tracker, then poll and dispatch; -executor makes every agent
+                              use that executor, -triage overrides the config
                               (-placeholder makes the fake executor write a file so
                               the branch/PR path is exercised)
   once  KEY [same flags as run]
@@ -55,6 +56,10 @@ commands:
   supervisor [-config P] [-provider anthropic|openai|deepseek|huggingface|ollama] [-model M] [-resume | -session FILE]
                               chat with the built-in assistant that helps configure and run HiveDispatch;
                               piped stdin asks one question and exits
+  website [-config P] [-addr 127.0.0.1:7878] [-open] [-dev [-web DIR]]
+                              serve a local web UI: the repositories scan finds, every config
+                              file, run records, and a chat with the supervisor; -dev serves the
+                              Vue source through Vite with hot reload (UI development)
 `
 
 func main() {
@@ -84,6 +89,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runStatus(args[1:], stdout, stderr)
 	case "supervisor":
 		return runSupervisor(args[1:], os.Stdin, stdout, stderr)
+	case "website":
+		return runWebsite(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -105,7 +112,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	ctx := context.Background()
-	fmt.Fprintf(stdout, "config ok: agent %s, %d repo(s)\n", cfg.AgentID, len(cfg.Repos))
+	fmt.Fprintf(stdout, "config ok: machine %s, %d repo(s)\n", cfg.MachineID, len(cfg.Repos))
 	printRepos(stdout, cfg)
 	tok, src := github.DiscoverToken(ctx, "github.com")
 	switch {
@@ -144,7 +151,11 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 func printRepos(w io.Writer, cfg *config.Config) {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	for _, r := range cfg.Repos {
-		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", r.Project, r.Tracker, r.Name, r.Path)
+		names := make([]string, 0, len(r.Agents))
+		for _, a := range r.Agents {
+			names = append(names, a.Name+" ("+a.Executor+")")
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\tagents: %s\n", r.Project, r.Tracker, r.Name, r.Path, strings.Join(names, ", "))
 	}
 	_ = tw.Flush() // best-effort listing; the writer is the terminal
 	for skipped, kept := range cfg.Shadowed {
@@ -252,7 +263,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	if !*doJira && !*doGitHub {
 		if written {
-			fmt.Fprintf(stdout, "wrote starter config to %s\n\nSet agent_id and code_dirs (every field says where its value comes from), then in each repository run:\n  hivedispatch init -github    (queue in GitHub Issues)\n  hivedispatch init -jira      (queue in Jira)\n", *cfgPath)
+			fmt.Fprintf(stdout, "wrote starter config to %s\n\nSet code_dirs (every field says where its value comes from; machine_id defaults to the hostname), then in each repository run:\n  hivedispatch init -github    (queue in GitHub Issues)\n  hivedispatch init -jira      (queue in Jira)\n", *cfgPath)
 		} else {
 			fmt.Fprintf(stdout, "config already exists at %s\nNext: `hivedispatch init -github` or `hivedispatch init -jira` inside a repository, then `hivedispatch check -live`\n", *cfgPath)
 		}
@@ -381,52 +392,48 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%v\n(run `hivedispatch init` to write a starter config)\n", err)
 		return 1
 	}
-	roots := fs.Args()
-	if len(roots) == 0 && len(cfg.CodeDirs) == 0 {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		roots = []string{home}
-		fmt.Fprintf(stdout, "code_dirs is not set; scanning %s. Set code_dirs in %s to scan your code folder instead.\n", home, *cfgPath)
-	}
-	found, err := cfg.Scan(roots)
+	roots, home, err := cfg.ScanRoots(fs.Args())
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if len(found) == 0 {
+	if home {
+		fmt.Fprintf(stdout, "code_dirs is not set; scanning %s. Set code_dirs in %s to scan your code folder instead.\n", roots[0], *cfgPath)
+	}
+	rows, err := cfg.ScanRows(roots)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if len(rows) == 0 {
 		fmt.Fprintln(stdout, "no git repositories found")
 		return 0
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "PATH\tSTATUS\tPROJECT\tTRACKER\tREPO")
 	enrolled := 0
-	for _, f := range found {
-		status, project, trk, name := "-", "", "", ""
+	for _, r := range rows {
+		status := "-"
 		switch {
-		case f.Enrolled:
+		case r.Enrolled:
 			enrolled++
 			status = "enrolled"
-			r, err := cfg.LoadRepo(f.Path)
-			if err != nil {
+			if r.Problem != "" {
 				status = "enrolled, invalid (see check)"
 			}
-			project, trk, name = r.Project, r.Tracker, r.Name
-			if !cfg.Enrolled(f.Path) {
+			if !r.PickedUp {
 				status += ", outside code_dirs"
 			}
-		case f.Legacy:
+		case r.Legacy:
 			status = "legacy .hivedispatch.yaml"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", f.Path, status, project, trk, name)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.Path, status, r.Project, r.Tracker, r.Name)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "\n%d repositories, %d enrolled. Enrol one with `hivedispatch init -github DIR` (or -jira).\n", len(found), enrolled)
+	fmt.Fprintf(stdout, "\n%d repositories, %d enrolled. Enrol one with `hivedispatch init -github DIR` (or -jira).\n", len(rows), enrolled)
 	return 0
 }
 
@@ -435,7 +442,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	once := fs.Bool("once", false, "poll once and exit")
-	executorFlag := fs.String("executor", "", "override config executor: claude, codex or fake")
+	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
@@ -471,7 +478,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 			logger.Info("retention", "removed", n, "before", cutoff.Format("2006-01-02"))
 		}
 	}
-	logger.Info("starting", "agent", cfg.AgentID, "executor", d.Executor.Name(), "max_concurrent", cfg.MaxConcurrent, "once", *once)
+	logger.Info("starting", "machine", cfg.MachineID, "max_concurrent", cfg.MaxConcurrent, "once", *once)
 
 	// First signal drains: stop polling, let the current run finish.
 	// Second signal cancels the run; cleanup still posts comments.
@@ -584,7 +591,7 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("once", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
-	executorFlag := fs.String("executor", "", "override config executor: claude, codex or fake")
+	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")

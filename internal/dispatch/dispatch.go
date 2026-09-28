@@ -25,7 +25,7 @@ import (
 
 // Config is the subset of worker config the dispatcher needs.
 type Config struct {
-	AgentID           string
+	MachineID         string
 	ClaimTimeout      time.Duration
 	HeartbeatInterval time.Duration
 	RunTimeout        time.Duration
@@ -40,7 +40,7 @@ type Config struct {
 // ConfigFrom extracts the dispatcher config from the worker config.
 func ConfigFrom(c *config.Config) Config {
 	return Config{
-		AgentID:           c.AgentID,
+		MachineID:         c.MachineID,
 		ClaimTimeout:      c.ClaimTimeout,
 		HeartbeatInterval: c.HeartbeatInterval,
 		RunTimeout:        c.RunTimeout,
@@ -55,9 +55,12 @@ func ConfigFrom(c *config.Config) Config {
 
 // Dispatcher runs the control loop for one worker.
 type Dispatcher struct {
-	Cfg        Config
-	Tracker    tracker.Tracker
-	Triager    triage.Triager
+	Cfg     Config
+	Tracker tracker.Tracker
+	Triager triage.Triager
+	// Executors by agent kind (claude, codex, fake); Executor answers any
+	// kind missing from the map.
+	Executors  map[string]executor.Executor
 	Executor   executor.Executor
 	Workspaces gitops.Workspaces
 	Host       githost.GitHost
@@ -68,6 +71,8 @@ type Dispatcher struct {
 
 	pauseMu     sync.Mutex
 	pausedUntil time.Time // no new work is started before this
+
+	agents agentPool // which repository agents are working a ticket
 
 	slotsOnce sync.Once
 	slots     chan struct{} // one token per ticket being worked
@@ -190,16 +195,33 @@ func (d *Dispatcher) poll(ctx context.Context, wait bool, wg *sync.WaitGroup, ha
 		if ctx.Err() != nil {
 			break
 		}
+		repo, ok := d.repoFor(t.Key)
+		if !ok {
+			d.log().Warn("no repo configured for ticket", "ticket", t.Key)
+			continue
+		}
+		cands, err := candidates(repo, t)
+		if err != nil {
+			d.log().Warn("ticket skipped", "ticket", t.Key, "err", err)
+			continue
+		}
 		if !d.markInFlight(t.Key) {
 			continue // already being worked by this worker
 		}
+		agent, ok := d.takeAgent(ctx, repo, cands, wait)
+		if !ok {
+			d.unmarkInFlight(t.Key)
+			continue // its agents are busy: it waits for the next poll
+		}
 		if !d.takeSlot(ctx, wait) {
+			d.releaseAgent(repo, agent)
 			d.unmarkInFlight(t.Key)
 			break // every slot is busy: the rest wait for the next poll
 		}
 		// A run that finished while we waited may have hit the budget.
 		if until := d.PausedUntil(); d.now().Before(until) {
 			d.releaseSlot()
+			d.releaseAgent(repo, agent)
 			d.unmarkInFlight(t.Key)
 			break
 		}
@@ -213,10 +235,11 @@ func (d *Dispatcher) poll(ctx context.Context, wait bool, wg *sync.WaitGroup, ha
 				defer wg.Done()
 			}
 			defer d.unmarkInFlight(t.Key)
+			defer d.releaseAgent(repo, agent)
 			defer d.releaseSlot()
-			// Handle logs the lifecycle of every ticket it works; only
+			// handle logs the lifecycle of every ticket it works; only
 			// the error path needs a line here.
-			out, err := d.Handle(ctx, t)
+			out, err := d.handle(ctx, t, repo, agent)
 			if err != nil {
 				d.log().Error("handle failed", "ticket", t.Key, "outcome", out, "err", err)
 			}

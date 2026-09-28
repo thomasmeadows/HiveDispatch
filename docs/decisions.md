@@ -271,3 +271,41 @@ Decided: one worker process works up to `max_concurrent` tickets at once (defaul
 Git does not wait for its own locks: two fetches, a `worktree add` and a push on one `.git` fail with "cannot lock ref" or "index.lock exists". Every git operation on a repository's shared clone — clone/fetch, worktree add, the safety commit and push, and the state branch's commit and push — now takes a per-repository lock (`internal/gitops/repolock`); the agent's own work inside its worktree does not. Reproduced first: six parallel Prepare+Finalize calls on one clone failed without the lock and pass with it under `-race`. Rejected: one base clone per ticket (a full clone per ticket costs disk and time, and loses the shared fetch), and retrying on lock errors (hides the contention instead of removing it).
 
 Rejected: several worker processes on one machine sharing a workroot. The lock is in-process; two processes would race on the same clone. Separate processes need separate workroots, which already works.
+
+## 2026-09-27 — A local web UI: `hivedispatch website`
+
+Decided: `hivedispatch website` serves a Vue 3 single-page app and a JSON API from the one binary. The pages are a Dashboard (config summary, `check` output, run records), Repos (everything `scan` finds, enrolment, each repository's `repo.yaml` and `policy.yaml`) and Configuration (worker and supervisor config). A supervisor chat sits in the right sidebar.
+
+The front end is Vue single-file components built by Vite from `web/`. The build output is committed to `internal/web/dist` and embedded with `go:embed`, so `go build` and `go install` still need only Go, and `go.mod` gains nothing. CI rebuilds it and fails if the committed copy is stale. Rejected: building in CI or a Makefile before `go build`, because it breaks `go install …@latest` and puts Node on every contributor's path. Also rejected: a no-build app on a vendored `vue.esm-browser.js`, which avoids Node entirely but gives up SFCs and tooling for a UI that will keep growing.
+
+Every file edit goes through one path, `internal/yamlfile`, which the supervisor's `write_config` now uses too. The new content must parse, and the file's own loader runs on a temporary copy; whatever it objects to is shown next to a diff before anything is written. The previous file is kept as `.bak`. Form edits are applied as key patches on the YAML node tree, so the starter files' comments survive. Rejected: re-marshalling a struct on every form save, which would strip the comments that double as the config's documentation. Files that do not load can still be saved, with their problems listed, for the same reason as `write_config` (partial progress beats being stuck).
+
+The server trusts nobody but the operator's own browser. It answers only requests whose `Host` is loopback, which blocks DNS rebinding. Every state-changing request must be `application/json` from the same origin, which blocks cross-site forms and fetches. Repository files are served and written only for paths the scan found. Rejected: a login or a per-launch token in the URL. Those are more ceremony than a single-operator tool on loopback needs, and binding a non-loopback address is possible but prints a warning.
+
+The supervisor keeps its guardrail in code. The conversation was split from the terminal REPL into `supervisor.Session`, which takes the confirmation function as a dependency. In the browser, a tool that would change something blocks until the operator presses Approve or Decline on a card showing the diff. Stopping the turn, or closing the server, declines. Rejected: auto-declining every change from the web chat, as piped mode does. That would make the chat read-only in the one front end where approving is easiest to show.
+
+## 2026-09-27 — Two website modes, one front door
+
+Decided: `hivedispatch website` serves the embedded production build. `hivedispatch website -dev` starts Vite's dev server as a child process on a private loopback port, and the Go server proxies every non-API request to it, including the HMR websocket. The browser talks only to the Go server in both modes. The host and origin checks apply in development too, and so will a future login gate, because it belongs in the same `ServeHTTP` that every request already passes through. `-dev` finds `web/` from the working directory upward, or takes `-web DIR`. Stopping the server stops Vite.
+
+Rejected: running `vite` as the front server and proxying `/api` to Go. Development would then sit behind a different server than production, and auth would have to be duplicated in Node or left out of dev. Also rejected: a watch build served from disk (`vite build --watch` plus Go serving the files). Go stays in front, but you lose hot module replacement, and every edit costs a full page reload and the page's state.
+
+## 2026-09-28 — Supervisor settings back in the worker config
+
+Supersedes "Segregated: one directory, its own config file" (2026-09-21), for the settings only. The notes and session transcripts stay in `<config dir>/supervisor/`.
+
+Decided: the supervisor's provider, model, key variable and limits are a `supervisor:` block in `config.yaml`. The operator asked for one file to manage, and the website's Configuration page is now a single form. The old `supervisor/config.yaml` is rejected with a message naming the file and where its keys go. Rejected: reading both locations, for the same reason as the tracker-settings move (two layouts to maintain for a single operator). The earlier worry, that the assistant's own settings would sit in the file it rewrites, is covered by the confirmation step: every `write_config` shows the operator the diff, including any change to `supervisor:`.
+
+## 2026-09-28 — Agents: a pool per repository
+
+Decided: each repository lists its coding agents in `.hive-dispatch/agents.yaml`, each with a name, an executor (claude/codex/fake) and an optional model. A repository without the file has one `default` Claude agent. Agents are pool slots: each works one ticket at a time, and `max_concurrent` still caps the machine. A `hive:agent:<name>` label pins a ticket to one agent. The agent's model wins over the policy's. The worker-level `executor`, `claude.model` and `codex.model` moved into agents and are rejected in `config.yaml`. The binaries stay machine settings.
+
+`agents.yaml` is read from the local checkout, like `repo.yaml`, and `policy.yaml` is unchanged: one policy per repository, read from the worktree, which every agent follows. An earlier draft put a policy in each agent. It was dropped at the operator's call, because a second place to define what an agent may do risks the two drifting apart. Since permissions stay in the reviewed policy, the agent list can apply on save.
+
+Claims on the tracker stay under the worker's `agent_id`, so the claim protocol and every tracker are untouched. The agent shows up as `<agent_id>/<name>` on run records and pull requests. Run records now say which executor made a session, and a question/answer resume continues only on an agent with the same executor, because a Claude session id means nothing to Codex. Rejected: routing tickets only by label (several agents would bring no parallelism), and a pool with no way to choose an agent.
+
+## 2026-09-28 — machine_id, defaulting to the hostname
+
+Decided: the worker config's `agent_id` is renamed `machine_id`, because "agent" now means one of a repository's coding agents. It defaults to the hostname, so a new install needs no identity set by hand. It is still what claims, run records (`<machine_id>/<agent>`) and pull requests carry. A config that still says `agent_id` is rejected with a hint to rename it, the same clean break as earlier moves. The claim protocol's field names (the Jira "HiveDispatch Agent" field, `jira.fields.agent_id`) are unchanged: they name the claim holder, and renaming them would orphan existing Jira fields.
+
+Rejected: the OS machine ID (`/etc/machine-id`, macOS `IOPlatformUUID`, Windows `MachineGuid`). It is unique, but the value is written on tickets, which can be public GitHub issues, and systemd says to keep it private. It would also read as 32 opaque characters on every claim. A hash of it would be safe to publish but just as unreadable. Two machines with the same hostname would collide, so the docs and starter say to set `machine_id` in that case.

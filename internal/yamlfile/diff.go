@@ -1,9 +1,9 @@
-package supervisor
+package yamlfile
 
 import "strings"
 
-// Diff is a line-based diff for showing an operator what write_config is
-// about to change. It is for humans; its exact shape is not a contract.
+// Diff is a line-based diff for showing an operator what a write is about
+// to change. It is for humans; its exact shape is not a contract.
 func Diff(name, a, b string) string {
 	al, bl := splitLines(a), splitLines(b)
 	// Longest common subsequence table.

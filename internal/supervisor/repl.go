@@ -16,20 +16,13 @@ import (
 
 // REPL is the terminal front end of the agent.
 type REPL struct {
-	agent       *Agent
-	mem         *Memory
-	session     string
-	modelName   string
-	configPath  string
-	exe         string
+	*Session
 	stdin       io.Reader
 	stdout      io.Writer
 	stderr      io.Writer
 	interactive bool
-	now         func() time.Time
 	lines       *lineReader
 
-	checkOutput string // hivedispatch check output, captured once per turn (see turn)
 	spinnerStop func() // stops the spinner started for the in-flight model call, if any
 }
 
@@ -96,19 +89,6 @@ func (r *REPL) Confirm(prompt string) bool {
 		return true
 	}
 	return false
-}
-
-// system builds the system prompt fresh from the current config, notes and
-// check output. Agent.System is called before every model call, so
-// CheckOutput itself is not re-run here: turn captures it once per turn,
-// with the turn's own context, and system just reads that cached value.
-func (r *REPL) system() string {
-	notes, n := r.mem.NotesForPrompt()
-	_, statErr := os.Stat(r.configPath)
-	return BuildSystem(PromptInput{
-		ConfigPath: r.configPath, ConfigExists: statErr == nil, ModelName: r.modelName,
-		Notes: notes, NoteLines: n, CheckOutput: r.checkOutput,
-	})
 }
 
 // onEvent prints agent progress (tool calls, budget) to stderr as it runs,
@@ -201,8 +181,7 @@ func (r *REPL) Run(ctx context.Context) error {
 			}
 			continue
 		case line == "/reset":
-			r.agent.SetHistory(nil)
-			r.session = r.mem.NewSessionName(r.now())
+			r.Reset()
 			fmt.Fprintln(r.stdout, "new session")
 			continue
 		case strings.HasPrefix(line, "/"):
@@ -283,14 +262,14 @@ func drainSignal(sig <-chan os.Signal) {
 // Agent.System on every model call within the turn.
 func (r *REPL) turn(ctx context.Context, msg string) error {
 	stop := r.spinner()
-	r.checkOutput = CheckOutput(ctx, r.exe, r.configPath)
+	r.RefreshCheck(ctx)
 	stop()
-	reply, err := r.agent.Turn(ctx, msg)
+	reply, err := r.Turn(ctx, msg)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintln(r.stdout, reply)
-	if err := r.mem.SaveSession(r.session, r.agent.History()); err != nil {
+	if err := r.Save(); err != nil {
 		fmt.Fprintln(r.stderr, "warning: session not saved:", err)
 	}
 	return nil

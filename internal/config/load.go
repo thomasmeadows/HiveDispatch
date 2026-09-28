@@ -12,6 +12,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// hostname is machine_id's default; tests replace it.
+var hostname = os.Hostname
+
 // DefaultPath is where Load looks when no path is given.
 func DefaultPath() string {
 	return filepath.Join(homeDir(), ".config", "hivedispatch", "config.yaml")
@@ -65,6 +68,12 @@ func readWorker(path string) (*Config, error) {
 	if err := checkLegacy(raw); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := checkRenamed(raw); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := checkMovedExecutor(raw); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	var c Config
 	if err := yaml.Unmarshal(raw, &c); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
@@ -77,6 +86,11 @@ func readWorker(path string) (*Config, error) {
 	}
 	for i, d := range c.CodeDirs {
 		c.CodeDirs[i] = absPath(expandHome(d))
+	}
+	if c.MachineID == "" {
+		if h, err := hostname(); err == nil {
+			c.MachineID = h
+		}
 	}
 	c.applyDefaults()
 	return &c, nil
@@ -123,7 +137,7 @@ func checkLegacy(raw []byte) error {
 	}
 	return errors.New("this config uses the old single-tracker layout (" + strings.Join(keys, ", ") + ").\n" +
 		"Tracker settings now live in each repository's .hive-dispatch/repo.yaml (project, tracker, jira.base_url/jql/fields/statuses, github.labels/project);\n" +
-		"the worker config keeps agent_id, jira.email, and where to find repositories (code_dirs, repos: - path:).\n" +
+		"the worker config keeps machine_id, jira.email, and where to find repositories (code_dirs, repos: - path:).\n" +
 		"Run `hivedispatch init -github` (or -jira) inside each repository, then remove the moved keys. See docs/config.md.")
 }
 

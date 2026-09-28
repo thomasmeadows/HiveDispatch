@@ -182,9 +182,9 @@ func newTestREPL(t *testing.T, m model.Model, tools []Tool, interactive bool) (*
 	var out, errb bytes.Buffer
 	mem := NewMemory(dir)
 	r := &REPL{
-		mem: mem, modelName: m.Name(), configPath: filepath.Join(dir, "config.yaml"), exe: fakeExe(t),
+		Session: &Session{mem: mem, modelName: m.Name(), configPath: filepath.Join(dir, "config.yaml"), exe: fakeExe(t),
+			now: func() time.Time { return at }},
 		stdin: strings.NewReader("y\n"), stdout: &out, stderr: &errb, interactive: interactive,
-		now: func() time.Time { return at },
 	}
 	r.lines = newLineReader(r.stdin)
 	r.agent = &Agent{Model: m, Tools: tools, System: r.system, StepBudget: 20, MaxTokens: 100, Events: r.onEvent}
@@ -193,7 +193,7 @@ func newTestREPL(t *testing.T, m model.Model, tools []Tool, interactive bool) (*
 }
 
 func TestSpinnerScopedToModelCallsDoesNotEraseConfirmPrompt(t *testing.T) {
-	m := fake.New(fake.Call("c1", "write_config", `{"content":"agent_id: w\n"}`), fake.Text("done"))
+	m := fake.New(fake.Call("c1", "write_config", `{"content":"machine_id: w\n"}`), fake.Text("done"))
 	r, errb := newTestREPL(t, m, nil, true)
 	r.agent.Tools = []Tool{NewWriteConfig(r.configPath, r.Confirm)}
 	if err := r.turn(context.Background(), "please write the config"); err != nil {

@@ -23,7 +23,7 @@ import (
 // Config is the worker-level configuration plus the repositories resolved
 // from it.
 type Config struct {
-	AgentID           string        `yaml:"agent_id"`
+	MachineID         string        `yaml:"machine_id"` // default: the hostname
 	Workroot          string        `yaml:"workroot"`
 	CodeDirs          []string      `yaml:"code_dirs"`      // scanned for repositories with .hive-dispatch/repo.yaml
 	ScanDepth         int           `yaml:"scan_depth"`     // directory levels below each code dir; default 4
@@ -39,7 +39,6 @@ type Config struct {
 	RunWindows        RunWindows    `yaml:"run_windows"`
 	StateStore        string        `yaml:"state_store"`    // "branch" (default) or "local"
 	RetentionDays     int           `yaml:"retention_days"` // prune raw logs and finished runs older than this; 0 disables
-	Executor          string        `yaml:"executor"`       // "claude" (default), "codex" or "fake"
 	Claude            ClaudeConfig  `yaml:"claude"`
 	Codex             CodexConfig   `yaml:"codex"`
 	Triage            TriageConfig  `yaml:"triage"`
@@ -96,14 +95,12 @@ type JiraStatuses struct {
 // per-repo settings live in .hive-dispatch/policy.yaml inside the governed repo.
 type ClaudeConfig struct {
 	Binary string `yaml:"binary"` // default "claude"
-	Model  string `yaml:"model"`  // default model when the repo sets none
 }
 
 // CodexConfig configures the Codex executor at the worker level; per-repo
 // settings live under executor.codex in .hivedispatch.yaml.
 type CodexConfig struct {
 	Binary string `yaml:"binary"` // default "codex"
-	Model  string `yaml:"model"`  // default model when the repo sets none
 }
 
 // TriageConfig selects and bounds the triage step.
@@ -167,6 +164,7 @@ type RepoConfig struct {
 	DefaultBranch string       // default origin/HEAD, else "main"
 	Project       string       // ticket key prefix; tickets in this project map to this repo
 	Tracker       string       // "jira" or "github"
+	Agents        []Agent      // .hive-dispatch/agents.yaml; DefaultAgents without one
 	Jira          JiraConfig   // with tracker: jira
 	GitHub        GitHubConfig // PR API always; issues and labels with tracker: github
 }
@@ -227,7 +225,6 @@ func (c *Config) applyDefaults() {
 	if c.RetentionDays == 0 {
 		c.RetentionDays = 30
 	}
-	def(&c.Executor, "claude")
 	def(&c.Claude.Binary, "claude")
 	def(&c.Codex.Binary, "codex")
 	def(&c.Triage.Kind, "claude")
@@ -404,11 +401,8 @@ func (c *Config) repoProblems(r RepoConfig) []string {
 // workerProblems checks the worker's own settings.
 func (c *Config) workerProblems() []string {
 	var problems []string
-	if strings.TrimSpace(c.AgentID) == "" {
-		problems = append(problems, "agent_id is required — any short name for this worker, e.g. laptop-1")
-	}
-	if c.Executor != "" && c.Executor != "claude" && c.Executor != "codex" && c.Executor != "fake" {
-		problems = append(problems, fmt.Sprintf("executor: want claude, codex or fake, got %q", c.Executor))
+	if strings.TrimSpace(c.MachineID) == "" {
+		problems = append(problems, "machine_id is required: the hostname is unavailable, so set any short name for this machine, e.g. laptop-1")
 	}
 	if c.Triage.Kind != "" && c.Triage.Kind != "claude" && c.Triage.Kind != "passthrough" {
 		problems = append(problems, fmt.Sprintf("triage.kind: want claude or passthrough, got %q", c.Triage.Kind))
