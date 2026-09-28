@@ -23,7 +23,7 @@ import (
 // Config is the worker-level configuration plus the repositories resolved
 // from it.
 type Config struct {
-	AgentID           string        `yaml:"agent_id"`
+	MachineID         string        `yaml:"machine_id"` // default: the hostname
 	Workroot          string        `yaml:"workroot"`
 	CodeDirs          []string      `yaml:"code_dirs"`      // scanned for repositories with .hive-dispatch/repo.yaml
 	ScanDepth         int           `yaml:"scan_depth"`     // directory levels below each code dir; default 4
@@ -401,8 +401,8 @@ func (c *Config) repoProblems(r RepoConfig) []string {
 // workerProblems checks the worker's own settings.
 func (c *Config) workerProblems() []string {
 	var problems []string
-	if strings.TrimSpace(c.AgentID) == "" {
-		problems = append(problems, "agent_id is required — any short name for this worker, e.g. laptop-1")
+	if strings.TrimSpace(c.MachineID) == "" {
+		problems = append(problems, "machine_id is required: the hostname is unavailable, so set any short name for this machine, e.g. laptop-1")
 	}
 	if c.Triage.Kind != "" && c.Triage.Kind != "claude" && c.Triage.Kind != "passthrough" {
 		problems = append(problems, fmt.Sprintf("triage.kind: want claude or passthrough, got %q", c.Triage.Kind))

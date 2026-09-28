@@ -15,7 +15,7 @@ func call(t *testing.T, tool Tool, args string) (string, error) {
 	return tool.Call(context.Background(), json.RawMessage(args))
 }
 
-const validWorkerConfig = `agent_id: w
+const validWorkerConfig = `machine_id: w
 tracker: github
 repos:
   - {name: o/r, url: git@github.com:o/r.git, project: X}
@@ -27,10 +27,10 @@ func TestReadConfig(t *testing.T) {
 	if err != nil || !strings.Contains(out, "no config at "+p) {
 		t.Fatalf("missing: %q %v", out, err)
 	}
-	if err := os.WriteFile(p, []byte("agent_id: w\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("machine_id: w\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if out, _ := call(t, NewReadConfig(p), `{}`); out != "agent_id: w\n" {
+	if out, _ := call(t, NewReadConfig(p), `{}`); out != "machine_id: w\n" {
 		t.Errorf("out = %q", out)
 	}
 }
@@ -39,7 +39,7 @@ func TestWriteConfigRejectsUnparseable(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	asked := false
 	tool := NewWriteConfig(p, func(string) bool { asked = true; return true })
-	_, err := call(t, tool, `{"content":"agent_id: [oops\n"}`)
+	_, err := call(t, tool, `{"content":"machine_id: [oops\n"}`)
 	if err == nil || asked {
 		t.Fatalf("err = %v, asked = %v", err, asked)
 	}
@@ -54,7 +54,7 @@ func TestWriteConfigRejectsUnparseable(t *testing.T) {
 func TestWriteConfigAsksShowsDiffAndBacksUp(t *testing.T) {
 	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
 	p := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(p, []byte("agent_id: old\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("machine_id: old\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var prompt string
@@ -64,7 +64,7 @@ func TestWriteConfigAsksShowsDiffAndBacksUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "-agent_id: old") || !strings.Contains(prompt, "+agent_id: w") {
+	if !strings.Contains(prompt, "-machine_id: old") || !strings.Contains(prompt, "+machine_id: w") {
 		t.Errorf("prompt = %q", prompt)
 	}
 	if !strings.Contains(out, "wrote "+p) {
@@ -75,7 +75,7 @@ func TestWriteConfigAsksShowsDiffAndBacksUp(t *testing.T) {
 		t.Errorf("file = %q", got)
 	}
 	bak, _ := os.ReadFile(p + ".bak")
-	if string(bak) != "agent_id: old\n" {
+	if string(bak) != "machine_id: old\n" {
 		t.Errorf("bak = %q", bak)
 	}
 }
@@ -86,7 +86,7 @@ func TestWriteConfigPreCancelledSkipsConfirm(t *testing.T) {
 	tool := NewWriteConfig(p, func(string) bool { asked = true; return true })
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := tool.Call(ctx, json.RawMessage(`{"content":"agent_id: w\n"}`))
+	_, err := tool.Call(ctx, json.RawMessage(`{"content":"machine_id: w\n"}`))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v", err)
 	}
@@ -101,7 +101,7 @@ func TestWriteConfigPreCancelledSkipsConfirm(t *testing.T) {
 func TestWriteConfigDeclined(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	tool := NewWriteConfig(p, func(string) bool { return false })
-	out, err := call(t, tool, `{"content":"agent_id: w\n"}`)
+	out, err := call(t, tool, `{"content":"machine_id: w\n"}`)
 	if err != nil || !strings.Contains(out, "declined by user") {
 		t.Fatalf("out = %q, err = %v", out, err)
 	}
@@ -114,7 +114,7 @@ func TestWriteConfigReportsValidationProblems(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	var prompt string
 	tool := NewWriteConfig(p, func(s string) bool { prompt = s; return true })
-	out, err := call(t, tool, `{"content":"agent_id: w\n"}`)
+	out, err := call(t, tool, `{"content":"machine_id: w\n"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestReadRepoFileReadsFromTheLocalCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(p, []byte("repos:\n  - path: "+repo+"\n"), 0o600); err != nil { // half-written: no agent_id
+	if err := os.WriteFile(p, []byte("repos:\n  - path: "+repo+"\n"), 0o600); err != nil { // half-written
 		t.Fatal(err)
 	}
 	tool := NewReadRepoFile(p)

@@ -11,7 +11,7 @@ import (
 )
 
 const workerYAML = `
-agent_id: worker-a
+machine_id: worker-a
 workroot: ~/hive-work
 jira:
   email: me@example.com
@@ -178,7 +178,7 @@ func TestNoReposIsAnError(t *testing.T) {
 
 func TestLoadWorkerNeedsNoRepos(t *testing.T) {
 	cfg, err := LoadWorker(writeTemp(t, workerYAML))
-	if err != nil || len(cfg.Repos) != 0 || cfg.AgentID != "worker-a" {
+	if err != nil || len(cfg.Repos) != 0 || cfg.MachineID != "worker-a" {
 		t.Fatalf("LoadWorker = %+v, %v", cfg, err)
 	}
 }
@@ -186,7 +186,7 @@ func TestLoadWorkerNeedsNoRepos(t *testing.T) {
 func TestLegacyLayoutIsRejected(t *testing.T) {
 	legacy := `
 tracker: github
-agent_id: w
+machine_id: w
 jira:
   base_url: https://x.atlassian.net
 github:
@@ -229,7 +229,7 @@ func TestJiraTokenOnlyNeededForJiraRepos(t *testing.T) {
 	fakeOrigin(t)
 	code := t.TempDir()
 	makeRepo(t, filepath.Join(code, "gh"), githubRepoYAML)
-	if _, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n")); err != nil {
+	if _, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n")); err != nil {
 		t.Fatalf("github-only worker must not need jira settings: %v", err)
 	}
 }
@@ -239,7 +239,7 @@ func TestJiraEmailRequiredForJiraRepos(t *testing.T) {
 	fakeOrigin(t)
 	code := t.TempDir()
 	makeRepo(t, filepath.Join(code, "hive"), jiraRepoYAML)
-	_, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n"))
+	_, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n"))
 	if err == nil || !strings.Contains(err.Error(), "jira.email") {
 		t.Fatalf("err = %v", err)
 	}
@@ -278,7 +278,7 @@ func TestValidateReportsEveryMissingField(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	for _, want := range []string{"agent_id", "repositories", "docs/setup.md"} {
+	for _, want := range []string{"machine_id", "repositories", "docs/setup.md"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err, want)
 		}
@@ -440,7 +440,7 @@ func TestGitHubRepoDefaultsAndProject(t *testing.T) {
 	fakeOrigin(t)
 	code := t.TempDir()
 	makeRepo(t, filepath.Join(code, "gh"), githubRepoYAML)
-	cfg, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n"))
+	cfg, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestGitHubRepoDefaultsAndProject(t *testing.T) {
 		t.Errorf("no project block must mean disabled: %+v", r.GitHub.Project)
 	}
 	makeRepo(t, filepath.Join(code, "gh"), githubRepoYAML+"github:\n  project:\n    owner: thomasmeadows\n    number: 2\n")
-	cfg, err = Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n"))
+	cfg, err = Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +464,7 @@ func TestGitHubRepoDefaultsAndProject(t *testing.T) {
 		t.Errorf("project = %+v", p)
 	}
 	makeRepo(t, filepath.Join(code, "gh"), githubRepoYAML+"github:\n  project:\n    number: 2\n")
-	if _, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n")); err == nil || !strings.Contains(err.Error(), "github.project.owner") {
+	if _, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n")); err == nil || !strings.Contains(err.Error(), "github.project.owner") {
 		t.Errorf("missing owner: %v", err)
 	}
 }
@@ -474,7 +474,7 @@ func TestTrackerRequiredAndChecked(t *testing.T) {
 	for body, want := range map[string]string{"project: HD\n": "tracker is required", "project: HD\ntracker: trello\n": "trello"} {
 		code := t.TempDir()
 		makeRepo(t, filepath.Join(code, "r"), body)
-		if _, err := Load(writeTemp(t, "agent_id: w\ncode_dirs: ["+code+"]\n")); err == nil || !strings.Contains(err.Error(), want) {
+		if _, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n")); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: err = %v", body, err)
 		}
 	}
@@ -492,7 +492,7 @@ func TestValidateRejectsDuplicateProjects(t *testing.T) {
 
 func TestLoadRepoResolvesOneRepo(t *testing.T) {
 	fakeOrigin(t)
-	worker, err := LoadWorker(writeTemp(t, "agent_id: w\n"))
+	worker, err := LoadWorker(writeTemp(t, "machine_id: w\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +530,7 @@ func TestMaxConcurrentAboveOne(t *testing.T) {
 func TestParseRepoChecksContentWithoutWriting(t *testing.T) {
 	fakeOrigin(t)
 	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
-	worker, err := LoadWorker(writeTemp(t, "agent_id: w\n"))
+	worker, err := LoadWorker(writeTemp(t, "machine_id: w\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +578,7 @@ func TestScanRowsDescribesEachRepository(t *testing.T) {
 	if r := byName["broken"]; !r.Enrolled || r.Problem == "" {
 		t.Errorf("broken = %+v", r)
 	}
-	bare, err := LoadWorker(writeTemp(t, "agent_id: w\n"))
+	bare, err := LoadWorker(writeTemp(t, "machine_id: w\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -653,5 +653,29 @@ func TestExecutorKeysMovedIntoAgents(t *testing.T) {
 	cfg, err := LoadWorker(p)
 	if err != nil || cfg.Claude.Binary != "/opt/claude" || cfg.Codex.Binary != "/opt/codex" {
 		t.Errorf("binaries stay in the worker config: %+v, %v", cfg, err)
+	}
+}
+
+func TestMachineIDDefaultsToHostname(t *testing.T) {
+	old := hostname
+	t.Cleanup(func() { hostname = old })
+	hostname = func() (string, error) { return "desk-7", nil }
+	cfg, err := LoadWorker(writeTemp(t, "code_dirs: [/tmp]\n"))
+	if err != nil || cfg.MachineID != "desk-7" {
+		t.Fatalf("machine_id = %q, %v; want the hostname", cfg.MachineID, err)
+	}
+	if cfg, err := LoadWorker(writeTemp(t, "machine_id: laptop-1\n")); err != nil || cfg.MachineID != "laptop-1" {
+		t.Errorf("explicit machine_id = %q, %v", cfg.MachineID, err)
+	}
+	hostname = func() (string, error) { return "", errors.New("no hostname") }
+	if _, err := LoadWorker(writeTemp(t, "code_dirs: [/tmp]\n")); err == nil || !strings.Contains(err.Error(), "machine_id is required") {
+		t.Errorf("no hostname: %v", err)
+	}
+}
+
+func TestAgentIDIsRenamedMachineID(t *testing.T) {
+	_, err := LoadWorker(writeTemp(t, "agent_id: worker-1\n"))
+	if err == nil || !strings.Contains(err.Error(), "machine_id") || !strings.Contains(err.Error(), "agent_id") {
+		t.Errorf("err = %v, want a hint to rename agent_id to machine_id", err)
 	}
 }

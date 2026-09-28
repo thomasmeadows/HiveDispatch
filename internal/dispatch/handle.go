@@ -49,10 +49,10 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 // handle works t with agent, which the caller has reserved.
 func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, agent config.Agent) (Outcome, error) {
 	now := d.now()
-	if t.Claim.Fresh(now, d.Cfg.ClaimTimeout) && t.Claim.AgentID != d.Cfg.AgentID {
+	if t.Claim.Fresh(now, d.Cfg.ClaimTimeout) && t.Claim.AgentID != d.Cfg.MachineID {
 		return OutcomeSkipped, nil
 	}
-	won, err := d.Tracker.Claim(ctx, t.Key, d.Cfg.AgentID, now)
+	won, err := d.Tracker.Claim(ctx, t.Key, d.Cfg.MachineID, now)
 	if err != nil {
 		return OutcomeSkipped, fmt.Errorf("claim %s: %w", t.Key, err)
 	}
@@ -75,7 +75,7 @@ func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.R
 	}
 	run.URL = t.URL
 	priorPhase := run.Phase // where the last run stopped, before we overwrite it
-	run.Agent = d.Cfg.AgentID + "/" + agent.Name
+	run.Agent = d.Cfg.MachineID + "/" + agent.Name
 	if run.ResumeToken != "" && run.Executor != "" && run.Executor != agent.Executor {
 		// A session id means nothing to another CLI: this agent starts over.
 		d.log().Info("previous session belongs to another executor; starting fresh", "ticket", t.Key, "was", run.Executor, "agent", agent.Name)
@@ -333,7 +333,7 @@ func (d *Dispatcher) heartbeat(ctx context.Context, key string, lost context.Can
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			err := d.Tracker.Heartbeat(ctx, key, d.Cfg.AgentID)
+			err := d.Tracker.Heartbeat(ctx, key, d.Cfg.MachineID)
 			if errors.Is(err, tracker.ErrNotClaimHolder) {
 				d.log().Error("claim lost mid-run; cancelling", "ticket", key)
 				lost()
@@ -356,7 +356,7 @@ func (d *Dispatcher) background(ctx context.Context) context.Context {
 func (d *Dispatcher) release(ctx context.Context, key string) {
 	bg, cancel := context.WithTimeout(d.background(ctx), releaseTimeout)
 	defer cancel()
-	err := d.Tracker.Release(bg, key, d.Cfg.AgentID)
+	err := d.Tracker.Release(bg, key, d.Cfg.MachineID)
 	if err != nil && !errors.Is(err, tracker.ErrNotClaimHolder) {
 		d.log().Error("release failed", "ticket", key, "err", err)
 	}
@@ -386,7 +386,7 @@ func (d *Dispatcher) save(ctx context.Context, run *state.Run) {
 }
 
 func (d *Dispatcher) event(ctx context.Context, run *state.Run, ev, msg string) {
-	e := state.LogEntry{Time: d.now(), Agent: d.Cfg.AgentID, Event: ev, Phase: string(run.Phase), Cause: run.StopCause, Message: msg}
+	e := state.LogEntry{Time: d.now(), Agent: d.Cfg.MachineID, Event: ev, Phase: string(run.Phase), Cause: run.StopCause, Message: msg}
 	if err := d.Store.AppendLog(ctx, run.Ticket, e); err != nil {
 		d.log().Error("append log failed", "ticket", run.Ticket, "err", err)
 	}

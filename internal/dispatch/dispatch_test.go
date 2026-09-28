@@ -67,7 +67,7 @@ func newHarness(t *testing.T) *harness {
 	h.tr.Now = func() time.Time { return now }
 	h.d = &Dispatcher{
 		Cfg: Config{
-			AgentID: "worker-a", ClaimTimeout: time.Hour, HeartbeatInterval: time.Hour,
+			MachineID: "worker-a", ClaimTimeout: time.Hour, HeartbeatInterval: time.Hour,
 			RunTimeout: time.Second, StepBudget: 50, MaxAttempts: 3,
 			Repos: []config.RepoConfig{{Name: "o/r", URL: "git@x:o/r.git", DefaultBranch: "main", Project: "HIVE"}},
 		},

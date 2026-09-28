@@ -17,7 +17,7 @@ export const workerSchema = [
   {
     title: 'This worker',
     fields: [
-      { key: 'agent_id', label: 'Agent ID', type: 'text', help: 'Names this machine on claims and comments.' },
+      { key: 'machine_id', label: 'Machine ID', type: 'text', placeholder: 'this machine’s hostname', help: 'Names this machine on the tickets it claims and the pull requests it opens. Empty uses the hostname.' },
       { key: 'workroot', label: 'Work root', type: 'text', placeholder: '~/.local/share/hivedispatch', help: 'Where clones, worktrees and local state live.' },
       { key: 'max_concurrent', label: 'Tickets at once', type: 'number', placeholder: '1' },
       { key: 'state_store', label: 'State store', type: 'select', options: ['', 'branch', 'local'], placeholder: 'branch' },

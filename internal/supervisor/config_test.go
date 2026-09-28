@@ -48,7 +48,7 @@ func TestProviderFromEnvOrder(t *testing.T) {
 
 func TestLoadConfigFileWinsAndPresetsFill(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(p, []byte("agent_id: w\nsupervisor:\n  provider: huggingface\n  model: meta-llama/Llama-3.3-70B-Instruct\n  step_budget: 5\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("machine_id: w\nsupervisor:\n  provider: huggingface\n  model: meta-llama/Llama-3.3-70B-Instruct\n  step_budget: 5\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c, err := LoadConfig(p, env(map[string]string{"ANTHROPIC_API_KEY": "a"}))
@@ -84,7 +84,7 @@ func TestLoadConfigRejects(t *testing.T) {
 
 func TestLoadConfigRejectsTheOldSeparateFile(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(p, []byte("agent_id: w\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("machine_id: w\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	old := filepath.Join(Dir(p), "config.yaml")

@@ -16,7 +16,7 @@ func TestSessionUsesInjectedModelAndConfirm(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	var asked []string
 	var events []string
-	m := fake.New(fake.Call("c1", "write_config", `{"content":"agent_id: w\n"}`), fake.Text("declined, as you wish"))
+	m := fake.New(fake.Call("c1", "write_config", `{"content":"machine_id: w\n"}`), fake.Text("declined, as you wish"))
 	s, err := NewSession(context.Background(), SessionOptions{
 		WorkerConfigPath: cfgPath, Exe: fakeExe(t), ChatModel: m,
 		Now:     func() time.Time { return at },
@@ -34,7 +34,7 @@ func TestSessionUsesInjectedModelAndConfirm(t *testing.T) {
 	if err != nil || reply != "declined, as you wish" {
 		t.Fatalf("Turn = %q, %v", reply, err)
 	}
-	if len(asked) != 1 || !strings.Contains(asked[0], "+agent_id: w") {
+	if len(asked) != 1 || !strings.Contains(asked[0], "+machine_id: w") {
 		t.Errorf("confirm prompts = %q", asked)
 	}
 	if _, err := os.Stat(cfgPath); !errors.Is(err, os.ErrNotExist) {

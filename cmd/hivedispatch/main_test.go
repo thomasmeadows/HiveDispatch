@@ -65,7 +65,7 @@ func TestCheckValidConfig(t *testing.T) {
 func TestCheckInvalidConfig(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "")
 	p := filepath.Join(t.TempDir(), "c.yaml")
-	if err := os.WriteFile(p, []byte("agent_id: w\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("machine_id: w\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer
@@ -84,7 +84,7 @@ func TestInitOnExistingConfigIsANoop(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte("agent_id: keep\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("machine_id: keep\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer
@@ -169,7 +169,7 @@ func TestInitWritesStarterConfigWhenMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("starter config not written: %v", err)
 	}
-	for _, want := range []string{"agent_id:", "code_dirs:", "repos:", ".hive-dispatch/repo.yaml", "HIVE_JIRA_TOKEN", "HIVE_GITHUB_TOKEN", "id.atlassian.com"} {
+	for _, want := range []string{"machine_id:", "code_dirs:", "repos:", ".hive-dispatch/repo.yaml", "HIVE_JIRA_TOKEN", "HIVE_GITHUB_TOKEN", "id.atlassian.com"} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("starter config missing %q", want)
 		}
@@ -178,14 +178,14 @@ func TestInitWritesStarterConfigWhenMissing(t *testing.T) {
 		t.Errorf("stdout should name the file and the next step: %q", out.String())
 	}
 	// Second run must not overwrite.
-	if err := os.WriteFile(p, []byte("agent_id: keep-me\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("machine_id: keep-me\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()
 	if code := run([]string{"init"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d: %s", code, errb.String())
 	}
-	if raw, _ := os.ReadFile(p); string(raw) != "agent_id: keep-me\n" {
+	if raw, _ := os.ReadFile(p); string(raw) != "machine_id: keep-me\n" {
 		t.Error("init overwrote an existing config")
 	}
 }
@@ -311,7 +311,7 @@ jira:
   fields: {agent_id: customfield_1, claimed_at: customfield_2}
 `)
 	p := filepath.Join(dir, "c.yaml")
-	body := "agent_id: w\njira:\n  email: a@b.c\nrepos:\n  - path: " + repo + "\n" + extra
+	body := "machine_id: w\njira:\n  email: a@b.c\nrepos:\n  - path: " + repo + "\n" + extra
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +363,7 @@ func TestCheckGithubTrackerNeedsToken(t *testing.T) {
 	dir := t.TempDir()
 	repo := writeRepo(t, filepath.Join(dir, "r"), "project: HD\ntracker: github\nname: o/r\nurl: git@github.com:o/r.git\ndefault_branch: main\n")
 	p := filepath.Join(dir, "c.yaml")
-	if err := os.WriteFile(p, []byte("agent_id: w\nrepos:\n  - path: "+repo+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("machine_id: w\nrepos:\n  - path: "+repo+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer
@@ -387,7 +387,7 @@ func TestScanListsReposAndEnrolment(t *testing.T) {
 	}
 	writeRepo(t, filepath.Join(code, "new"), "project: NW\ntracker: github\nname: o/new\nurl: git@github.com:o/new.git\ndefault_branch: main\n")
 	p := filepath.Join(t.TempDir(), "c.yaml")
-	if err := os.WriteFile(p, []byte("agent_id: w\ncode_dirs: ["+code+"]\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("machine_id: w\ncode_dirs: ["+code+"]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer

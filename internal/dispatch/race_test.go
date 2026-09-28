@@ -87,7 +87,7 @@ func TestHeartbeatLossCancelsRun(t *testing.T) {
 func TestTwoWorkersOneTicketExactlyOneWins(t *testing.T) {
 	h := newHarness(t)
 	cfgB := h.d.Cfg
-	cfgB.AgentID = "worker-b"
+	cfgB.MachineID = "worker-b"
 	b := Dispatcher{
 		Cfg: cfgB, Tracker: h.d.Tracker, Triager: h.d.Triager, Executor: h.d.Executor,
 		Workspaces: h.d.Workspaces, Host: h.d.Host, Store: h.d.Store, Now: h.d.Now, Log: h.d.Log,

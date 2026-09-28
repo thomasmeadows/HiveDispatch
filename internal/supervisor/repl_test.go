@@ -193,7 +193,7 @@ func newTestREPL(t *testing.T, m model.Model, tools []Tool, interactive bool) (*
 }
 
 func TestSpinnerScopedToModelCallsDoesNotEraseConfirmPrompt(t *testing.T) {
-	m := fake.New(fake.Call("c1", "write_config", `{"content":"agent_id: w\n"}`), fake.Text("done"))
+	m := fake.New(fake.Call("c1", "write_config", `{"content":"machine_id: w\n"}`), fake.Text("done"))
 	r, errb := newTestREPL(t, m, nil, true)
 	r.agent.Tools = []Tool{NewWriteConfig(r.configPath, r.Confirm)}
 	if err := r.turn(context.Background(), "please write the config"); err != nil {

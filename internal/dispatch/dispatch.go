@@ -25,7 +25,7 @@ import (
 
 // Config is the subset of worker config the dispatcher needs.
 type Config struct {
-	AgentID           string
+	MachineID         string
 	ClaimTimeout      time.Duration
 	HeartbeatInterval time.Duration
 	RunTimeout        time.Duration
@@ -40,7 +40,7 @@ type Config struct {
 // ConfigFrom extracts the dispatcher config from the worker config.
 func ConfigFrom(c *config.Config) Config {
 	return Config{
-		AgentID:           c.AgentID,
+		MachineID:         c.MachineID,
 		ClaimTimeout:      c.ClaimTimeout,
 		HeartbeatInterval: c.HeartbeatInterval,
 		RunTimeout:        c.RunTimeout,

@@ -95,6 +95,18 @@ func readAgents(dir string) ([]Agent, error) {
 	return agents, nil
 }
 
+// checkRenamed rejects keys that were renamed.
+func checkRenamed(raw []byte) error {
+	var m map[string]any
+	if err := yaml.Unmarshal(raw, &m); err != nil {
+		return nil // reported by the real parse
+	}
+	if _, ok := m["agent_id"]; ok {
+		return errors.New("agent_id was renamed machine_id: rename it, or delete it to use this machine's hostname")
+	}
+	return nil
+}
+
 // checkMovedExecutor rejects the worker-level executor settings that now
 // belong to each repository's agents.
 func checkMovedExecutor(raw []byte) error {

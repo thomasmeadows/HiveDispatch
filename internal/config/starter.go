@@ -35,7 +35,7 @@ const Starter = `# HiveDispatch worker configuration: settings for this machine.
 #   not the token: "git clone <url>" must work non-interactively.
 #
 # Setup order:
-#   1. Set agent_id, and code_dirs or repos below.
+#   1. Set code_dirs or repos below (and machine_id, if the hostname will not do).
 #   2. In each repository: hivedispatch init -github   (or -jira); fill in the
 #      .hive-dispatch/repo.yaml it writes, then run the same command again.
 #   3. hivedispatch scan          (lists repositories found, and which are enrolled)
@@ -43,8 +43,9 @@ const Starter = `# HiveDispatch worker configuration: settings for this machine.
 #   5. hivedispatch run -once
 # Full walkthrough: docs/setup.md in the HiveDispatch repository.
 
-# Any short name for this worker. Shown on tickets it claims.
-agent_id: worker-1
+# Names this machine on the tickets it claims and the pull requests it opens.
+# Default: the hostname. Set it when two machines share a hostname.
+# machine_id: laptop-1
 
 # Where to find repositories. Every git repository under a code dir that has a
 # .hive-dispatch/repo.yaml is enrolled automatically; "hivedispatch scan" shows them.

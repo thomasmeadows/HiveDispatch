@@ -112,7 +112,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	ctx := context.Background()
-	fmt.Fprintf(stdout, "config ok: agent %s, %d repo(s)\n", cfg.AgentID, len(cfg.Repos))
+	fmt.Fprintf(stdout, "config ok: machine %s, %d repo(s)\n", cfg.MachineID, len(cfg.Repos))
 	printRepos(stdout, cfg)
 	tok, src := github.DiscoverToken(ctx, "github.com")
 	switch {
@@ -263,7 +263,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	if !*doJira && !*doGitHub {
 		if written {
-			fmt.Fprintf(stdout, "wrote starter config to %s\n\nSet agent_id and code_dirs (every field says where its value comes from), then in each repository run:\n  hivedispatch init -github    (queue in GitHub Issues)\n  hivedispatch init -jira      (queue in Jira)\n", *cfgPath)
+			fmt.Fprintf(stdout, "wrote starter config to %s\n\nSet code_dirs (every field says where its value comes from; machine_id defaults to the hostname), then in each repository run:\n  hivedispatch init -github    (queue in GitHub Issues)\n  hivedispatch init -jira      (queue in Jira)\n", *cfgPath)
 		} else {
 			fmt.Fprintf(stdout, "config already exists at %s\nNext: `hivedispatch init -github` or `hivedispatch init -jira` inside a repository, then `hivedispatch check -live`\n", *cfgPath)
 		}
@@ -478,7 +478,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 			logger.Info("retention", "removed", n, "before", cutoff.Format("2006-01-02"))
 		}
 	}
-	logger.Info("starting", "agent", cfg.AgentID, "executor", d.Executor.Name(), "max_concurrent", cfg.MaxConcurrent, "once", *once)
+	logger.Info("starting", "machine", cfg.MachineID, "max_concurrent", cfg.MaxConcurrent, "once", *once)
 
 	// First signal drains: stop polling, let the current run finish.
 	// Second signal cancels the run; cleanup still posts comments.

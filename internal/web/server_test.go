@@ -46,7 +46,7 @@ func newEnv(t *testing.T, o Options) *env {
 	}
 	mustMkdir(t, filepath.Join(e.repo, ".hive-dispatch"))
 	mustWrite(t, filepath.Join(e.repo, ".hive-dispatch", "repo.yaml"), repoYAML)
-	mustWrite(t, e.cfgPath, "# my worker\nagent_id: w1 # this machine\nworkroot: "+filepath.Join(dir, "work")+"\ncode_dirs: ["+e.code+"]\n")
+	mustWrite(t, e.cfgPath, "# my worker\nmachine_id: w1 # this machine\nworkroot: "+filepath.Join(dir, "work")+"\ncode_dirs: ["+e.code+"]\n")
 	o.ConfigPath = e.cfgPath
 	if o.Assets == nil {
 		o.Assets = fstest.MapFS{"index.html": {Data: []byte("<h1>ui</h1>")}}
@@ -191,7 +191,7 @@ func TestOverviewRunsAndCheck(t *testing.T) {
 		Check: func(context.Context) string { return "config ok" },
 	})
 	var ov map[string]any
-	if code := e.get(t, "/api/overview", &ov); code != 200 || ov["agent_id"] != "w1" || ov["config_exists"] != true {
+	if code := e.get(t, "/api/overview", &ov); code != 200 || ov["machine_id"] != "w1" || ov["config_exists"] != true {
 		t.Errorf("overview = %d %v", code, ov)
 	}
 	repos, _ := ov["repos"].([]any)
@@ -226,7 +226,7 @@ func TestOverviewWithoutConfig(t *testing.T) {
 		t.Errorf("overview = %d %v", code, ov)
 	}
 	var f map[string]any
-	if code := e.get(t, "/api/files/worker", &f); code != 200 || f["exists"] != false || !strings.Contains(f["starter"].(string), "agent_id") {
+	if code := e.get(t, "/api/files/worker", &f); code != 200 || f["exists"] != false || !strings.Contains(f["starter"].(string), "machine_id") {
 		t.Errorf("missing worker file = %d %v", code, f)
 	}
 }
@@ -269,18 +269,18 @@ func TestWorkerFilePreviewAndApply(t *testing.T) {
 		Raw  string         `json:"raw"`
 		Data map[string]any `json:"data"`
 	}
-	if code := e.get(t, "/api/files/worker", &f); code != 200 || f.Data["agent_id"] != "w1" {
+	if code := e.get(t, "/api/files/worker", &f); code != 200 || f.Data["machine_id"] != "w1" {
 		t.Fatalf("GET worker = %d %+v", code, f)
 	}
 	var res struct {
 		Diff, Problems, Content string
 		Changed, Applied        bool
 	}
-	body := map[string]any{"set": map[string]any{"agent_id": "w2", "max_concurrent": 2}}
-	if code := e.post(t, "/api/files/worker", body, &res); code != 200 || !res.Changed || res.Applied || !strings.Contains(res.Diff, "+agent_id: w2 # this machine") {
+	body := map[string]any{"set": map[string]any{"machine_id": "w2", "max_concurrent": 2}}
+	if code := e.post(t, "/api/files/worker", body, &res); code != 200 || !res.Changed || res.Applied || !strings.Contains(res.Diff, "+machine_id: w2 # this machine") {
 		t.Fatalf("preview = %d %+v", code, res)
 	}
-	if raw, _ := os.ReadFile(e.cfgPath); !strings.Contains(string(raw), "agent_id: w1") {
+	if raw, _ := os.ReadFile(e.cfgPath); !strings.Contains(string(raw), "machine_id: w1") {
 		t.Fatal("a preview wrote the file")
 	}
 	body["apply"] = true
@@ -288,10 +288,10 @@ func TestWorkerFilePreviewAndApply(t *testing.T) {
 		t.Fatalf("apply = %d %+v", code, res)
 	}
 	raw, _ := os.ReadFile(e.cfgPath)
-	if s := string(raw); !strings.Contains(s, "# my worker") || !strings.Contains(s, "agent_id: w2 # this machine") || !strings.Contains(s, "max_concurrent: 2") {
+	if s := string(raw); !strings.Contains(s, "# my worker") || !strings.Contains(s, "machine_id: w2 # this machine") || !strings.Contains(s, "max_concurrent: 2") {
 		t.Errorf("written = %q", s)
 	}
-	if bak, _ := os.ReadFile(e.cfgPath + ".bak"); !strings.Contains(string(bak), "agent_id: w1") {
+	if bak, _ := os.ReadFile(e.cfgPath + ".bak"); !strings.Contains(string(bak), "machine_id: w1") {
 		t.Errorf(".bak = %q", bak)
 	}
 	var bad map[string]string
@@ -436,14 +436,14 @@ func TestChatReplies(t *testing.T) {
 
 func TestChatConfirmApproveAndDecline(t *testing.T) {
 	for _, approve := range []bool{true, false} {
-		m := fake.New(fake.Call("c1", "write_config", `{"content":"agent_id: from-chat\n"}`), fake.Text("done"))
+		m := fake.New(fake.Call("c1", "write_config", `{"content":"machine_id: from-chat\n"}`), fake.Text("done"))
 		e := chatEnv(t, m)
 		if code := e.post(t, "/api/chat", map[string]string{"message": "set my agent id"}, nil); code != http.StatusAccepted {
 			t.Fatalf("send = %d", code)
 		}
 		st := e.waitFor(t, func(s chatStatus) bool { _, ok := lastOf(s, "confirm"); return ok })
 		c, _ := lastOf(st, "confirm")
-		if !strings.Contains(c.Text, "+agent_id: from-chat") {
+		if !strings.Contains(c.Text, "+machine_id: from-chat") {
 			t.Errorf("confirm prompt = %q", c.Text)
 		}
 		if code := e.post(t, "/api/chat", map[string]string{"message": "again"}, nil); code != http.StatusConflict {
@@ -467,7 +467,7 @@ func TestChatConfirmApproveAndDecline(t *testing.T) {
 }
 
 func TestChatCancelDeclinesPendingConfirm(t *testing.T) {
-	e := chatEnv(t, fake.New(fake.Call("c1", "write_config", `{"content":"agent_id: x\n"}`), fake.Text("done")))
+	e := chatEnv(t, fake.New(fake.Call("c1", "write_config", `{"content":"machine_id: x\n"}`), fake.Text("done")))
 	e.post(t, "/api/chat", map[string]string{"message": "go"}, nil)
 	e.waitFor(t, func(s chatStatus) bool { _, ok := lastOf(s, "confirm"); return ok })
 	if code := e.post(t, "/api/chat/cancel", map[string]any{}, nil); code != 200 {
@@ -477,7 +477,7 @@ func TestChatCancelDeclinesPendingConfirm(t *testing.T) {
 	if ev, ok := lastOf(st, "error"); !ok || ev.Text != "interrupted" {
 		t.Errorf("after cancel = %+v", st.Log)
 	}
-	if raw, _ := os.ReadFile(e.cfgPath); strings.Contains(string(raw), "agent_id: x") {
+	if raw, _ := os.ReadFile(e.cfgPath); strings.Contains(string(raw), "machine_id: x") {
 		t.Error("a cancelled confirm wrote the file")
 	}
 }

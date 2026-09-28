@@ -17,7 +17,7 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 
 | Key | Default | Meaning |
 |---|---|---|
-| `agent_id` | *(required)* | Name of this worker; written to tickets it claims |
+| `machine_id` | *(hostname)* | Names this machine on the tickets it claims (the claim protocol's owner) and the pull requests it opens. Set it when two machines share a hostname. Configs that still say `agent_id` are rejected with a hint to rename it |
 | `code_dirs` | *(none)* | Folders scanned for repositories, e.g. `[~/code]`. Every git repository under one that has `.hive-dispatch/repo.yaml` is enrolled; `hivedispatch scan` lists them. Scanning skips hidden directories, `node_modules`, `vendor`, the workroot, and never descends into a repository |
 | `scan_depth` | `4` | Directory levels below each code dir to look for repositories |
 | `repos[].path` | *(none)* | A repository to enrol that is not under a code dir. Listed repositories come first; a second checkout of the same `owner/repo` is skipped (`check` names it) |
@@ -81,11 +81,11 @@ agents:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<agent_id>/<name>` |
+| `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<machine_id>/<name>` |
 | `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, or `fake` (no agent; useful for trying the pipeline) |
 | `agents[].model` | *(policy's model, then the CLI's)* | Model for this agent's runs; wins over the policy's `executor.model` / `executor.codex.model` |
 
-The agents are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets at once as it has agents. A ticket labelled `hive:agent:<name>` waits for that agent; a label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are still made under the worker's `agent_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
+The agents are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets at once as it has agents. A ticket labelled `hive:agent:<name>` waits for that agent; a label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are made under the worker's `machine_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
 
 `run -executor fake` (or `claude`, `codex`) makes every agent use that executor for one run.
 

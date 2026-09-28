@@ -10,10 +10,10 @@ Configuration has two layers ([`docs/config.md`](config.md) has every key): a **
 hivedispatch init
 ```
 
-writes a commented starter worker config to `~/.config/hivedispatch/config.yaml` (or `-config PATH`) and never overwrites a non-empty file. Set `agent_id`, and point `code_dirs` at the folder your checkouts live in:
+writes a commented starter worker config to `~/.config/hivedispatch/config.yaml` (or `-config PATH`) and never overwrites a non-empty file. Point `code_dirs` at the folder your checkouts live in (`machine_id`, which names this machine on tickets, defaults to the hostname):
 
 ```yaml
-agent_id: laptop-1
+machine_id: laptop-1
 code_dirs: [~/code]
 ```
 
@@ -106,7 +106,7 @@ Using a label as well as a status means a human explicitly opts each ticket in.
 `~/.config/hivedispatch/config.yaml`:
 
 ```yaml
-agent_id: worker-a
+machine_id: worker-a
 code_dirs: [~/code]
 repos:
   - path: ~/work/other-repo     # outside code_dirs

@@ -72,7 +72,7 @@ onMounted(async () => {
 
       <template v-else>
         <div class="stats">
-          <div class="stat"><div class="label">Agent</div><div class="value">{{ ov.agent_id || '—' }}</div></div>
+          <div class="stat"><div class="label">Machine</div><div class="value">{{ ov.machine_id || '—' }}</div></div>
           <div class="stat"><div class="label">Agents</div><div class="value">{{ agentCount }}</div></div>
           <div class="stat"><div class="label">Tickets at once</div><div class="value">{{ ov.max_concurrent }}</div></div>
           <div class="stat"><div class="label">Enrolled repos</div><div class="value">{{ (ov.repos || []).length }}</div></div>

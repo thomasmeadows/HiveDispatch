@@ -46,7 +46,7 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
 	for _, r := range cfg.Repos {
 		repos = append(repos, map[string]any{"project": r.Project, "tracker": r.Tracker, "name": r.Name, "path": r.Path, "agents": r.Agents})
 	}
-	out["agent_id"] = cfg.AgentID
+	out["machine_id"] = cfg.MachineID
 	out["max_concurrent"] = cfg.MaxConcurrent
 	out["poll_interval"] = cfg.PollInterval.String()
 	out["state_store"] = cfg.StateStore

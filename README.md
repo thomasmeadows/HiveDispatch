@@ -35,7 +35,7 @@ go install github.com/thomasmeadows/hivedispatch/cmd/hivedispatch@latest
 
 hivedispatch init                 # writes ~/.config/hivedispatch/config.yaml, fully commented
 hivedispatch supervisor           # or: chat with the built-in assistant, which edits the config and runs the checks for you
-$EDITOR ~/.config/hivedispatch/config.yaml   # agent_id, and code_dirs: [~/code]
+$EDITOR ~/.config/hivedispatch/config.yaml   # code_dirs: [~/code] (machine_id defaults to the hostname)
 
 # Enrol each repository; each one picks its own tracker.
 cd ~/code/yourrepo
