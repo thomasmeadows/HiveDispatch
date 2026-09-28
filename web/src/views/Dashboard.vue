@@ -87,7 +87,7 @@ onMounted(async () => {
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Project</th><th>Tracker</th><th>Repository</th><th>Agents</th><th>Path</th></tr></thead>
+              <thead><tr><th>Prefix</th><th>Tracker</th><th>Repository</th><th>Agents</th><th>Path</th></tr></thead>
               <tbody>
                 <tr v-for="r in ov.repos" :key="r.path">
                   <td><strong>{{ r.project }}</strong></td>
@@ -124,7 +124,7 @@ onMounted(async () => {
             <thead><tr><th>Ticket</th><th>Phase</th><th>Status</th><th>Attempts</th><th>Agent</th><th>Updated</th><th>PR</th></tr></thead>
             <tbody>
               <tr v-for="r in runs.slice(0, 50)" :key="r.ticket + r.updatedAt">
-                <td><a v-if="r.url" :href="r.url" target="_blank" rel="noopener">{{ r.ticket }}</a><span v-else>{{ r.ticket }}</span></td>
+                <td><a v-if="r.url" :href="r.url" target="_blank" rel="noopener">{{ r.name || r.ticket }}</a><span v-else>{{ r.name || r.ticket }}</span></td>
                 <td><span class="badge" :class="phaseClass(r.phase)">{{ r.phase }}</span></td>
                 <td>{{ r.lastStatus }}</td>
                 <td>{{ r.attempts }}</td>

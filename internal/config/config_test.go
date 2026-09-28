@@ -18,8 +18,8 @@ jira:
 `
 
 const jiraRepoYAML = `
-project: HIVE
-tracker: jira
+ticket_prefix: HIVE
+ticket_tracker: jira
 jira:
   base_url: https://example.atlassian.net
   jql: 'project = HIVE AND status = "Ready"'
@@ -29,8 +29,8 @@ jira:
 `
 
 const githubRepoYAML = `
-project: HD
-tracker: github
+ticket_prefix: HD
+ticket_tracker: github
 `
 
 // fakeOrigin replaces the git lookup for the duration of a test: every
@@ -185,7 +185,7 @@ func TestLoadWorkerNeedsNoRepos(t *testing.T) {
 
 func TestLegacyLayoutIsRejected(t *testing.T) {
 	legacy := `
-tracker: github
+ticket_tracker: github
 machine_id: w
 jira:
   base_url: https://x.atlassian.net
@@ -249,7 +249,7 @@ func TestRepoProblemsNameTheFile(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
 	fakeOrigin(t)
 	code := t.TempDir()
-	dir := makeRepo(t, filepath.Join(code, "hive"), "project: HIVE\ntracker: jira\n")
+	dir := makeRepo(t, filepath.Join(code, "hive"), "ticket_prefix: HIVE\nticket_tracker: jira\n")
 	_, err := Load(writeTemp(t, workerYAML+"code_dirs: ["+code+"]\n"))
 	if err == nil {
 		t.Fatal("expected error")
@@ -413,12 +413,12 @@ func TestStarterConfigsAreRejectedUntilEdited(t *testing.T) {
 			t.Errorf("err should mention %q:\n%s", want, err)
 		}
 	}
-	edited := strings.NewReplacer("YOURTEAM", "acme", "project = KEY", "project = ACME", "project: KEY", "project: ACME").Replace(RepoStarter("jira"))
+	edited := strings.NewReplacer("YOURTEAM", "acme", "project = KEY", "project = ACME", "ticket_prefix: KEY", "ticket_prefix: ACME").Replace(RepoStarter("jira"))
 	makeRepo(t, filepath.Join(code, "hive"), edited)
 	if _, err := Load(writeTemp(t, strings.ReplaceAll(worker, "you@example.com", "me@acme.com"))); err != nil {
 		t.Fatalf("edited starters should validate: %v", err)
 	}
-	gh := strings.ReplaceAll(RepoStarter("github"), "project: KEY", "project: ACME")
+	gh := strings.ReplaceAll(RepoStarter("github"), "ticket_prefix: KEY", "ticket_prefix: ACME")
 	makeRepo(t, filepath.Join(code, "hive"), gh)
 	if _, err := Load(writeTemp(t, strings.ReplaceAll(worker, "you@example.com", "me@acme.com"))); err != nil {
 		t.Fatalf("edited github starter should validate: %v", err)
@@ -429,10 +429,10 @@ func TestValidateRejectsNonKeyProject(t *testing.T) {
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
 	fakeOrigin(t)
 	code := t.TempDir()
-	makeRepo(t, filepath.Join(code, "hive"), strings.ReplaceAll(jiraRepoYAML, "project: HIVE", "project: 1"))
+	makeRepo(t, filepath.Join(code, "hive"), strings.ReplaceAll(jiraRepoYAML, "ticket_prefix: HIVE", "ticket_prefix: 1"))
 	_, err := Load(writeTemp(t, workerYAML+"code_dirs: ["+code+"]\n"))
-	if err == nil || !strings.Contains(err.Error(), "SCRUM-4") {
-		t.Fatalf("err = %v, want a hint with an example key", err)
+	if err == nil || !strings.Contains(err.Error(), "e.g. GITHUB") {
+		t.Fatalf("err = %v, want a hint with an example prefix", err)
 	}
 }
 
@@ -471,7 +471,7 @@ func TestGitHubRepoDefaultsAndProject(t *testing.T) {
 
 func TestTrackerRequiredAndChecked(t *testing.T) {
 	fakeOrigin(t)
-	for body, want := range map[string]string{"project: HD\n": "tracker is required", "project: HD\ntracker: trello\n": "trello"} {
+	for body, want := range map[string]string{"ticket_prefix: HD\n": "tracker is required", "ticket_prefix: HD\nticket_tracker: trello\n": "trello"} {
 		code := t.TempDir()
 		makeRepo(t, filepath.Join(code, "r"), body)
 		if _, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n")); err == nil || !strings.Contains(err.Error(), want) {
@@ -539,7 +539,7 @@ func TestParseRepoChecksContentWithoutWriting(t *testing.T) {
 	if err != nil || r.Name != "o/gh" || r.Project != "HD" {
 		t.Fatalf("ParseRepo = %+v, %v", r, err)
 	}
-	_, err = worker.ParseRepo(dir, []byte("project: HD\ntracker: github\njira:\n  email: me@x\n"))
+	_, err = worker.ParseRepo(dir, []byte("ticket_prefix: HD\nticket_tracker: github\njira:\n  email: me@x\n"))
 	if err == nil || !strings.Contains(err.Error(), filepath.Join(dir, RepoDir, RepoFileName)) {
 		t.Errorf("worker key in repo.yaml: %v, want an error naming the file", err)
 	}
@@ -552,7 +552,7 @@ func TestScanRowsDescribesEachRepository(t *testing.T) {
 	cfgPath, code := setup(t, "")
 	t.Setenv("HIVE_JIRA_TOKEN", "secret")
 	makeRepo(t, filepath.Join(code, "plain"), "")
-	makeRepo(t, filepath.Join(code, "broken"), "project: HD\ntracker: gitlab\n")
+	makeRepo(t, filepath.Join(code, "broken"), "ticket_prefix: HD\nticket_tracker: gitlab\n")
 	worker, err := LoadWorker(cfgPath)
 	if err != nil {
 		t.Fatal(err)
@@ -677,5 +677,61 @@ func TestAgentIDIsRenamedMachineID(t *testing.T) {
 	_, err := LoadWorker(writeTemp(t, "agent_id: worker-1\n"))
 	if err == nil || !strings.Contains(err.Error(), "machine_id") || !strings.Contains(err.Error(), "agent_id") {
 		t.Errorf("err = %v, want a hint to rename agent_id to machine_id", err)
+	}
+}
+
+func TestTicketPrefixDefaultsToTheTracker(t *testing.T) {
+	fakeOrigin(t)
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	worker, err := LoadWorker(writeTemp(t, "machine_id: w\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := worker.ParseRepo(makeRepo(t, filepath.Join(t.TempDir(), "gh"), ""), []byte("ticket_tracker: github\n"))
+	if err != nil || r.Project != "GITHUB" {
+		t.Errorf("github default prefix = %q, %v", r.Project, err)
+	}
+	r, err = worker.ParseRepo(makeRepo(t, filepath.Join(t.TempDir(), "gh"), ""), []byte("ticket_tracker: github\nticket_prefix: web\n"))
+	if err != nil || r.Project != "WEB" {
+		t.Errorf("explicit prefix = %q, %v; want it upper-cased", r.Project, err)
+	}
+}
+
+func TestJiraPrefixDefaultsToJIRA(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	p, code := setup(t, "")
+	makeRepo(t, filepath.Join(code, "hive"), strings.Replace(jiraRepoYAML, "ticket_prefix: HIVE\n", "", 1))
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := cfg.Repos[0]; r.Project != "JIRA" {
+		t.Errorf("prefix = %q, want JIRA", r.Project)
+	}
+}
+
+func TestOldRepoKeysAreRenamed(t *testing.T) {
+	fakeOrigin(t)
+	worker, err := LoadWorker(writeTemp(t, "machine_id: w\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = worker.ParseRepo(makeRepo(t, filepath.Join(t.TempDir(), "gh"), ""), []byte("project: HD\ntracker: github\n"))
+	for _, want := range []string{"project was renamed ticket_prefix", "tracker was renamed ticket_tracker"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want %q", err, want)
+		}
+	}
+}
+
+func TestDefaultPrefixesMustNotCollide(t *testing.T) {
+	fakeOrigin(t)
+	t.Setenv("HIVE_GITHUB_TOKEN", "gh")
+	code := t.TempDir()
+	makeRepo(t, filepath.Join(code, "a"), "ticket_tracker: github\n")
+	makeRepo(t, filepath.Join(code, "b"), "ticket_tracker: github\n")
+	_, err := Load(writeTemp(t, "machine_id: w\ncode_dirs: ["+code+"]\n"))
+	if err == nil || !strings.Contains(err.Error(), `ticket_prefix "GITHUB" is also used by`) {
+		t.Errorf("err = %v", err)
 	}
 }

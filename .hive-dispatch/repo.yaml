@@ -1,21 +1,22 @@
 # HiveDispatch settings for this repository, read by the worker from this checkout.
-# Commit it: every clone then carries the same tracker settings. The agent's
-# policy (tools, model, budget) is in policy.yaml next to this file.
+# Commit it: every clone then carries the same tracker settings. The agents that
+# work this repository's tickets are in agents.yaml, and the policy they all
+# follow (tools, model, budget) in policy.yaml, both next to this file.
 # Reference: docs/config.md in the HiveDispatch repository.
 
-# Ticket key prefix. Jira: the project key (SCRUM for SCRUM-4). GitHub Issues: any
-# short upper-case tag you choose; issue #12 becomes KEY-12. Unique per worker.
-project: GITHUB
+# The queue is this repository's GitHub Issues: state is carried by labels and the
+# claim by a hidden marker in the issue body. "hivedispatch init -github" creates the
+# labels; the GitHub token needs Issues read/write.
+ticket_tracker: github
+
+# First part of every ticket's name: prefix-board-number-title, e.g.
+# github-issues-12-create-website for issue #12. Default: GITHUB.
+ticket_prefix: GITHUB
 
 # name, url and default_branch default to the origin remote; set them only to override.
 # name: owner/repo
 # url: git@github.com:owner/repo.git
 # default_branch: main
-
-# The queue is this repository's GitHub Issues: state is carried by labels and the
-# claim by a hidden marker in the issue body. "hivedispatch init -github" creates the
-# labels; the GitHub token needs Issues read/write.
-tracker: github
 
 # github:
 #   # State labels. Defaults shown.

@@ -309,3 +309,25 @@ Claims on the tracker stay under the worker's `agent_id`, so the claim protocol 
 Decided: the worker config's `agent_id` is renamed `machine_id`, because "agent" now means one of a repository's coding agents. It defaults to the hostname, so a new install needs no identity set by hand. It is still what claims, run records (`<machine_id>/<agent>`) and pull requests carry. A config that still says `agent_id` is rejected with a hint to rename it, the same clean break as earlier moves. The claim protocol's field names (the Jira "HiveDispatch Agent" field, `jira.fields.agent_id`) are unchanged: they name the claim holder, and renaming them would orphan existing Jira fields.
 
 Rejected: the OS machine ID (`/etc/machine-id`, macOS `IOPlatformUUID`, Windows `MachineGuid`). It is unique, but the value is written on tickets, which can be public GitHub issues, and systemd says to keep it private. It would also read as 32 opaque characters on every claim. A hash of it would be safe to publish but just as unreadable. Two machines with the same hostname would collide, so the docs and starter say to set `machine_id` in that case.
+
+## 2026-09-28 — Ticket names: prefix-board-number-title
+
+Supersedes the key format in "Repository settings live in the repository" (2026-09-27): `project` was the ticket key prefix, and GitHub issue #12 was `PROJECT-12`.
+
+Decided: `repo.yaml` names its tracker `ticket_tracker` and its prefix `ticket_prefix`. The prefix defaults to the tracker's name (`GITHUB`, `JIRA`). A ticket's key is `PREFIX-BOARD-NUMBER`:
+- **Jira:** the board is the Jira project, so Jira's own key is kept whole inside ours (`JIRA-SCRUM-4`).
+- **GitHub:** the board is `ISSUES`, or `PROJECT<N>` when the repository mirrors to Projects board number N (`GITHUB-ISSUES-12`, `GITHUB-PROJECT2-12`).
+
+Each tracker still works in its own keys, and a wrapper (`internal/tracker/prefixed`) adds and strips the prefix. That is why neither tracker needs a key translation table.
+
+A ticket also gets a readable name: the key and the title in kebab case (`github-issues-12-create-website`). It names the branch and the pull request, and shows in `status` and the website, so people can find the ticket they filed. The name is fixed in the run record when the ticket is first worked: a retitled ticket keeps its branch and PR.
+
+The key, not the name, is the identity, because titles change. `once` takes either form; a board can itself contain a number segment, so it tries each possible key in turn.
+
+Rejected:
+- **Remapping Jira keys to the prefix** (`SCRUM-4` → `JIRA-4`): it needed a per-repository Jira project setting and allowed only one Jira project per repository.
+- **The repository name as the GitHub board:** the operator preferred `ISSUES`/`PROJECT<N>`. That is what GitHub actually works from, and it keeps names short.
+
+The prefix must still be unique per worker, so two repositories using the same tracker cannot both keep the default; `check` says so.
+
+Consequence for existing installs: keys changed shape. Run records and branches from before this change are not picked up; a ticket in flight starts over under its new name. The old `project`/`tracker` keys are rejected with a rename hint, the same clean break as earlier moves.

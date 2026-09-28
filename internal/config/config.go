@@ -162,8 +162,8 @@ type RepoConfig struct {
 	Name          string       // owner/repo; default parsed from the origin URL
 	URL           string       // clone URL; default the origin remote
 	DefaultBranch string       // default origin/HEAD, else "main"
-	Project       string       // ticket key prefix; tickets in this project map to this repo
-	Tracker       string       // "jira" or "github"
+	Project       string       // ticket_prefix, upper-case; default the tracker's name. Keys are PREFIX-BOARD-N
+	Tracker       string       // ticket_tracker: "jira" or "github"
 	Agents        []Agent      // .hive-dispatch/agents.yaml; DefaultAgents without one
 	Jira          JiraConfig   // with tracker: jira
 	GitHub        GitHubConfig // PR API always; issues and labels with tracker: github
@@ -305,7 +305,7 @@ func (c *Config) Validate() error {
 		problems = append(problems, c.repoProblems(r)...)
 		key := strings.ToUpper(r.Project)
 		if other, dup := seen[key]; dup && key != "" {
-			problems = append(problems, fmt.Sprintf("%s: project %q is also used by %s — ticket keys must map to one repository", repoFilePath(r.Path), r.Project, other))
+			problems = append(problems, fmt.Sprintf("%s: ticket_prefix %q is also used by %s — ticket keys must map to one repository; set a different ticket_prefix in one of them", repoFilePath(r.Path), r.Project, other))
 		}
 		seen[key] = r.Path
 	}
@@ -328,12 +328,12 @@ func (c *Config) accountProblems() []string {
 	}
 	var problems []string
 	if strings.TrimSpace(c.Jira.Email) == "" {
-		problems = append(problems, "jira.email is required in the worker config (a repository uses tracker: jira) — the Atlassian account email the API token belongs to")
+		problems = append(problems, "jira.email is required in the worker config (a repository uses ticket_tracker: jira) — the Atlassian account email the API token belongs to")
 	} else if ph := placeholderIn(c.Jira.Email); ph != "" {
 		problems = append(problems, "jira.email still has the starter placeholder "+ph+" — replace it with your real value")
 	}
 	if c.Jira.Token == "" {
-		problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required (a repository uses tracker: jira) — create an API token at https://id.atlassian.com/manage-profile/security/api-tokens and `export HIVE_JIRA_TOKEN=...`")
+		problems = append(problems, "HIVE_JIRA_TOKEN environment variable is required (a repository uses ticket_tracker: jira) — create an API token at https://id.atlassian.com/manage-profile/security/api-tokens and `export HIVE_JIRA_TOKEN=...`")
 	}
 	return problems
 }
@@ -366,11 +366,8 @@ func (c *Config) repoProblems(r RepoConfig) []string {
 	}
 	need(r.Name, "name", "owner/repo as shown on GitHub; normally parsed from the origin remote")
 	need(r.URL, "url", "the repository has no origin remote — add one (git remote add origin ...) or set url to the clone URL your git credentials can push to")
-	need(r.Project, "project", "the ticket key prefix: the Jira project key, or any short upper-case tag for GitHub Issues")
-	if r.Project == "KEY" {
-		add("project still has the starter placeholder KEY — use your project key")
-	} else if r.Project != "" && !projectKeyRe.MatchString(r.Project) {
-		add(fmt.Sprintf("project %q is not a project key — it is the letters before the dash in ticket keys, e.g. SCRUM for SCRUM-4", r.Project))
+	if r.Project != "" && !projectKeyRe.MatchString(r.Project) {
+		add(fmt.Sprintf("ticket_prefix %q: use letters, digits or underscores, starting with a letter (no dashes) — e.g. GITHUB, JIRA or WEB", r.Project))
 	}
 	switch r.Tracker {
 	case "jira":
@@ -391,9 +388,9 @@ func (c *Config) repoProblems(r RepoConfig) []string {
 			}
 		}
 	case "":
-		add("tracker is required — jira or github")
+		add("ticket_tracker is required — jira or github")
 	default:
-		add(fmt.Sprintf("tracker: want jira or github, got %q", r.Tracker))
+		add(fmt.Sprintf("ticket_tracker: want jira or github, got %q", r.Tracker))
 	}
 	return problems
 }

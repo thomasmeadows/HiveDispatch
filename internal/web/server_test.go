@@ -22,7 +22,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/supervisor/model/fake"
 )
 
-const repoYAML = "project: HD\ntracker: github\nurl: https://github.com/o/app\ndefault_branch: main\n"
+const repoYAML = "ticket_prefix: HD\nticket_tracker: github\nurl: https://github.com/o/app\ndefault_branch: main\n"
 
 type env struct {
 	srv     *httptest.Server
@@ -307,7 +307,7 @@ func TestRepoFileProblemsAndAllowlist(t *testing.T) {
 		Applied  bool
 	}
 	q := "/api/files/repo?path=" + e.repo
-	if code := e.post(t, q, map[string]any{"content": "project: HD\ntracker: gitlab\n"}, &res); code != 200 || !strings.Contains(res.Problems, "tracker") {
+	if code := e.post(t, q, map[string]any{"content": "ticket_prefix: HD\nticket_tracker: gitlab\n"}, &res); code != 200 || !strings.Contains(res.Problems, "tracker") {
 		t.Errorf("bad tracker = %d %+v", code, res)
 	}
 	if code := e.post(t, "/api/files/policy?path="+e.repo, map[string]any{"content": "executor:\n  permission_mode: yolo\n"}, &res); code != 200 || !strings.Contains(res.Problems, "permission_mode") {

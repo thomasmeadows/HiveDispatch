@@ -230,12 +230,12 @@ func TestDispatchCompletedWithPR(t *testing.T) {
 	}
 	h.assertTransitions(t, tracker.StateInProgress, tracker.StateInReview)
 	opened := h.host.Opened()
-	if len(opened) != 1 || opened[0].Head != "hive/HIVE-1" || opened[0].Base != "main" || !strings.Contains(opened[0].Title, "HIVE-1") {
+	if len(opened) != 1 || opened[0].Head != "hive/hive-1-one" || opened[0].Base != "main" || opened[0].Title != "hive-1-one" {
 		t.Fatalf("opened = %+v", opened)
 	}
 	h.assertLastComment(t, "pull/1", "added flag")
 	r := h.run(t)
-	if r.Phase != state.PhaseDone || r.PRURL == "" || r.Attempts != 1 || r.ResumeToken != "sess-1" || r.Branch != "hive/HIVE-1" {
+	if r.Phase != state.PhaseDone || r.PRURL == "" || r.Attempts != 1 || r.ResumeToken != "sess-1" || r.Branch != "hive/hive-1-one" {
 		t.Errorf("run = %+v", r)
 	}
 	calls := h.ex.Calls()
@@ -286,7 +286,7 @@ func TestExecutorFailedRetries(t *testing.T) {
 				t.Fatalf("out = %v", out)
 			}
 			h.assertTransitions(t, tracker.StateInProgress, tracker.StateReady)
-			h.assertLastComment(t, cause.Describe(), "1 of 3", "hive/HIVE-1", "partial")
+			h.assertLastComment(t, cause.Describe(), "1 of 3", "hive/hive-1-one", "partial")
 			if len(h.host.Opened()) != 0 {
 				t.Error("never open a PR from a failed run")
 			}
@@ -344,7 +344,7 @@ func TestPROpenFailureReturnsToReady(t *testing.T) {
 		t.Fatalf("out=%v err=%v", out, err)
 	}
 	h.assertTransitions(t, tracker.StateInProgress, tracker.StateReady)
-	h.assertLastComment(t, "opening the PR failed", "hive/HIVE-1")
+	h.assertLastComment(t, "opening the PR failed", "hive/hive-1-one")
 	h.assertReleased(t)
 }
 
@@ -366,7 +366,7 @@ func TestCompletedWithoutPRHostStillReportsBranch(t *testing.T) {
 		t.Fatalf("out = %v", out)
 	}
 	h.assertTransitions(t, tracker.StateInProgress, tracker.StateInReview)
-	h.assertLastComment(t, "hive/HIVE-1", "could not open a PR")
+	h.assertLastComment(t, "hive/hive-1-one", "could not open a PR")
 	if r := h.run(t); r.PRURL != "" || r.Phase != state.PhaseDone {
 		t.Errorf("run = %+v", r)
 	}

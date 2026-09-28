@@ -73,17 +73,17 @@ func TestClaimWonAndRelease(t *testing.T) {
 	s := &issueServer{body: "Print the version."}
 	c := newTestClient(t, s.mux())
 	ctx := context.Background()
-	won, err := c.Claim(ctx, "HD-12", "worker-a", claimAt)
+	won, err := c.Claim(ctx, "ISSUES-12", "worker-a", claimAt)
 	if err != nil || !won {
 		t.Fatalf("won=%v err=%v", won, err)
 	}
 	if !strings.Contains(s.body, "hivedispatch-claim: worker-a 2026-09-20T12:00:00Z") || !strings.HasPrefix(s.body, "Print the version.") {
 		t.Errorf("body after claim = %q", s.body)
 	}
-	if err := c.Release(ctx, "HD-12", "worker-b"); !errors.Is(err, tracker.ErrNotClaimHolder) {
+	if err := c.Release(ctx, "ISSUES-12", "worker-b"); !errors.Is(err, tracker.ErrNotClaimHolder) {
 		t.Errorf("non-holder release: %v", err)
 	}
-	if err := c.Release(ctx, "HD-12", "worker-a"); err != nil {
+	if err := c.Release(ctx, "ISSUES-12", "worker-a"); err != nil {
 		t.Fatal(err)
 	}
 	if s.body != "Print the version." {
@@ -98,7 +98,7 @@ func TestClaimLostOnReadBack(t *testing.T) {
 		s.body = withMarker("x", "worker-b", claimAt.Add(time.Second))
 		s.mu.Unlock()
 	}))
-	won, err := c.Claim(context.Background(), "HD-12", "worker-a", claimAt)
+	won, err := c.Claim(context.Background(), "ISSUES-12", "worker-a", claimAt)
 	if err != nil || won {
 		t.Fatalf("won=%v err=%v", won, err)
 	}
@@ -108,13 +108,13 @@ func TestHeartbeatRequiresHolderAndRefreshes(t *testing.T) {
 	s := &issueServer{body: withMarker("x", "worker-a", claimAt.Add(-time.Hour))}
 	c := newTestClient(t, s.mux(), withNow(func() time.Time { return claimAt }))
 	ctx := context.Background()
-	if err := c.Heartbeat(ctx, "HD-12", "worker-b"); !errors.Is(err, tracker.ErrNotClaimHolder) {
+	if err := c.Heartbeat(ctx, "ISSUES-12", "worker-b"); !errors.Is(err, tracker.ErrNotClaimHolder) {
 		t.Errorf("non-holder heartbeat: %v", err)
 	}
 	if len(s.patches) != 0 {
 		t.Error("non-holder must not write")
 	}
-	if err := c.Heartbeat(ctx, "HD-12", "worker-a"); err != nil {
+	if err := c.Heartbeat(ctx, "ISSUES-12", "worker-a"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(s.body, "worker-a 2026-09-20T12:00:00Z") {

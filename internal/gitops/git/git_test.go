@@ -19,7 +19,7 @@ func repoCfg(remote string) config.RepoConfig {
 func TestPrepareCreatesWorktreeOnTicketBranch(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	w := New(t.TempDir())
-	ws, err := w.Prepare(context.Background(), repoCfg(remote), "HIVE-1")
+	ws, err := w.Prepare(context.Background(), repoCfg(remote), "HIVE-1", "hive/"+"HIVE-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestPrepareCreatesWorktreeOnTicketBranch(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(ws.Path, "README.md")); err != nil {
 		t.Error("worktree should contain the default branch's files")
 	}
-	again, err := w.Prepare(context.Background(), repoCfg(remote), "HIVE-1")
+	again, err := w.Prepare(context.Background(), repoCfg(remote), "HIVE-1", "hive/"+"HIVE-1")
 	if err != nil || again.Path != ws.Path {
 		t.Errorf("second Prepare = %+v, %v", again, err)
 	}
@@ -50,7 +50,7 @@ func TestPrepareResumesRemoteBranchFromFreshRoot(t *testing.T) {
 	gittest.Git(t, other, "push", "-q", "origin", "hive/HIVE-2")
 
 	w := New(t.TempDir())
-	ws, err := w.Prepare(context.Background(), repoCfg(remote), "HIVE-2")
+	ws, err := w.Prepare(context.Background(), repoCfg(remote), "HIVE-2", "hive/"+"HIVE-2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestFinalizeCommitsDirtyTreeAndPushes(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	w := New(t.TempDir())
 	ctx := context.Background()
-	ws, err := w.Prepare(ctx, repoCfg(remote), "HIVE-3")
+	ws, err := w.Prepare(ctx, repoCfg(remote), "HIVE-3", "hive/"+"HIVE-3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestPrepareFastForwardsMergedBranch(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	w := New(t.TempDir())
 	ctx := context.Background()
-	ws, err := w.Prepare(ctx, repoCfg(remote), "HIVE-4")
+	ws, err := w.Prepare(ctx, repoCfg(remote), "HIVE-4", "hive/"+"HIVE-4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestPrepareFastForwardsMergedBranch(t *testing.T) {
 	gittest.Git(t, other, "commit", "-q", "-m", "later")
 	gittest.Git(t, other, "push", "-q", "origin", "main")
 
-	again, err := w.Prepare(ctx, repoCfg(remote), "HIVE-4")
+	again, err := w.Prepare(ctx, repoCfg(remote), "HIVE-4", "hive/"+"HIVE-4")
 	if err != nil || again.Path != ws.Path {
 		t.Fatalf("second prepare: %+v %v", again, err)
 	}
@@ -125,7 +125,7 @@ func TestPrepareKeepsDivergedBranch(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	w := New(t.TempDir())
 	ctx := context.Background()
-	ws, err := w.Prepare(ctx, repoCfg(remote), "HIVE-5")
+	ws, err := w.Prepare(ctx, repoCfg(remote), "HIVE-5", "hive/"+"HIVE-5")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestPrepareKeepsDivergedBranch(t *testing.T) {
 	gittest.Git(t, other, "commit", "-q", "-m", "later")
 	gittest.Git(t, other, "push", "-q", "origin", "main")
 
-	if _, err := w.Prepare(ctx, repoCfg(remote), "HIVE-5"); err != nil {
+	if _, err := w.Prepare(ctx, repoCfg(remote), "HIVE-5", "hive/"+"HIVE-5"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(ws.Path, "mine.txt")); err != nil {
@@ -165,7 +165,7 @@ func TestParallelTicketsShareOneBaseClone(t *testing.T) {
 		wg.Add(1)
 		go func(key string) {
 			defer wg.Done()
-			ws, err := w.Prepare(ctx, repoCfg(remote), key)
+			ws, err := w.Prepare(ctx, repoCfg(remote), key, "hive/"+key)
 			if err != nil {
 				errs <- err
 				return

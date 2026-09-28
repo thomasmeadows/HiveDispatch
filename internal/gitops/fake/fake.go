@@ -5,7 +5,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
@@ -28,20 +27,20 @@ func New(root string) *Workspaces {
 	return &Workspaces{Root: root, Changed: map[string]bool{}}
 }
 
-// Prepare creates <root>/<key> and returns it.
-func (w *Workspaces) Prepare(_ context.Context, repo config.RepoConfig, key string) (gitops.Workspace, error) {
+// Prepare creates <root>/<key> and returns it on branch.
+func (w *Workspaces) Prepare(_ context.Context, repo config.RepoConfig, key, branch string) (gitops.Workspace, error) {
 	dir := filepath.Join(w.Root, key)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return gitops.Workspace{}, err
 	}
-	return gitops.Workspace{Path: dir, Branch: gitops.BranchName(key), Base: "origin/" + repo.DefaultBranch}, nil
+	return gitops.Workspace{Path: dir, Branch: branch, Base: "origin/" + repo.DefaultBranch}, nil
 }
 
 // Finalize records the call and reports Changed for the ticket.
 func (w *Workspaces) Finalize(_ context.Context, ws gitops.Workspace, message string) (bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	key := strings.TrimPrefix(ws.Branch, "hive/")
+	key := filepath.Base(ws.Path)
 	w.finalized = append(w.finalized, key+": "+message)
 	return w.Changed[key], nil
 }

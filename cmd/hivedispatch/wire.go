@@ -26,6 +26,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/tracker"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/ghissues"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
+	"github.com/thomasmeadows/hivedispatch/internal/tracker/prefixed"
 	trackerrouter "github.com/thomasmeadows/hivedispatch/internal/tracker/router"
 	"github.com/thomasmeadows/hivedispatch/internal/triage"
 	triclaude "github.com/thomasmeadows/hivedispatch/internal/triage/claudecode"
@@ -63,9 +64,9 @@ func repoTracker(ctx context.Context, repo config.RepoConfig, preflight bool, st
 			return nil, false, err
 		}
 		if preflight {
-			return gh, githubPreflight(ctx, gh, stdout, stderr), nil
+			return prefixed.New(gh, repo.Project), githubPreflight(ctx, gh, stdout, stderr), nil
 		}
-		return gh, true, nil
+		return prefixed.New(gh, repo.Project), true, nil
 	case "jira":
 		jc, err := jira.New(repo.Jira)
 		if err != nil {
@@ -75,9 +76,9 @@ func repoTracker(ctx context.Context, repo config.RepoConfig, preflight bool, st
 			return nil, false, fmt.Errorf("%s: %w", repo.Project, err)
 		}
 		if preflight {
-			return jc, jiraPreflight(ctx, jc, repo, stdout, stderr), nil
+			return prefixed.New(jc, repo.Project), jiraPreflight(ctx, jc, repo, stdout, stderr), nil
 		}
-		return jc, true, nil
+		return prefixed.New(jc, repo.Project), true, nil
 	default:
 		return nil, false, fmt.Errorf("%s: unknown tracker %q", repo.Project, repo.Tracker)
 	}

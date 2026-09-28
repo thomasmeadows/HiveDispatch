@@ -74,7 +74,7 @@ func (w *Workspaces) ensureBase(ctx context.Context, repo config.RepoConfig) (st
 // branch if one exists, else from the default branch. Every ticket gets its
 // own worktree, so tickets can be worked in parallel; the git operations on
 // the shared base clone are serialised per repository.
-func (w *Workspaces) Prepare(ctx context.Context, repo config.RepoConfig, key string) (gitops.Workspace, error) {
+func (w *Workspaces) Prepare(ctx context.Context, repo config.RepoConfig, key, branch string) (gitops.Workspace, error) {
 	l := repolock.For(w.RepoDir(repo))
 	l.Lock()
 	defer l.Unlock()
@@ -84,7 +84,7 @@ func (w *Workspaces) Prepare(ctx context.Context, repo config.RepoConfig, key st
 	}
 	ws := gitops.Workspace{
 		Path:   filepath.Join(w.RepoDir(repo), key),
-		Branch: gitops.BranchName(key),
+		Branch: branch,
 		Base:   "origin/" + repo.DefaultBranch,
 	}
 	if _, err := os.Stat(filepath.Join(ws.Path, ".git")); err == nil {

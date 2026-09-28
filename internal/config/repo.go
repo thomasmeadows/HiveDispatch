@@ -29,8 +29,8 @@ var lookupOrigin = discover.Origin
 // strictly: a typo, or a worker-level key such as jira.email, is an error
 // rather than a silently ignored setting.
 type repoFile struct {
-	Project       string `yaml:"project"`
-	Tracker       string `yaml:"tracker"`
+	TicketTracker string `yaml:"ticket_tracker"`
+	TicketPrefix  string `yaml:"ticket_prefix"`
 	Name          string `yaml:"name"`
 	URL           string `yaml:"url"`
 	DefaultBranch string `yaml:"default_branch"`
@@ -66,6 +66,9 @@ func readRepo(ctx context.Context, dir string) (RepoConfig, error) {
 // parseRepo decodes raw as dir's repo.yaml and fills origin facts.
 func parseRepo(ctx context.Context, dir string, raw []byte) (RepoConfig, error) {
 	file := repoFilePath(dir)
+	if err := checkRenamedRepoKeys(raw); err != nil {
+		return RepoConfig{}, fmt.Errorf("%s: %w", file, err)
+	}
 	var f repoFile
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
@@ -74,7 +77,7 @@ func parseRepo(ctx context.Context, dir string, raw []byte) (RepoConfig, error) 
 	}
 	r := RepoConfig{
 		Path: dir, Name: f.Name, URL: f.URL, DefaultBranch: f.DefaultBranch,
-		Project: f.Project, Tracker: f.Tracker,
+		Project: strings.ToUpper(strings.TrimSpace(f.TicketPrefix)), Tracker: f.TicketTracker,
 		Jira:   JiraConfig{BaseURL: f.Jira.BaseURL, JQL: f.Jira.JQL, Fields: f.Jira.Fields, Statuses: f.Jira.Statuses},
 		GitHub: GitHubConfig{Labels: f.GitHub.Labels, Project: f.GitHub.Project},
 	}
@@ -86,6 +89,7 @@ func parseRepo(ctx context.Context, dir string, raw []byte) (RepoConfig, error) 
 			def(&r.DefaultBranch, branch)
 		}
 	}
+	def(&r.Project, strings.ToUpper(r.Tracker)) // the ticket prefix defaults to the tracker's name
 	def(&r.Name, discover.ParseRepoName(r.URL))
 	agents, err := readAgents(dir)
 	if err != nil {
@@ -273,4 +277,23 @@ func absPath(p string) string {
 		return a
 	}
 	return filepath.Clean(p)
+}
+
+// checkRenamedRepoKeys names the repo.yaml keys that were renamed, rather
+// than letting the strict decoder call them unknown.
+func checkRenamedRepoKeys(raw []byte) error {
+	var m map[string]any
+	if err := yaml.Unmarshal(raw, &m); err != nil {
+		return nil // reported by the real decode
+	}
+	var msgs []string
+	for _, k := range [][2]string{{"project", "ticket_prefix"}, {"tracker", "ticket_tracker"}} {
+		if _, ok := m[k[0]]; ok {
+			msgs = append(msgs, k[0]+" was renamed "+k[1])
+		}
+	}
+	if len(msgs) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(msgs, "; ") + " — rename the keys (same values)")
 }

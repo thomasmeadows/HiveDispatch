@@ -18,17 +18,18 @@ type Workspace struct {
 
 // Workspaces prepares and finalizes ticket workspaces.
 type Workspaces interface {
-	// Prepare returns a workspace on the ticket's branch, creating it from
-	// the repo's default branch if needed. Calling it again for the same
-	// ticket returns the same workspace (resume).
-	Prepare(ctx context.Context, repo config.RepoConfig, ticketKey string) (Workspace, error)
+	// Prepare returns a workspace for the ticket on branch, creating the
+	// branch from the repo's default branch if needed. Calling it again for
+	// the same ticket returns the same workspace (resume).
+	Prepare(ctx context.Context, repo config.RepoConfig, ticketKey, branch string) (Workspace, error)
 	// Finalize commits any uncommitted changes with message and pushes the
 	// branch if it has commits beyond the default branch. It reports
 	// whether anything was pushed.
 	Finalize(ctx context.Context, ws Workspace, message string) (pushed bool, err error)
 }
 
-// BranchName derives the work branch from the ticket key.
-func BranchName(ticketKey string) string {
-	return "hive/" + ticketKey
+// BranchName is the work branch for a ticket's readable name
+// (tracker.Name), e.g. hive/github-issues-12-create-website.
+func BranchName(name string) string {
+	return "hive/" + name
 }

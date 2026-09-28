@@ -27,11 +27,11 @@ func TestGetMapsIssue(t *testing.T) {
 		_, _ = w.Write([]byte(`[{"id": 5, "user": {"login": "thomas", "id": 7}, "body": "Also the SHA.", "created_at": "2026-09-20T09:00:00Z"}]`))
 	})
 	c := newTestClient(t, mux)
-	tk, err := c.Get(context.Background(), "HD-12")
+	tk, err := c.Get(context.Background(), "ISSUES-12")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tk.Key != "HD-12" || tk.Summary != "Add --version" || tk.Description != "Print the version." || tk.URL != "https://github.com/o/r/issues/12" {
+	if tk.Key != "ISSUES-12" || tk.Summary != "Add --version" || tk.Description != "Print the version." || tk.URL != "https://github.com/o/r/issues/12" {
 		t.Errorf("ticket = %+v", tk)
 	}
 	if tk.Status != "hive:ready" || len(tk.Labels) != 2 {
@@ -63,7 +63,7 @@ func TestPollPaginatesSkipsPRsAndSpansRepos(t *testing.T) {
 		_, _ = w.Write([]byte(`[{"number": 7, "title": "seven", "labels": [{"name":"hive:ready"}], "updated_at": "2026-09-20T10:00:00Z"}]`))
 	})
 	mux.HandleFunc("GET /repos/{o}/{r}/issues/{n}/comments", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`[]`)) })
-	c := newTestClient(t, mux)
+	c := newMultiClient(t, mux)
 	got, err := c.Poll(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestPollPaginatesSkipsPRsAndSpansRepos(t *testing.T) {
 	for _, tk := range got {
 		keys = append(keys, tk.Key)
 	}
-	if strings.Join(keys, ",") != "HD-1,HD-2,OT-7" {
+	if strings.Join(keys, ",") != "ISSUES-1,ISSUES-2,ISSUES-7" {
 		t.Errorf("keys = %v", keys)
 	}
 }
@@ -101,10 +101,10 @@ func TestCommentAndTransition(t *testing.T) {
 		_, _ = w.Write([]byte(`[]`))
 	})
 	c := newTestClient(t, mux)
-	if err := c.Comment(context.Background(), "HD-12", "hello **world**"); err != nil || posted != "hello **world**" {
+	if err := c.Comment(context.Background(), "ISSUES-12", "hello **world**"); err != nil || posted != "hello **world**" {
 		t.Errorf("comment: %v posted=%q", err, posted)
 	}
-	if err := c.Transition(context.Background(), "HD-12", tracker.StateInProgress); err != nil {
+	if err := c.Transition(context.Background(), "ISSUES-12", tracker.StateInProgress); err != nil {
 		t.Fatal(err)
 	}
 	if len(removed) != 1 || removed[0] != "hive:ready" {
@@ -113,7 +113,7 @@ func TestCommentAndTransition(t *testing.T) {
 	if len(added) != 1 || added[0] != "hive:in-progress" {
 		t.Errorf("added = %v", added)
 	}
-	if err := c.Transition(context.Background(), "HD-12", tracker.State("bogus")); err == nil {
+	if err := c.Transition(context.Background(), "ISSUES-12", tracker.State("bogus")); err == nil {
 		t.Error("invalid state must error")
 	}
 }

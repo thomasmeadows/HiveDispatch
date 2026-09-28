@@ -27,6 +27,7 @@ const (
 // Run is the per-ticket record.
 type Run struct {
 	Ticket      string    `json:"ticket"`
+	Name        string    `json:"name,omitempty"`     // readable name, fixed at first claim: github-issues-12-create-website
 	URL         string    `json:"url,omitempty"`      // the ticket this record belongs to; a key can be reused across trackers
 	Agent       string    `json:"agent"`              // worker/agent that last worked it
 	Executor    string    `json:"executor,omitempty"` // claude, codex or fake: whose session ResumeToken is

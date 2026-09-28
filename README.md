@@ -11,7 +11,7 @@ HiveDispatch turns tickets into pull requests. It polls each repository's issue 
 1. **Poll** — the worker runs your trigger JQL (e.g. `status = Ready AND labels = hive`), or lists GitHub issues labelled `hive:ready`.
 2. **Claim** — it writes its agent id to the ticket and reads it back; two workers racing resolve to one winner.
 3. **Triage** — Claude Code, read-only, inspects the repo and decides: dispatch with notes, ask one question, or reject.
-4. **Branch** — a git worktree on `hive/<KEY>`, resumed if it already exists.
+4. **Branch** — a git worktree on `hive/<name>`, e.g. `hive/github-issues-12-create-website`, resumed if it already exists.
 5. **Run** — one of the repository's agents (`.hive-dispatch/agents.yaml`: Claude Code or Codex, one ticket each) implements the ticket under the repo's `.hive-dispatch/policy.yaml`, with a step budget and a wall-clock timeout.
 6. **Commit and push** — the agent commits as it goes; the worker safety-commits anything left and pushes.
 7. **PR and report** — a pull request is opened (or found), and the ticket gets a comment and a status change. Every stop, including budget and timeout, leaves the ticket in a state a human understands.
@@ -52,7 +52,7 @@ hivedispatch check -live          # verifies each repository's tracker, reports 
 
 hivedispatch run -once -executor fake -placeholder   # dry run: ticket → branch → PR, no agent
 hivedispatch run                                     # the real thing
-hivedispatch once SCRUM-42                           # drive one ticket by hand
+hivedispatch once jira-scrum-42                       # drive one ticket by hand (key or name)
 hivedispatch status                                  # what has run, from the state branch
 ```
 

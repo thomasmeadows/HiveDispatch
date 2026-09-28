@@ -71,29 +71,56 @@ func New(cfg config.GitHubConfig, repos []config.RepoConfig, opts ...Option) (*C
 	return c, nil
 }
 
-// keyToRef maps "PROJECT-12" to the repo it belongs to and the issue number.
+// Board is the board part of a GitHub ticket key: PROJECT<N> when the
+// repository mirrors its issues to Projects board number N, else ISSUES.
+// Issue 12 is then ISSUES-12 or PROJECT2-12 (the number is always the
+// issue's), and the worker puts the ticket_prefix in front.
+func Board(p config.GitHubProject) string {
+	if p.Number > 0 {
+		return fmt.Sprintf("PROJECT%d", p.Number)
+	}
+	return "ISSUES"
+}
+
+// keyToRef maps "BOARD-12" to the repository and issue number. The board
+// does not say which repository, so keys work for a client over exactly
+// one repository — which is how the worker builds them.
 func (c *Client) keyToRef(key string) (repo string, number int, err error) {
-	project, num, ok := strings.Cut(key, "-")
+	board := Board(c.cfg.Project)
+	num, ok := strings.CutPrefix(strings.ToUpper(key), board+"-")
 	if !ok {
-		return "", 0, fmt.Errorf("ghissues: %q is not PROJECT-N", key)
+		return "", 0, fmt.Errorf("ghissues: %q is not %s-N", key, board)
 	}
 	n, err := strconv.Atoi(num)
 	if err != nil || n <= 0 {
-		return "", 0, fmt.Errorf("ghissues: %q is not PROJECT-N", key)
+		return "", 0, fmt.Errorf("ghissues: %q is not %s-N", key, board)
 	}
-	for _, r := range c.repos {
-		if strings.EqualFold(r.Project, project) {
-			return r.Name, n, nil
+	if len(c.repos) != 1 {
+		return "", 0, fmt.Errorf("ghissues: %q is ambiguous across %d repositories", key, len(c.repos))
+	}
+	return c.repos[0].Name, n, nil
+}
+
+// refFromURL reads owner/repo and the issue number from an issue's
+// html_url, https://github.com/OWNER/REPO/issues/N.
+func refFromURL(raw string) (repo string, number int, err error) {
+	u, err := url.Parse(raw)
+	if err == nil {
+		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+		if len(parts) == 4 && parts[2] == "issues" {
+			if n, err := strconv.Atoi(parts[3]); err == nil && n > 0 {
+				return parts[0] + "/" + parts[1], n, nil
+			}
 		}
 	}
-	return "", 0, fmt.Errorf("ghissues: no repo configured with project %q", project)
+	return "", 0, fmt.Errorf("ghissues: %q is not an issue URL", raw)
 }
 
 // refToKey maps a repo and issue number back to a ticket key.
 func (c *Client) refToKey(repo string, number int) (string, bool) {
 	for _, r := range c.repos {
 		if strings.EqualFold(r.Name, repo) {
-			return fmt.Sprintf("%s-%d", strings.ToUpper(r.Project), number), true
+			return fmt.Sprintf("%s-%d", Board(c.cfg.Project), number), true
 		}
 	}
 	return "", false

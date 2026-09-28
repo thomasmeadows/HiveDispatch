@@ -115,7 +115,7 @@ func (c *Client) Check(ctx context.Context) (CheckReport, error) {
 		// GitHub cannot report a fine-grained token's permissions, so probe
 		// with a write that changes nothing: re-send the body as it is.
 		rep.SampleIssue = tickets[0].Key
-		repo, n, err := c.keyToRef(tickets[0].Key)
+		repo, n, err := refFromURL(tickets[0].URL)
 		if err != nil {
 			return rep, err
 		}

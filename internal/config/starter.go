@@ -106,10 +106,10 @@ const repoStarterHead = `# HiveDispatch settings for this repository, read by th
 # follow (tools, model, budget) in policy.yaml, both next to this file.
 # Reference: docs/config.md in the HiveDispatch repository.
 
-# Ticket key prefix. Jira: the project key (SCRUM for SCRUM-4). GitHub Issues: any
-# short upper-case tag you choose; issue #12 becomes KEY-12. Unique per worker.
-project: KEY
+`
 
+// repoStarterOrigin follows the tracker lines of every repo.yaml starter.
+const repoStarterOrigin = `
 # name, url and default_branch default to the origin remote; set them only to override.
 # name: owner/repo
 # url: git@github.com:owner/repo.git
@@ -117,8 +117,14 @@ project: KEY
 
 `
 
-const repoStarterJira = repoStarterHead + `tracker: jira
+const repoStarterJira = repoStarterHead + `# Where this repository's tickets come from: jira, or github (its GitHub Issues).
+ticket_tracker: jira
 
+# First part of every ticket's name: prefix-board-number-title, e.g.
+# jira-scrum-4-create-website, where SCRUM-4 is the Jira key. Default: JIRA. Set a
+# different one when two repositories on this machine use the same tracker.
+# ticket_prefix: JIRA
+` + repoStarterOrigin + `
 jira:
   # Your Jira Cloud site. The account (jira.email) is in the worker config.
   base_url: https://YOURTEAM.atlassian.net
@@ -148,8 +154,13 @@ jira:
 const repoStarterGitHub = repoStarterHead + `# The queue is this repository's GitHub Issues: state is carried by labels and the
 # claim by a hidden marker in the issue body. "hivedispatch init -github" creates the
 # labels; the GitHub token needs Issues read/write.
-tracker: github
+ticket_tracker: github
 
+# First part of every ticket's name: prefix-board-number-title, e.g.
+# github-myrepo-12-create-website for issue #12 of this repository. Default: GITHUB.
+# Set a different one when two repositories on this machine use the same tracker.
+# ticket_prefix: GITHUB
+` + repoStarterOrigin + `
 # github:
 #   # State labels. Defaults shown.
 #   labels:

@@ -32,8 +32,9 @@ func adminMux(labels map[string][]string, created *[]string) *http.ServeMux {
 		w.WriteHeader(201)
 		_, _ = w.Write([]byte(`{}`))
 	})
-	mux.HandleFunc("GET /repos/{o}/{r}/issues", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`[{"number":1,"title":"x","labels":[{"name":"hive:ready"}],"updated_at":"2026-09-20T10:00:00Z"}]`))
+	mux.HandleFunc("GET /repos/{o}/{r}/issues", func(w http.ResponseWriter, r *http.Request) {
+		url := "https://github.com/" + r.PathValue("o") + "/" + r.PathValue("r") + "/issues/1"
+		_, _ = w.Write([]byte(`[{"number":1,"title":"x","html_url":"` + url + `","labels":[{"name":"hive:ready"}],"updated_at":"2026-09-20T10:00:00Z"}]`))
 	})
 	mux.HandleFunc("GET /repos/{o}/{r}/issues/{n}/comments", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`[]`)) })
 	mux.HandleFunc("GET /repos/{o}/{r}/issues/{n}", func(w http.ResponseWriter, _ *http.Request) {
@@ -61,7 +62,7 @@ var readOnlyToken bool
 func TestCheckReportsMissingLabels(t *testing.T) {
 	var created []string
 	labels := map[string][]string{"o/r": {"hive:ready", "hive:in-progress", "bug"}, "o/other": nil}
-	c := newTestClient(t, adminMux(labels, &created))
+	c := newMultiClient(t, adminMux(labels, &created))
 	rep, err := c.Check(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +86,7 @@ func TestCheckDetectsReadOnlyToken(t *testing.T) {
 	t.Cleanup(func() { readOnlyToken = false })
 	var created []string
 	labels := map[string][]string{"o/r": {"hive:ready", "hive:in-progress", "hive:needs-info", "hive:in-review", "hive:needs-human"}, "o/other": {"hive:ready", "hive:in-progress", "hive:needs-info", "hive:in-review", "hive:needs-human"}}
-	c := newTestClient(t, adminMux(labels, &created))
+	c := newMultiClient(t, adminMux(labels, &created))
 	rep, err := c.Check(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +99,7 @@ func TestCheckDetectsReadOnlyToken(t *testing.T) {
 func TestEnsureLabelsCreatesOnlyMissing(t *testing.T) {
 	var created []string
 	labels := map[string][]string{"o/r": {"hive:ready", "hive:in-progress", "hive:needs-info", "hive:in-review", "hive:needs-human"}, "o/other": {"hive:ready"}}
-	c := newTestClient(t, adminMux(labels, &created))
+	c := newMultiClient(t, adminMux(labels, &created))
 	n, err := c.EnsureLabels(context.Background())
 	if err != nil || n != 4 {
 		t.Fatalf("n=%d err=%v created=%v", n, err, created)
