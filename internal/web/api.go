@@ -42,9 +42,9 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
 	if err := cfg.Validate(); err != nil {
 		out["config_problem"] = err.Error()
 	}
-	repos := make([]map[string]string, 0, len(cfg.Repos))
+	repos := make([]map[string]any, 0, len(cfg.Repos))
 	for _, r := range cfg.Repos {
-		repos = append(repos, map[string]string{"project": r.Project, "tracker": r.Tracker, "name": r.Name, "path": r.Path})
+		repos = append(repos, map[string]any{"project": r.Project, "tracker": r.Tracker, "name": r.Name, "path": r.Path, "agents": r.Agents})
 	}
 	out["agent_id"] = cfg.AgentID
 	out["max_concurrent"] = cfg.MaxConcurrent

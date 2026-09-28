@@ -194,8 +194,12 @@ func TestOverviewRunsAndCheck(t *testing.T) {
 	if code := e.get(t, "/api/overview", &ov); code != 200 || ov["agent_id"] != "w1" || ov["config_exists"] != true {
 		t.Errorf("overview = %d %v", code, ov)
 	}
-	if repos, _ := ov["repos"].([]any); len(repos) != 1 {
-		t.Errorf("overview repos = %v (problem %v)", ov["repos"], ov["config_problem"])
+	repos, _ := ov["repos"].([]any)
+	if len(repos) != 1 {
+		t.Fatalf("overview repos = %v (problem %v)", ov["repos"], ov["config_problem"])
+	}
+	if agents, _ := repos[0].(map[string]any)["agents"].([]any); len(agents) != 1 {
+		t.Errorf("overview agents = %v, want the default one", repos[0])
 	}
 	var runs []state.Run
 	if code := e.get(t, "/api/runs", &runs); code != 200 || len(runs) != 2 || runs[0].Ticket != "HD-2" {

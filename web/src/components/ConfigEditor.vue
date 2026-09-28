@@ -154,6 +154,7 @@ watch(() => [props.kind, props.path], load, { immediate: true })
         <p v-if="!file.exists" class="muted">Filling in the form creates the file. The YAML tab has a commented starter.</p>
         <section v-for="sec in visibleSections" :key="sec.title">
           <h3>{{ sec.title }}</h3>
+          <p v-if="sec.note" class="muted note">{{ sec.note }}</p>
           <div class="grid">
             <label v-for="f in sec.fields" :key="f.key" :class="['field', { wide: f.type === 'textarea' || f.type === 'list' || f.type === 'pathlist' }]">
               <span class="label">{{ f.label }} <code class="key">{{ f.key }}</code></span>
@@ -205,6 +206,7 @@ watch(() => [props.kind, props.path], load, { immediate: true })
 
 <style scoped>
 .path { margin-bottom: 12px; overflow-wrap: anywhere; }
+.note { margin: -4px 0 10px; font-size: 13px; }
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

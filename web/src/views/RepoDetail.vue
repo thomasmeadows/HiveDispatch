@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { api } from '../api.js'
+import AgentsPanel from '../components/AgentsPanel.vue'
 import ConfigEditor from '../components/ConfigEditor.vue'
 import { policySchema, repoSchema } from '../schemas.js'
 
@@ -113,15 +114,17 @@ watch(() => props.path, load, { immediate: true })
         </div>
 
         <div class="tabs">
-          <button :class="{ active: tab === 'repo' }" @click="tab = 'repo'">Tracker · repo.yaml</button>
-          <button :class="{ active: tab === 'policy' }" @click="tab = 'policy'">Agent policy · policy.yaml</button>
+          <button :class="{ active: tab === 'repo' }" @click="tab = 'repo'">Ticket Settings</button>
+          <button :class="{ active: tab === 'agents' }" @click="tab = 'agents'">Agents</button>
+          <button :class="{ active: tab === 'policy' }" @click="tab = 'policy'">Agent Policies</button>
         </div>
         <div class="card">
           <ConfigEditor v-if="tab === 'repo'" key="repo" kind="repo" :path="path" :schema="repoSchema" @saved="load" />
+          <AgentsPanel v-else-if="tab === 'agents'" :path="path" />
           <template v-else>
             <div class="notice warn">
-              The worker reads the policy from each ticket’s worktree, so edits here apply once they are committed and
-              pushed to the default branch.
+              Every agent of this repository follows this policy. The worker reads it from each ticket’s worktree, so
+              edits apply once they are committed and pushed to the default branch.
             </div>
             <ConfigEditor key="policy" kind="policy" :path="path" :schema="policySchema" />
           </template>

@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api } from '../api.js'
 
 const ov = ref(null)
@@ -41,6 +41,7 @@ async function loadRuns() {
   }
 }
 
+const agentCount = computed(() => ((ov.value && ov.value.repos) || []).reduce((n, r) => n + (r.agents || []).length, 0))
 const phaseClass = (p) => ({ done: 'ok', pr_opened: 'ok', blocked: 'bad', working: 'warn', claimed: 'warn', planned: 'warn' })[p] || ''
 const when = (t) => (t ? new Date(t).toLocaleString() : '')
 
@@ -72,7 +73,7 @@ onMounted(async () => {
       <template v-else>
         <div class="stats">
           <div class="stat"><div class="label">Agent</div><div class="value">{{ ov.agent_id || '—' }}</div></div>
-          <div class="stat"><div class="label">Executor</div><div class="value">{{ ov.executor }}</div></div>
+          <div class="stat"><div class="label">Agents</div><div class="value">{{ agentCount }}</div></div>
           <div class="stat"><div class="label">Tickets at once</div><div class="value">{{ ov.max_concurrent }}</div></div>
           <div class="stat"><div class="label">Enrolled repos</div><div class="value">{{ (ov.repos || []).length }}</div></div>
           <div class="stat"><div class="label">Poll every</div><div class="value">{{ ov.poll_interval }}</div></div>
@@ -86,15 +87,16 @@ onMounted(async () => {
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Project</th><th>Tracker</th><th>Repository</th><th>Path</th></tr></thead>
+              <thead><tr><th>Project</th><th>Tracker</th><th>Repository</th><th>Agents</th><th>Path</th></tr></thead>
               <tbody>
                 <tr v-for="r in ov.repos" :key="r.path">
                   <td><strong>{{ r.project }}</strong></td>
                   <td>{{ r.tracker }}</td>
                   <td>{{ r.name }}</td>
+                  <td>{{ (r.agents || []).map((a) => a.name).join(', ') }}</td>
                   <td class="mono"><router-link :to="{ name: 'repo', query: { path: r.path } }">{{ r.path }}</router-link></td>
                 </tr>
-                <tr v-if="!(ov.repos || []).length"><td colspan="4" class="muted">None yet — enrol one from Repos.</td></tr>
+                <tr v-if="!(ov.repos || []).length"><td colspan="5" class="muted">None yet — enrol one from Repos.</td></tr>
               </tbody>
             </table>
           </div>

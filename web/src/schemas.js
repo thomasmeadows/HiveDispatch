@@ -20,7 +20,6 @@ export const workerSchema = [
       { key: 'agent_id', label: 'Agent ID', type: 'text', help: 'Names this machine on claims and comments.' },
       { key: 'workroot', label: 'Work root', type: 'text', placeholder: '~/.local/share/hivedispatch', help: 'Where clones, worktrees and local state live.' },
       { key: 'max_concurrent', label: 'Tickets at once', type: 'number', placeholder: '1' },
-      { key: 'executor', label: 'Executor', type: 'select', options: ['', 'claude', 'codex', 'fake'], placeholder: 'claude' },
       { key: 'state_store', label: 'State store', type: 'select', options: ['', 'branch', 'local'], placeholder: 'branch' },
       { key: 'retention_days', label: 'Retention (days)', type: 'number', placeholder: '30', help: 'Prune logs and finished runs older than this.' },
     ],
@@ -46,12 +45,10 @@ export const workerSchema = [
     ],
   },
   {
-    title: 'Executors and triage',
+    title: 'Coding agents and triage',
     fields: [
-      { key: 'claude.binary', label: 'Claude binary', type: 'text', placeholder: 'claude' },
-      { key: 'claude.model', label: 'Claude model', type: 'text', help: 'Used when a repository’s policy sets none.' },
+      { key: 'claude.binary', label: 'Claude binary', type: 'text', placeholder: 'claude', help: 'Which agents run it, and with which model, is set per repository under Repos → Agents.' },
       { key: 'codex.binary', label: 'Codex binary', type: 'text', placeholder: 'codex' },
-      { key: 'codex.model', label: 'Codex model', type: 'text' },
       { key: 'triage.kind', label: 'Triage', type: 'select', options: ['', 'claude', 'passthrough'], placeholder: 'claude' },
       { key: 'triage.model', label: 'Triage model', type: 'text' },
       { key: 'triage.step_budget', label: 'Triage step budget', type: 'number', placeholder: '40' },
@@ -65,18 +62,16 @@ export const workerSchema = [
       { key: 'github.api_url', label: 'GitHub API URL', type: 'text', placeholder: 'https://api.github.com', help: 'The token comes from HIVE_GITHUB_TOKEN or gh auth.' },
     ],
   },
-]
-
-export const supervisorSchema = [
   {
-    title: 'Model',
+    title: 'Supervisor',
+    note: 'The assistant in the chat on the right. After saving, press New in the chat to use new settings.',
     fields: [
-      { key: 'provider', label: 'Provider', type: 'select', options: ['', 'anthropic', 'openai', 'deepseek', 'huggingface', 'ollama'], help: 'Empty picks from whichever API key is set in the environment.' },
-      { key: 'model', label: 'Model', type: 'text', help: 'Empty uses the provider’s default; check the provider’s catalogue.' },
-      { key: 'base_url', label: 'Base URL', type: 'text' },
-      { key: 'api_key_env', label: 'API key variable', type: 'text', help: 'The environment variable holding the key — never the key itself.' },
-      { key: 'max_tokens', label: 'Max tokens', type: 'number', placeholder: '4096' },
-      { key: 'step_budget', label: 'Tool calls per turn', type: 'number', placeholder: '20' },
+      { key: 'supervisor.provider', label: 'Provider', type: 'select', options: ['', 'anthropic', 'openai', 'deepseek', 'huggingface', 'ollama'], help: 'Empty picks from whichever API key is set in the environment.' },
+      { key: 'supervisor.model', label: 'Model', type: 'text', help: 'Empty uses the provider’s default; check the provider’s catalogue.' },
+      { key: 'supervisor.base_url', label: 'Base URL', type: 'text' },
+      { key: 'supervisor.api_key_env', label: 'API key variable', type: 'text', help: 'The environment variable holding the key — never the key itself.' },
+      { key: 'supervisor.max_tokens', label: 'Max tokens', type: 'number', placeholder: '4096' },
+      { key: 'supervisor.step_budget', label: 'Tool calls per turn', type: 'number', placeholder: '20' },
     ],
   },
 ]
