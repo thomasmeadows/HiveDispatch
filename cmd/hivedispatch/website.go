@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,7 +37,7 @@ func runWebsite(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	wo := websiteOptions{cfgPath: *cfgPath, open: *open}
+	wo := websiteOptions{cfgPath: *cfgPath, open: *open, password: strings.TrimSpace(os.Getenv("HIVE_WEBSITE_PASSWORD"))}
 	if *dev {
 		dir, err := findWebDir(*webDir)
 		if err != nil {
@@ -59,6 +60,8 @@ type websiteOptions struct {
 	cfgPath string
 	webDir  string // -dev: the web/ source to run Vite in; empty serves the embedded build
 	open    bool   // launch a browser
+	// password, from HIVE_WEBSITE_PASSWORD, is required on every request.
+	password string
 }
 
 // findWebDir resolves -web, or looks for web/vite.config.js in the working
@@ -95,7 +98,11 @@ func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdou
 	var allow []string
 	if host, _, err := net.SplitHostPort(ln.Addr().String()); err == nil {
 		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-			fmt.Fprintf(stderr, "warning: listening on %s, not loopback — anyone who can reach it can edit your config.\n", ln.Addr())
+			if wo.password == "" {
+				fmt.Fprintf(stderr, "warning: listening on %s, not loopback — anyone who can reach it can edit your config. Set HIVE_WEBSITE_PASSWORD to require a password.\n", ln.Addr())
+			} else {
+				fmt.Fprintf(stderr, "note: listening on %s with a password; over plain HTTP it crosses the network in the clear, so put TLS (a reverse proxy) or an SSH tunnel in front.\n", ln.Addr())
+			}
 			if ip == nil || !ip.IsUnspecified() {
 				allow = append(allow, host)
 			}
@@ -115,7 +122,7 @@ func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdou
 		defer func() { stopVite(); <-v.Done() }() // never leave Vite running behind us
 	}
 	srv, err := web.New(web.Options{
-		ConfigPath: cfgPath, Exe: exe, AllowHosts: allow, Frontend: frontend,
+		ConfigPath: cfgPath, Exe: exe, AllowHosts: allow, Frontend: frontend, Password: wo.password,
 		ListRuns: func(ctx context.Context) ([]state.Run, error) {
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
@@ -142,6 +149,9 @@ func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdou
 	hs := &http.Server{Handler: srv, ReadHeaderTimeout: 10 * time.Second}
 	url := "http://" + displayAddr(ln.Addr())
 	fmt.Fprintf(stdout, "HiveDispatch website on %s (config %s) — Ctrl-C to stop\n", url, cfgPath)
+	if wo.password != "" {
+		fmt.Fprintln(stdout, "password required (HIVE_WEBSITE_PASSWORD)")
+	}
 	if wo.webDir != "" {
 		fmt.Fprintf(stdout, "dev mode: serving %s through Vite with hot reload\n", wo.webDir)
 	}
