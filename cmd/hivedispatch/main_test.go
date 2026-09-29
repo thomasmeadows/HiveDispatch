@@ -472,6 +472,45 @@ func TestWebsiteServesUntilCancelled(t *testing.T) {
 	}
 }
 
+func TestWebsitePassword(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var out, errb syncBuffer
+	done := make(chan int, 1)
+	wo := websiteOptions{cfgPath: filepath.Join(t.TempDir(), "config.yaml"), password: "s3cret-value"}
+	go func() { done <- serveWebsite(ctx, ln, wo, &out, &errb) }()
+	get := func(pass string) int {
+		req, err := http.NewRequest(http.MethodGet, "http://"+ln.Addr().String()+"/api/overview", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pass != "" {
+			req.SetBasicAuth("me", pass)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		return res.StatusCode
+	}
+	if code := get(""); code != http.StatusUnauthorized {
+		t.Errorf("no password = %d, want 401", code)
+	}
+	if code := get("s3cret-value"); code != http.StatusOK {
+		t.Errorf("right password = %d", code)
+	}
+	cancel()
+	<-done
+	if !strings.Contains(out.String(), "HIVE_WEBSITE_PASSWORD") || strings.Contains(out.String()+errb.String(), "s3cret-value") {
+		t.Errorf("stdout should mention the variable but never the password: %q %q", out.String(), errb.String())
+	}
+}
+
 func TestWebsiteDevNeedsTheSource(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := run([]string{"website", "-dev", "-web", t.TempDir()}, &out, &errb); code != 1 || !strings.Contains(errb.String(), "vite.config.js") {

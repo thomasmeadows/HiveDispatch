@@ -3,10 +3,15 @@
 // the run records and a supervisor chat, plus the embedded Vue front end
 // that uses it. It is meant for the operator's own machine: it answers only
 // requests addressed to a loopback host, and refuses cross-site writes.
+// With a password set (HIVE_WEBSITE_PASSWORD) it asks every request for it
+// through HTTP Basic auth and then answers any host, so one operator can run
+// it on hosted hardware.
 package web
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -43,6 +48,9 @@ type Options struct {
 	Frontend http.Handler
 	// Getenv reads the environment (supervisor API keys); nil is os.Getenv.
 	Getenv func(string) string
+	// Password, when set, is required on every request (HTTP Basic auth, any
+	// user name) and lifts the loopback-host restriction. Empty: no auth.
+	Password string
 }
 
 // Server is the HTTP handler. Close ends a supervisor turn in flight.
@@ -50,6 +58,7 @@ type Server struct {
 	o    Options
 	mux  *http.ServeMux
 	chat *chat
+	pass *[sha256.Size]byte // hash of o.Password; nil when there is none
 }
 
 // New builds the server.
@@ -62,6 +71,10 @@ func New(o Options) (*Server, error) {
 		o.Assets = sub
 	}
 	s := &Server{o: o, mux: http.NewServeMux(), chat: newChat(o.NewChat)}
+	if o.Password != "" {
+		h := sha256.Sum256([]byte(o.Password))
+		s.pass = &h
+	}
 	s.routes()
 	return s, nil
 }
@@ -97,9 +110,15 @@ func (s *Server) routes() {
 	}
 }
 
-// ServeHTTP applies the host and origin checks, then routes.
+// ServeHTTP applies the password, host and origin checks, then routes.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !s.hostAllowed(r.Host) {
+	if s.pass != nil {
+		if !s.authorized(r) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="HiveDispatch", charset="UTF-8"`)
+			http.Error(w, "password required", http.StatusUnauthorized)
+			return
+		}
+	} else if !s.hostAllowed(r.Host) {
 		http.Error(w, "forbidden host", http.StatusForbidden)
 		return
 	}
@@ -110,6 +129,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.mux.ServeHTTP(w, r)
+}
+
+// authorized reports whether r carries the password; the user name is
+// ignored. Comparing hashes keeps the check constant-time in the length too.
+// Once a request has it, the host check is moot: a DNS-rebinding page is a
+// different origin, so the browser never sends it the credentials.
+func (s *Server) authorized(r *http.Request) bool {
+	_, pass, ok := r.BasicAuth()
+	if !ok {
+		return false
+	}
+	got := sha256.Sum256([]byte(pass))
+	return subtle.ConstantTimeCompare(got[:], s.pass[:]) == 1
 }
 
 // hostAllowed rejects requests addressed to any name but loopback (or an

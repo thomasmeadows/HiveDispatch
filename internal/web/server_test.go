@@ -182,6 +182,63 @@ func TestHostAndOriginChecks(t *testing.T) {
 	}
 }
 
+func TestPasswordGate(t *testing.T) {
+	assets := fstest.MapFS{"index.html": {Data: []byte("x")}}
+	s, err := New(Options{Assets: assets, Password: "hunter2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	do := func(method, host, path, pass string, hdr map[string]string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "http://"+host+path, strings.NewReader("{}"))
+		if pass != "" {
+			req.SetBasicAuth("anyone", pass)
+		}
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		return rec
+	}
+	jsonHdr := map[string]string{"Content-Type": "application/json"}
+	for _, path := range []string{"/", "/api/chat", "/api/nope"} {
+		rec := do(http.MethodGet, "localhost:7878", path, "", nil)
+		if rec.Code != http.StatusUnauthorized || !strings.HasPrefix(rec.Header().Get("WWW-Authenticate"), "Basic ") {
+			t.Errorf("GET %s without password = %d %q, want 401 with a Basic challenge", path, rec.Code, rec.Header().Get("WWW-Authenticate"))
+		}
+	}
+	if rec := do(http.MethodGet, "localhost:7878", "/", "wrong", nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("wrong password = %d, want 401", rec.Code)
+	}
+	if rec := do(http.MethodPost, "localhost:7878", "/api/chat/cancel", "wrong", jsonHdr); rec.Code != http.StatusUnauthorized {
+		t.Errorf("POST with wrong password = %d, want 401", rec.Code)
+	}
+	if rec := do(http.MethodGet, "localhost:7878", "/", "hunter2", nil); rec.Code != http.StatusOK {
+		t.Errorf("right password = %d", rec.Code)
+	}
+	// A password answers any host: that is what lets the site be hosted.
+	if rec := do(http.MethodPost, "hive.example.com", "/api/chat/cancel", "hunter2", jsonHdr); rec.Code != http.StatusOK {
+		t.Errorf("POST via a public host name = %d", rec.Code)
+	}
+	if rec := do(http.MethodGet, "hive.example.com", "/", "", nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("public host without password = %d, want 401", rec.Code)
+	}
+	// The origin checks still apply behind the password.
+	if rec := do(http.MethodPost, "hive.example.com", "/api/chat/cancel", "hunter2", map[string]string{"Content-Type": "application/json", "Origin": "https://evil.example"}); rec.Code != http.StatusForbidden {
+		t.Errorf("cross-origin POST with password = %d, want 403", rec.Code)
+	}
+
+	open, err := New(Options{Assets: assets})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	open.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://hive.example.com/", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("public host without a password configured = %d, want 403", rec.Code)
+	}
+}
+
 func TestOverviewRunsAndCheck(t *testing.T) {
 	now := time.Now()
 	e := newEnv(t, Options{

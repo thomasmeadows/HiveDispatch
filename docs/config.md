@@ -136,6 +136,7 @@ The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budg
 |---|---|---|
 | `HIVE_JIRA_TOKEN` | when a repository uses Jira | Atlassian API token for `jira.email` |
 | `HIVE_GITHUB_TOKEN` | when a repository uses GitHub Issues | Token for opening PRs and, for repositories with `tracker: github`, for reading and writing issues. Classic or fine-grained, interchangeably — see the token table in `docs/setup.md` §5 for which permissions each needs; a user-owned Projects board requires a classic token. If unset, `gh auth token` and the git credential helper are tried; with none and Jira, branches are pushed and the ticket asks a human to open the PR |
+| `HIVE_WEBSITE_PASSWORD` | no | When set, `hivedispatch website` asks every request for this password (HTTP Basic auth, any user name), declines the rest with 401, and answers requests for any host name instead of loopback only. One shared password for one operator — not a multi-user login; see the README's hosted-hardware notes |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` / `HF_TOKEN` | with `hivedispatch supervisor` | the supervisor's model key; which one is read is `supervisor.api_key_env` (see below) |
 
 ## Commands
