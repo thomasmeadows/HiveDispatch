@@ -354,3 +354,16 @@ Rejected:
 - **Planning replacing triage:** tickets that need no plan would pay for one.
 - **Review comments that never move the ticket:** the send-back loop is what makes a review agent more than a linter.
 - **Posting REQUEST_CHANGES:** GitHub would reject it from the PR's own author.
+
+## 2026-09-29 — A single password for a hosted website
+
+Decided: when `HIVE_WEBSITE_PASSWORD` is set, `hivedispatch website` requires it on every request through HTTP Basic auth, in the same `ServeHTTP` front door as the host and origin checks. The user name is ignored. A request without the password gets 401 before any route runs, and that covers the API, the assets, the chat event stream and the `-dev` Vite proxy.
+
+With a password set, the loopback-only `Host` check is lifted, so a hosted site can be reached by its DNS name or public IP. That check exists to stop DNS rebinding, and a rebinding page is a different origin, so the browser never sends it the credentials. The JSON and same-origin checks on writes still apply.
+
+It is documented as one shared password for one operator, not a multi-user login. The docs also say to put TLS in front, because Basic auth over plain HTTP exposes the password.
+
+Rejected:
+- **A login page with session cookies:** it needs front-end work, cookie and CSRF handling, and a session store, all to serve one person. The browser's Basic prompt works with `fetch`, `EventSource` and the HMR websocket unchanged.
+- **A key in `config.yaml`:** the website and the supervisor rewrite that file and show its diffs, so a secret there would leak into both. Every other secret is already an environment variable.
+- **User accounts:** out of scope. Someone who needs several users should put an authenticating reverse proxy in front.

@@ -84,6 +84,22 @@ The **Configuration** page edits the worker config, supervisor settings included
 
 By default the site listens only on loopback. On a remote worker, reach it through an SSH tunnel (`ssh -L 7878:localhost:7878 worker-host`) rather than binding `-addr` to a public interface: anyone who can reach the site can edit your config.
 
+### Running the website on hosted hardware
+
+To reach the site on a VPS or another hosted machine without a tunnel, set a password and bind a public address:
+
+```sh
+export HIVE_WEBSITE_PASSWORD="$(openssl rand -base64 24)"   # keep a copy somewhere safe
+hivedispatch website -addr 0.0.0.0:7878
+```
+
+The browser asks for it once; any user name works. Every request without it gets `401 Unauthorized`, and while it is set the site answers whatever host name it is reached by.
+
+This is **one shared password for one person, and it is not suitable for multiple users**. There are no accounts, no roles, no logout and no record of who changed what. Anyone with the password can edit the config and drive the supervisor. Other things to know:
+
+- **Put TLS in front.** Basic auth sends the password with every request, so over plain HTTP anyone on the path can read it. Run a reverse proxy such as Caddy or nginx with HTTPS, or keep using the SSH tunnel.
+- **Use a long random password.** Failed attempts are not rate-limited or locked out.
+
 ## Downloads and docs
 
 Prebuilt binaries for Linux and macOS are on the [releases page](https://github.com/thomasmeadows/HiveDispatch/releases). Every step's prerequisites are in [`docs/setup.md`](docs/setup.md); every key in [`docs/config.md`](docs/config.md).
