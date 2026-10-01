@@ -25,7 +25,8 @@ type Agent struct {
 	Role     string `yaml:"role,omitempty" json:"role"`   // planning, coding (default) or review
 	Executor string `yaml:"executor" json:"executor"`     // claude (default), codex, langgraph or fake
 	Model    string `yaml:"model,omitempty" json:"model"` // default: the policy's model, then the CLI's
-	// CodeWith is langgraph only: the CLI its code node runs (claude, codex or fake).
+	// CodeWith is langgraph only: what its code node runs — claude, codex or
+	// fake, or langgraph for HiveDispatch's own coding agent (coding role only).
 	CodeWith string `yaml:"code_with,omitempty" json:"code_with,omitempty"`
 }
 
@@ -90,8 +91,11 @@ func ParseAgents(raw []byte) ([]Agent, error) {
 			if a.CodeWith == "" {
 				a.CodeWith = "claude"
 			}
-			if a.CodeWith != "claude" && a.CodeWith != "codex" && a.CodeWith != "fake" {
-				problems = append(problems, fmt.Sprintf("agents[%d].code_with: want claude, codex or fake, got %q", i, a.CodeWith))
+			if a.CodeWith != "claude" && a.CodeWith != "codex" && a.CodeWith != "fake" && a.CodeWith != "langgraph" {
+				problems = append(problems, fmt.Sprintf("agents[%d].code_with: want claude, codex, langgraph or fake, got %q", i, a.CodeWith))
+			}
+			if a.CodeWith == "langgraph" && a.Role != RoleCoding {
+				problems = append(problems, fmt.Sprintf("agents[%d].code_with: langgraph is for coding agents only; a %s agent runs read-only through claude or codex", i, a.Role))
 			}
 		default:
 			problems = append(problems, fmt.Sprintf("agents[%d].executor: want claude, codex, langgraph or fake, got %q", i, a.Executor))

@@ -161,6 +161,7 @@ export const policySchema = [
       { key: 'checks', label: 'Checks', type: 'list', help: 'Commands that must pass after each code step, one per line, e.g. go test ./... The workflow fixes until they pass.' },
       { key: 'graph.max_fix_rounds', label: 'Fix rounds', type: 'number', placeholder: '3', help: 'Code → checks → fix loops before giving up on green.' },
       { key: 'graph.max_review_rounds', label: 'Review rounds', type: 'number', placeholder: '1', help: 'Self-review → fix loops.' },
+      { key: 'executor.langgraph.allowed_commands', label: 'Allowed commands', type: 'list', help: 'code_with: langgraph only. Command prefixes its shell may run, one per line, e.g. go test. Run without a shell; the checks above are always allowed.' },
     ],
   },
   {

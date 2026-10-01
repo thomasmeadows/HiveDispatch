@@ -35,6 +35,12 @@ type Config struct {
 	Graph    GraphPolicy    `yaml:"-"`      // decoded in Parse, where explicit zeros are kept
 }
 
+// LangGraphConfig is the policy for HiveDispatch's own coding agent
+// (code_with: langgraph).
+type LangGraphConfig struct {
+	AllowedCommands []string `yaml:"allowed_commands"` // word prefixes run_command may use; checks are always allowed
+}
+
 // GraphPolicy bounds a langgraph run's loops.
 type GraphPolicy struct {
 	MaxFixRounds    int // code → checks → fix loops; default 3
@@ -53,8 +59,9 @@ type ExecutorConfig struct {
 	MaxBudgetUSD   float64  `yaml:"max_budget_usd"`
 	// Path lists directories prepended to PATH for the agent, so tools the
 	// policy allows by name (e.g. golangci-lint) resolve. ~ and $VAR expand.
-	Path  []string    `yaml:"path"`
-	Codex CodexConfig `yaml:"codex"`
+	Path      []string        `yaml:"path"`
+	Codex     CodexConfig     `yaml:"codex"`
+	LangGraph LangGraphConfig `yaml:"langgraph"`
 }
 
 // CodexConfig is the per-repo policy for the codex executor.
@@ -144,6 +151,11 @@ func Parse(raw []byte) (Config, error) {
 	for i, chk := range c.Checks {
 		if strings.TrimSpace(chk) == "" {
 			return c, fmt.Errorf("%s: checks[%d] is empty", FileName, i)
+		}
+	}
+	for i, a := range c.Executor.LangGraph.AllowedCommands {
+		if strings.TrimSpace(a) == "" {
+			return c, fmt.Errorf("%s: executor.langgraph.allowed_commands[%d] is empty", FileName, i)
 		}
 	}
 	return c, nil

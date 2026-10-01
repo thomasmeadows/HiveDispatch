@@ -115,7 +115,7 @@ The workflow is optional and needs Python only on workers that use it. Install t
 pipx install "git+https://github.com/thomasmeadows/HiveDispatch@v0.3.0#subdirectory=graph"
 ```
 
-`hivedispatch check` prints this command for your version. See [`docs/config.md`](docs/config.md) for `code_with`, `checks` and `graph:`.
+`hivedispatch check` prints this command for your version. With `code_with: langgraph`, the code step runs HiveDispatch's own coding agent on that model instead of Claude Code or Codex, with its shell limited to the commands the repository's policy allows. See [`docs/config.md`](docs/config.md) for `code_with`, `checks` and `graph:`.
 
 ## Tracing with LangSmith
 

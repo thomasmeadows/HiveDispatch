@@ -95,7 +95,7 @@ agents:
 | `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<machine_id>/<name>` |
 | `agents[].role` | `coding` | Which board column the agent works: `planning`, `coding` or `review` (below) |
 | `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
-| `agents[].code_with` | `claude` | `langgraph` agents only: the CLI the workflow's code and fix steps run — `claude`, `codex` or `fake`. Rejected on any other executor |
+| `agents[].code_with` | `claude` | `langgraph` agents only: what the workflow's code and fix steps run — `claude`, `codex`, `fake`, or `langgraph` for HiveDispatch's own coding agent (coding agents only; see below). Rejected on any other executor |
 | `agents[].model` | *(policy's model, then the CLI's)* | Model for this agent's runs; wins over the policy's `executor.model` / `executor.codex.model` |
 
 Each agent works one column of the board:
@@ -116,6 +116,8 @@ Agents of a role are a pool. Each works one ticket at a time, and the worker's `
 
 A `langgraph` agent runs `hivegraph`, a LangGraph workflow, instead of one CLI call: **plan** (chat model) → **code** (the `code_with` CLI) → **checks** (the policy's `checks`) → fix until green, up to `graph.max_fix_rounds` → **self-review** of the diff (chat model) → fix what it finds, up to `graph.max_review_rounds` → finish. Checks still red after the fix rounds do not stop the PR: the summary on the ticket says which ones fail. A question from the CLI ends the run as Needs Info, as for any agent, and the reply resumes the same workflow thread.
 
+**`code_with: langgraph`** runs HiveDispatch's own coding agent instead of a CLI: a LangGraph tool loop on the graph's provider, using the agent's `model:` (else `graph.model`), so it spends no Claude or Codex quota. Its tools read, write, edit, list and search files inside the worktree (paths outside it, through symlinks, or in `.git` are refused) and run commands. Commands are split into words and run without a shell, so `;`, `|`, `&&`, `$(…)` and redirects cannot chain anything; a command runs only if it starts with one of the policy's `executor.langgraph.allowed_commands` or exactly matches one of its `checks`. It asks a question with `ask_human` (Needs Info) and ends with `finish`. Each tool call counts toward the run's step budget, its conversation carries across fix rounds and resumes, and it can only be a coding agent.
+
 It is optional. Install it once per worker, at the tag matching `hivedispatch version`: `pipx install "git+https://github.com/thomasmeadows/HiveDispatch@v0.3.0#subdirectory=graph"` (`pip install` works too, and `hivedispatch check` prints the command for your version; from a HiveDispatch checkout, `pipx install ./graph`). Workers without a `langgraph` agent need no Python. Planning and review roles on a `langgraph` agent run its `code_with` CLI as usual. The chat model is set under `graph:` in the worker config (below); `hivedispatch check` reports it when a `langgraph` agent exists.
 
 ## Agent policy — `.hive-dispatch/policy.yaml`
@@ -135,6 +137,7 @@ Every agent of the repository follows it. Read from the ticket's worktree, so it
 | `executor.codex.network` | `false` | Allow outbound network inside `workspace-write` (e.g. for `go mod download`) |
 | `guidance` | *(none)* | Text appended to every prompt for this repo: conventions, required checks, where decisions are recorded. Applies to every executor |
 | `checks` | *(none)* | `langgraph` agents: commands run with `sh -c` in the worktree after every code step, each with a 10-minute limit; all must exit 0. `executor.path` applies. Other executors ignore it |
+| `executor.langgraph.allowed_commands` | *(none)* | `code_with: langgraph` agents: word prefixes their `run_command` may use, e.g. `[go test, go vet, gofmt -l, git diff]`. The `checks` are always allowed. Other executors ignore it |
 | `graph.max_fix_rounds` | `3` | `langgraph` agents: code → checks → fix loops before finishing with checks still red |
 | `graph.max_review_rounds` | `1` | `langgraph` agents: self-review → fix loops |
 

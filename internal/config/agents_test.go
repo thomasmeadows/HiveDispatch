@@ -22,3 +22,14 @@ func TestParseAgentsLangGraph(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAgentsCodeWithLangGraph(t *testing.T) {
+	got, err := ParseAgents([]byte("agents:\n  - name: d\n    executor: langgraph\n    code_with: langgraph\n"))
+	if err != nil || got[0].CodeWith != "langgraph" {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+	_, err = ParseAgents([]byte("agents:\n  - name: p\n    role: planning\n    executor: langgraph\n    code_with: langgraph\n"))
+	if err == nil || !strings.Contains(err.Error(), "coding") {
+		t.Fatalf("planning with code_with langgraph: err %v", err)
+	}
+}
