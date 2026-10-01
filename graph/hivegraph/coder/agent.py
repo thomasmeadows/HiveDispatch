@@ -5,6 +5,7 @@ workflow's routing, events and summaries are unchanged."""
 
 import functools
 import json
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TypedDict
@@ -76,12 +77,20 @@ def run(task, prompt: str, messages: list, steps_used: int, model, now=lambda: d
         "cost_usd": 0.0,
     }
     used = [steps_used]
+    # ToolNode runs a reply's tool calls in parallel threads. They share one
+    # worktree, the step budget and the step log, so they run one at a time,
+    # never overlapping.
+    lock = threading.Lock()
 
     def tool(fn, name, doc):
         # functools.wraps carries fn's signature (via __wrapped__), which
         # StructuredTool.from_function reads to build the args schema.
         @functools.wraps(fn)
         def wrapped(*args, **kwargs):
+            with lock:
+                return body(*args, **kwargs)
+
+        def body(*args, **kwargs):
             start = now()
             if stop.requested:
                 outcome.update(status="failed", stop_cause="killed", summary="Stopped by the worker.")
@@ -146,7 +155,9 @@ def run(task, prompt: str, messages: list, steps_used: int, model, now=lambda: d
             outcome.update(status="failed", stop_cause="killed", summary="Stopped by the worker.")
             return state
         try:
-            reply = bound.invoke([system, *state["messages"]])
+            # Trim as the round goes, not only between rounds: one long round
+            # of file reads would otherwise outgrow a small model's context.
+            reply = bound.invoke([system, *trim(state["messages"])])
         except Exception as exc:  # a model failure ends the run with its cause
             cause = "budget" if _is_rate_limit(exc) else "error"
             outcome.update(status="failed", stop_cause=cause, summary=f"coding model failed: {exc}")

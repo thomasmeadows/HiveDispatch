@@ -147,3 +147,46 @@ def test_trim_replaces_old_tool_outputs():
     tools = [m for m in out if isinstance(m, ToolMessage)]
     assert tools[0].content == "[output trimmed]" and tools[-1].content == "big output 29"
     assert len(out) == len(msgs)
+
+
+def test_tool_calls_in_one_reply_run_one_at_a_time(task, tmp_path):
+    """ToolNode runs a reply's tool calls in parallel; the agent's tools share
+    one worktree, so they must not overlap."""
+    (tmp_path / "b.txt").write_text("x1\nx2\nx3\nx4\n")
+    edits = [
+        {"name": "edit_file", "args": {"path": "b.txt", "old": f"x{i}", "new": f"y{i}"}, "id": f"e{i}"}
+        for i in range(1, 5)
+    ]
+    sleeps = [{"name": "run_command", "args": {"command": "sleep 0.3"}, "id": f"s{i}"} for i in range(3)]
+    task.allowed_commands = ["sleep"]
+    import time
+
+    start = time.monotonic()
+    r = run(
+        task,
+        "x",
+        [],
+        0,
+        model(AIMessage(content="", tool_calls=edits + sleeps), call("finish", {"summary": "s"}, "f")),
+    )
+    assert time.monotonic() - start >= 0.9, "tool calls overlapped"
+    assert (tmp_path / "b.txt").read_text() == "y1\ny2\ny3\ny4\n", "an edit was lost"
+    assert r.result.status == "completed" and r.steps_used == 8
+
+
+class SeesContext(ToolFake):
+    last: list = []
+
+    def _generate(self, messages, *a, **kw):
+        type(self).last = list(messages)
+        return super()._generate(messages, *a, **kw)
+
+
+def test_long_rounds_trim_as_they_go(task):
+    task.step_budget = 100
+    script = [call("list_files", {}, str(i)) for i in range(30)] + [call("finish", {"summary": "s"}, "f")]
+    SeesContext.last = []
+    run(task, "x", [], 0, SeesContext(messages=iter(script)))
+    tools = [m for m in SeesContext.last if isinstance(m, ToolMessage)]
+    assert tools[0].content == "[output trimmed]", "a long round never trimmed its context"
+    assert tools[-1].content != "[output trimmed]"
