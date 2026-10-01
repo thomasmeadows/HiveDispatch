@@ -44,10 +44,10 @@ Environment variables only, under LangChain's names, so an existing LangSmith se
 - `Noop` is the default. `FromEnv(getenv)` builds a `Noop` or a LangSmith tracer.
 - `trace/fake` records spans with their parent links for tests. `trace/langsmith` is the exporter.
 
-Decorators live in `internal/trace`:
+`internal/trace` imports nothing from HiveDispatch. The code that wraps model and executor calls sits beside the code it watches:
 
-- `trace.Model(model.Model, Tracer)` puts an `llm` span around each `Chat`.
-- `trace.Executor(executor.Executor, Tracer, meta)` wraps `Plan`, `Run` and `Advise`. It turns `Result.Steps` into child spans.
+- `supervisor.Agent.chat` puts an `llm` span around each `Model.Chat`.
+- `dispatch.tracedExecutor` wraps `Plan`, `Run` and `Advise`, and turns `Result.Steps` into child spans. `executorFor` returns it only when a tracer is set.
 
 `executor.Step` is a plain record: kind, name, input, output, error flag, start and end, model, and tokens. `claudecli.Parser` and `codexcli.Parser` collect steps live as lines arrive, and the adapters copy them into `Result.Steps`. That keeps `executor`, `claudecli` and `codexcli` free of `trace`.
 
@@ -69,16 +69,17 @@ Decorators live in `internal/trace`:
 
 - `supervisor.Agent` gets a `Tracer` field:
   - `Turn` opens a `chain` span named `supervisor turn`, with the user message as input and the reply as output.
-  - `Chat` goes through `trace.Model`.
+  - `Chat` goes through `Agent.chat`, which opens the `llm` span.
   - `call` and `cancelled` open `tool` spans.
   - `SessionOptions.Tracer` (and `Options.Tracer`) carries it in, and a nil value means `Noop`.
 - `dispatch.Dispatcher` gets a `Tracer` field:
   - `handle` opens the ticket span and ends it with the outcome.
   - `handleCoding` puts a `triage` span around `Triager.Decide`.
-  - `executorFor` returns the executor wrapped with `trace.Executor`.
+  - `executorFor` returns the executor wrapped in `tracedExecutor`.
 - **CLI wiring:**
   - `run`, `website` and `supervisor` each build one tracer with `trace.FromEnv(os.Getenv)` and close it on the way out.
-  - `run` passes it to the dispatcher. `website` passes it to the dispatcher it starts and to the chat sessions. `supervisor` passes it to its session.
+  - `run` passes it to the dispatcher, `website` to its chat sessions, and `supervisor` to its session.
+  - A worker the website starts is a `run` process, so it inherits the environment and traces itself.
 
 ## Error handling
 

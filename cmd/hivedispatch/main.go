@@ -23,6 +23,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
 	"github.com/thomasmeadows/hivedispatch/internal/statusline"
+	"github.com/thomasmeadows/hivedispatch/internal/trace/langsmith"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/ghissues"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
@@ -127,6 +128,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	default:
 		fmt.Fprintln(stdout, "github: no token found (HIVE_GITHUB_TOKEN, gh auth token, or git credential helper) — branches will be pushed but PRs will not be opened")
 	}
+	fmt.Fprintln(stdout, langsmith.Describe(os.Getenv))
 	if !*live && !*liveJira {
 		return 0
 	}
@@ -506,6 +508,9 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	tracer, closeTracer := newTracer(os.Getenv, logger, stderr)
+	defer closeTracer()
+	w.d.Tracer = tracer
 	d := w.d
 	if cfg.RetentionDays > 0 {
 		cutoff := time.Now().AddDate(0, 0, -cfg.RetentionDays)
@@ -653,6 +658,9 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	tracer, closeTracer := newTracer(os.Getenv, logger, stderr)
+	defer closeTracer()
+	w.d.Tracer = tracer
 	var ticket tracker.Ticket
 	for _, k := range candidates {
 		if ticket, err = w.tracker.Get(ctx, k); err == nil {
