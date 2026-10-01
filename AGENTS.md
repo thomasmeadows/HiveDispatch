@@ -18,6 +18,19 @@ See [`CONTRIBUTING.md` — Dev setup](CONTRIBUTING.md#dev-setup): Go 1.27+ and `
 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...
 ```
 
+## Python (`graph/`)
+
+The LangGraph workflow (`hivegraph`, used by `executor: langgraph` agents) is a Python package under `graph/` with its own dependencies in `graph/pyproject.toml`. The Go rule above is unchanged: Go stays stdlib plus yaml.v3, and nothing in Go imports Python. LangChain is optional for users: a worker with no `langgraph` agent never needs Python.
+
+For work under `graph/`:
+
+```sh
+python3 -m venv graph/.venv && graph/.venv/bin/pip install -e './graph[dev]'
+graph/.venv/bin/ruff check graph && graph/.venv/bin/ruff format --check graph && graph/.venv/bin/pytest graph
+```
+
+Run those three checks before each commit that touches `graph/`; CI runs them too. The tests use LangChain's fake chat models and a fake `agent-run`, never the network.
+
 ## Required before every commit and before every push
 
 This is the protocol from [`CONTRIBUTING.md` — Before every commit](CONTRIBUTING.md#before-every-commit); CI runs the same three checks (`.github/workflows/ci.yml`), and a PR that fails any of them is not done.
