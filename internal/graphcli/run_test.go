@@ -34,7 +34,7 @@ func TestRunNoResult(t *testing.T) {
 func TestRunMissingBinary(t *testing.T) {
 	c := fake(t, "ok")
 	c.Binary = filepath.Join(t.TempDir(), "nope")
-	if _, _, _, err := Run(context.Background(), c); err == nil || !strings.Contains(err.Error(), "pip install") {
+	if _, _, _, err := Run(context.Background(), c); err == nil || !strings.Contains(err.Error(), "hivedispatch check") {
 		t.Fatalf("err %v", err)
 	}
 }

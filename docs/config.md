@@ -116,7 +116,7 @@ Agents of a role are a pool. Each works one ticket at a time, and the worker's `
 
 A `langgraph` agent runs `hivegraph`, a LangGraph workflow, instead of one CLI call: **plan** (chat model) → **code** (the `code_with` CLI) → **checks** (the policy's `checks`) → fix until green, up to `graph.max_fix_rounds` → **self-review** of the diff (chat model) → fix what it finds, up to `graph.max_review_rounds` → finish. Checks still red after the fix rounds do not stop the PR: the summary on the ticket says which ones fail. A question from the CLI ends the run as Needs Info, as for any agent, and the reply resumes the same workflow thread.
 
-It is optional. Install it once per worker with `pipx install ./graph` (or `pip install ./graph`) from a HiveDispatch checkout; workers without a `langgraph` agent need no Python. Planning and review roles on a `langgraph` agent run its `code_with` CLI as usual. The chat model is set under `graph:` in the worker config (below); `hivedispatch check` reports it when a `langgraph` agent exists.
+It is optional. Install it once per worker, at the tag matching `hivedispatch version`: `pipx install "git+https://github.com/thomasmeadows/HiveDispatch@v0.3.0#subdirectory=graph"` (`pip install` works too, and `hivedispatch check` prints the command for your version; from a HiveDispatch checkout, `pipx install ./graph`). Workers without a `langgraph` agent need no Python. Planning and review roles on a `langgraph` agent run its `code_with` CLI as usual. The chat model is set under `graph:` in the worker config (below); `hivedispatch check` reports it when a `langgraph` agent exists.
 
 ## Agent policy — `.hive-dispatch/policy.yaml`
 
@@ -191,7 +191,7 @@ Only read when a repository has an `executor: langgraph` agent.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `graph.binary` | `hivegraph` | The workflow's executable (installed by `pipx install ./graph`) |
+| `graph.binary` | `hivegraph` | The workflow's executable (installed by `pipx install "git+https://github.com/thomasmeadows/HiveDispatch@<version>#subdirectory=graph"`) |
 | `graph.provider` | *(the supervisor's)* | Chat model for the plan and self-review steps: `openai`, `deepseek`, `huggingface` or `ollama` — the same presets as `supervisor.provider`. `anthropic` is not supported here: set an OpenAI-compatible provider |
 | `graph.model` | *(per provider)* | As `supervisor.model` |
 | `graph.base_url` | *(per provider)* | As `supervisor.base_url` |

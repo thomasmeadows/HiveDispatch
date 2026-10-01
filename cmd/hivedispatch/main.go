@@ -167,10 +167,20 @@ func printGraphCheck(w io.Writer, cfgPath string) {
 	}
 	p, err := exec.LookPath(gc.Binary)
 	if err != nil {
-		fmt.Fprintf(w, "graph: %s not found — langgraph agents need it (pipx install ./graph)\n", gc.Binary)
+		fmt.Fprintf(w, "graph: %s not found — langgraph agents need it: %s\n", gc.Binary, graphInstallCommand(version))
 		return
 	}
 	fmt.Fprintf(w, "graph: %s, chat model %s/%s\n", p, gc.Model.Provider, gc.Model.Model)
+}
+
+// graphInstallCommand installs the hivegraph that matches this binary: the
+// graph's task format is versioned with it. A dev build is run from a
+// checkout, so it installs the checkout's graph/.
+func graphInstallCommand(version string) string {
+	if !strings.HasPrefix(version, "v") {
+		return "pipx install ./graph"
+	}
+	return `pipx install "git+https://github.com/thomasmeadows/HiveDispatch@` + version + `#subdirectory=graph"`
 }
 
 // printRepos lists the enrolled repositories and any second checkout that

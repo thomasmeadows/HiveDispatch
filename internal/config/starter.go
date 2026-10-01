@@ -100,8 +100,9 @@ const Starter = `# HiveDispatch worker configuration: settings for this machine.
 #   step_budget: 20        # tool calls per reply
 
 # Graph workflows (agents with executor: langgraph). Optional, and only read when such
-# an agent exists; needs hivegraph installed (pipx install ./graph from a HiveDispatch
-# checkout). The chat model plans and reviews; empty uses the supervisor's model.
+# an agent exists; needs hivegraph installed — hivedispatch check prints the pipx
+# command for this version. The chat model plans and reviews; empty uses the
+# supervisor's model.
 # graph:
 #   binary: hivegraph
 #   provider: deepseek     # openai, deepseek, huggingface or ollama (not anthropic)

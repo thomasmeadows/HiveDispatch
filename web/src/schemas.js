@@ -66,7 +66,7 @@ export const workerSchema = [
   },
   {
     title: 'Graph workflows',
-    note: 'Only for agents with executor langgraph. Needs hivegraph installed (pipx install ./graph); everything here is optional.',
+    note: 'Only for agents with executor langgraph. Needs hivegraph installed: hivedispatch check prints the pipx command for this version. Everything here is optional.',
     fields: [
       { key: 'graph.binary', label: 'hivegraph binary', type: 'text', placeholder: 'hivegraph' },
       { key: 'graph.provider', label: 'Chat model provider', type: 'select', options: ['', 'openai', 'deepseek', 'huggingface', 'ollama'], help: 'For the plan and self-review steps. Empty uses the supervisor’s model. Anthropic is not supported here.' },

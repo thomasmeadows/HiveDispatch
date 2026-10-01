@@ -109,7 +109,13 @@ An agent with `executor: langgraph` works a ticket through a [LangGraph](https:/
 3. The repository's `checks` run, for example `go test ./...`, and the agent fixes until they pass.
 4. The chat model reviews the diff against the plan, and the agent fixes what it finds.
 
-The workflow is optional and needs Python only on workers that use it: `pipx install ./graph`. See [`docs/config.md`](docs/config.md) for `code_with`, `checks` and `graph:`.
+The workflow is optional and needs Python only on workers that use it. Install the `hivegraph` that matches your `hivedispatch version`:
+
+```sh
+pipx install "git+https://github.com/thomasmeadows/HiveDispatch@v0.3.0#subdirectory=graph"
+```
+
+`hivedispatch check` prints this command for your version. See [`docs/config.md`](docs/config.md) for `code_with`, `checks` and `graph:`.
 
 ## Tracing with LangSmith
 

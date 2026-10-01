@@ -110,7 +110,7 @@ func Run(ctx context.Context, c Cmd) (Transcript, Exit, string, error) {
 	}
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
-			return Transcript{}, Exit{}, "", fmt.Errorf("start %s: %w (install the graph with `pipx install ./graph` or `pip install ./graph`, or set graph.binary)", c.Binary, err)
+			return Transcript{}, Exit{}, "", fmt.Errorf("start %s: %w (install hivegraph — `hivedispatch check` prints the command for this version — or set graph.binary)", c.Binary, err)
 		}
 		return Transcript{}, Exit{}, "", fmt.Errorf("start %s: %w", c.Binary, err)
 	}

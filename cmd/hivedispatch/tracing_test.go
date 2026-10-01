@@ -37,3 +37,12 @@ func TestUsesLangGraph(t *testing.T) {
 		t.Fatal("a langgraph agent was missed")
 	}
 }
+
+func TestGraphInstallCommand(t *testing.T) {
+	if got := graphInstallCommand("v0.3.0"); got != `pipx install "git+https://github.com/thomasmeadows/HiveDispatch@v0.3.0#subdirectory=graph"` {
+		t.Errorf("tagged build: %s", got)
+	}
+	if got := graphInstallCommand("dev"); got != `pipx install ./graph` {
+		t.Errorf("dev build: %s", got)
+	}
+}
