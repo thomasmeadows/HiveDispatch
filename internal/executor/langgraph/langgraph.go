@@ -72,6 +72,7 @@ type task struct {
 	Hivedispatch        string      `json:"hivedispatch"`
 	WorkerConfig        string      `json:"worker_config"`
 	Checks              []string    `json:"checks"`
+	AllowedCommands     []string    `json:"allowed_commands"`
 	CheckTimeoutSeconds int         `json:"check_timeout_seconds"`
 	MaxFixRounds        int         `json:"max_fix_rounds"`
 	MaxReviewRounds     int         `json:"max_review_rounds"`
@@ -107,6 +108,10 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 	if checks == nil {
 		checks = []string{}
 	}
+	allowed := rc.Executor.LangGraph.AllowedCommands
+	if allowed == nil {
+		allowed = []string{}
+	}
 	path := rc.Executor.ExtraPath()
 	if path == nil {
 		path = []string{}
@@ -115,7 +120,7 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 		Ticket: t.TicketKey, Prompt: t.Prompt, Workspace: t.Workspace, ResumeToken: t.ResumeToken,
 		StepBudget: t.StepBudget, CodeWith: codeWith, Model: t.Model, BaseRef: base, GitDir: gitDir,
 		Hivedispatch: e.cfg.Hivedispatch, WorkerConfig: e.cfg.WorkerConfig,
-		Checks: checks, CheckTimeoutSeconds: int(checkTimeout / time.Second),
+		Checks: checks, AllowedCommands: allowed, CheckTimeoutSeconds: int(checkTimeout / time.Second),
 		MaxFixRounds: rc.Graph.MaxFixRounds, MaxReviewRounds: rc.Graph.MaxReviewRounds,
 		Guidance: rc.Guidance, Path: path, ChatModel: e.cfg.Model,
 	})
@@ -204,6 +209,9 @@ func summaryOf(r *graphcli.Result) string {
 func (e *Executor) inner(codeWith string) (executor.Executor, error) {
 	if codeWith == "" {
 		codeWith = "claude"
+	}
+	if codeWith == "langgraph" {
+		return nil, errors.New("langgraph: code_with langgraph is for coding agents only; planning and review run through claude or codex")
 	}
 	ex, ok := e.cfg.Inner[codeWith]
 	if !ok {

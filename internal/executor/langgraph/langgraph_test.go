@@ -44,7 +44,7 @@ func gitRepo(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(w, ".hive-dispatch"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(w, ".hive-dispatch", "policy.yaml"), []byte("checks:\n  - go test ./...\nguidance: be nice\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(w, ".hive-dispatch", "policy.yaml"), []byte("checks:\n  - go test ./...\nguidance: be nice\nexecutor:\n  langgraph:\n    allowed_commands:\n      - go vet\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return w
@@ -81,6 +81,9 @@ func TestRunPassesTaskAndMapsResult(t *testing.T) {
 	}
 	if task["ticket"] != "HIVE-1" || task["code_with"] != "codex" || task["model"] != "m" || task["guidance"] != "be nice" || task["hivedispatch"] != "/bin/hivedispatch" || task["max_fix_rounds"] != float64(3) {
 		t.Fatalf("task %v", task)
+	}
+	if ac, _ := task["allowed_commands"].([]any); len(ac) != 1 || ac[0] != "go vet" {
+		t.Fatalf("allowed_commands %v", task["allowed_commands"])
 	}
 	if checks, _ := task["checks"].([]any); len(checks) != 1 {
 		t.Fatalf("checks %v", task["checks"])
@@ -142,5 +145,12 @@ func TestAdviseDelegates(t *testing.T) {
 	}
 	if _, err := newExec(bin).Advise(context.Background(), executor.Advice{CodeWith: "codex"}); err == nil {
 		t.Fatal("a missing inner executor must be an error")
+	}
+}
+
+func TestAdviseWithLangGraphCoderIsAnError(t *testing.T) {
+	bin, _ := fakeGraph(t, "")
+	if _, err := newExec(bin).Advise(context.Background(), executor.Advice{CodeWith: "langgraph"}); err == nil || !strings.Contains(err.Error(), "coding") {
+		t.Fatalf("err %v", err)
 	}
 }

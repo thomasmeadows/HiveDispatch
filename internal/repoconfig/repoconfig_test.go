@@ -129,3 +129,13 @@ func TestParseChecksAndGraph(t *testing.T) {
 		t.Fatal("blank check accepted")
 	}
 }
+
+func TestParseLangGraphAllowedCommands(t *testing.T) {
+	c, err := Parse([]byte("executor:\n  langgraph:\n    allowed_commands:\n      - go test\n      - git diff\n"))
+	if err != nil || len(c.Executor.LangGraph.AllowedCommands) != 2 {
+		t.Fatalf("got %+v err %v", c.Executor.LangGraph, err)
+	}
+	if _, err := Parse([]byte("executor:\n  langgraph:\n    allowed_commands:\n      - \"\"\n")); err == nil {
+		t.Fatal("blank allowed command accepted")
+	}
+}
