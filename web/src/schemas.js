@@ -50,6 +50,7 @@ export const workerSchema = [
     fields: [
       { key: 'claude.binary', label: 'Claude binary', type: 'text', placeholder: 'claude', help: 'Which agents run it, and with which model, is set per repository under Repos → Agents.' },
       { key: 'codex.binary', label: 'Codex binary', type: 'text', placeholder: 'codex' },
+      { key: 'deepcode.binary', label: 'DeepCode binary', type: 'text', placeholder: 'deepcode', help: 'npm i -g @vegamo/deepcode-cli. Its API key and model are in ~/.deepcode/settings.json.' },
       { key: 'triage.kind', label: 'Triage', type: 'select', options: ['', 'claude', 'passthrough'], placeholder: 'claude' },
       { key: 'triage.model', label: 'Triage model', type: 'text' },
       { key: 'triage.step_budget', label: 'Triage step budget', type: 'number', placeholder: '40' },

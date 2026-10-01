@@ -419,3 +419,21 @@ Rejected:
 - **LangGraph's `create_react_agent`:** deprecated in LangGraph 1.0, and removed in 2.0.
 - **LangChain's `create_agent`:** it adds the `langchain` package, and budgets and stopping would go through middleware rather than a loop of our own.
 - **A separate `graph.coder` model block:** the agent's own `model:` on the graph provider covers the case of a stronger model for coding without a new block.
+
+## 2026-10-01 — DeepCode is the third coding CLI
+
+Decided: `executor: deepcode` runs [DeepCode](https://api-docs.deepseek.com/quick_start/agent_integrations/deepcode), DeepSeek's open-source terminal coding agent (`@vegamo/deepcode-cli`), headless as `deepcode -x --prompt=…`. A resume after a human reply passes `-r <sessionId>`, and the session id is the resume token. It is also a `code_with` choice for the graph workflow, through `agent-run`.
+
+DeepCode prints only its final reply. The steps, edited files, token usage and outcome (completed, failed, `ask_permission`, `waiting_for_user`) come from the session it saves under `~/.deepcode/projects`. A run's session is the new file whose recorded root path is the worktree, so parallel tickets stay apart without depending on how DeepCode names its project folders. The step budget is enforced by polling that file during the run.
+
+The operator owns DeepCode's configuration, as with Claude Code and Codex. Its API key and model are in `~/.deepcode/settings.json`, and DeepCode reads no environment variables for them.
+
+- An agent running DeepCode may not set `model:`, because DeepCode has no model flag.
+- It must be a coding agent, because DeepCode cannot be held to read-only from its command line.
+- Its shell is limited by DeepCode's own `permissions`. In `-x` mode an `ask` fails the run with DeepCode's message rather than hanging, and the summary says to fix the settings.
+
+Rejected:
+- **HiveDispatch writing DeepCode's settings** (a project-level `.deepcode/settings.json` in the worktree, or a private HOME): the first would put the API key in the worktree, where the safety commit could pick it up. A private HOME would hide the user's git and tool credentials from DeepCode's shell.
+- **Passing the key through the environment:** DeepCode ignores it.
+- **Planning and review on DeepCode:** without a read-only mode, a "read-only" run could still change the tree.
+- **HiveDispatch's own command allowlist around DeepCode:** DeepCode runs its own tools, so the only lever is its settings. That is documented rather than half-enforced.

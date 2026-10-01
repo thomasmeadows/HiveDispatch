@@ -34,6 +34,7 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 | `retention_days` | `30` | Raw run logs and finished run records older than this are pruned at startup; `-1` never prunes |
 | `claude.binary` | `claude` | The Claude Code CLI to run |
 | `codex.binary` | `codex` | The Codex CLI to run (for agents with `executor: codex`) |
+| `deepcode.binary` | `deepcode` | The DeepCode CLI to run (for agents with `executor: deepcode` or `code_with: deepcode`) |
 | `triage.kind` | `claude` | `claude` (read-only model triage) or `passthrough` (dispatch everything) |
 | `triage.step_budget` | `40` | Tool calls the triager may make |
 | `triage.timeout` | `5m` | Wall-clock limit for triage |
@@ -94,8 +95,8 @@ agents:
 |---|---|---|
 | `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<machine_id>/<name>` |
 | `agents[].role` | `coding` | Which board column the agent works: `planning`, `coding` or `review` (below) |
-| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
-| `agents[].code_with` | `claude` | `langgraph` agents only: what the workflow's code and fix steps run — `claude`, `codex`, `fake`, or `langgraph` for HiveDispatch's own coding agent (coding agents only; see below). Rejected on any other executor |
+| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `deepcode` (DeepCode, below), `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
+| `agents[].code_with` | `claude` | `langgraph` agents only: what the workflow's code and fix steps run — `claude`, `codex`, `deepcode`, `fake`, or `langgraph` for HiveDispatch's own coding agent (coding agents only; see below). Rejected on any other executor |
 | `agents[].model` | *(policy's model, then the CLI's)* | Model for this agent's runs; wins over the policy's `executor.model` / `executor.codex.model` |
 
 Each agent works one column of the board:
@@ -111,6 +112,16 @@ Columns without an agent of that role are not polled: a repository with only the
 Agents of a role are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets of a column at once as it has agents for it. A ticket labelled `hive:agent:<name>` waits for that agent in that agent's column; the other columns still use their whole pool, so one ticket can name both its coder and its reviewer. A label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are made under the worker's `machine_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
 
 `run -executor fake` (or `claude`, `codex`, `langgraph`) makes every agent use that executor for one run.
+
+### DeepCode — `executor: deepcode`
+
+[DeepCode](https://api-docs.deepseek.com/quick_start/agent_integrations/deepcode) is DeepSeek's open-source terminal coding agent. Install it on the worker with `npm i -g @vegamo/deepcode-cli` and put its key and model in `~/.deepcode/settings.json`, as DeepCode's docs describe; HiveDispatch never handles the key, and `hivedispatch check` reports whether the file has one when an agent uses DeepCode.
+
+HiveDispatch runs it headless (`deepcode -x`) in the ticket's worktree, resumes its session (`-r`) after a human reply, and reads the steps, edited files and token usage from the session DeepCode saves under `~/.deepcode/projects`. The step budget is enforced by watching that session while it runs.
+
+- **Coding agents only.** DeepCode cannot be held to read-only from its command line, so a planning or review agent cannot use it; the same holds for `code_with: deepcode`.
+- **No `model:`.** DeepCode has no model flag; set `MODEL` in its `settings.json` instead. An agent with `executor: deepcode` and a `model:` is rejected.
+- **Its shell is DeepCode's to limit.** By default DeepCode allows every tool, like Codex in `danger-full-access`. Restrict it with the `permissions` in `~/.deepcode/settings.json` (`deny` / `ask` per scope); a tool that would need an `ask` fails the run with DeepCode's message instead of hanging, since no one is there to answer.
 
 ### Graph workflows — `executor: langgraph`
 
