@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -29,5 +31,17 @@ func TestAgentRunBadExecutor(t *testing.T) {
 	}
 	if out.Len() != 0 {
 		t.Fatalf("printed %q on a usage error", out.String())
+	}
+}
+
+func TestAgentRunAcceptsDeepCode(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfg, []byte("deepcode:\n  binary: "+filepath.Join(t.TempDir(), "no-deepcode")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	code := runAgentRun([]string{"-executor", "deepcode", "-config", cfg, "-workspace", t.TempDir()}, strings.NewReader("x"), &out, &errb)
+	if code != 1 || !strings.Contains(errb.String(), "deepcode") {
+		t.Fatalf("exit %d (want 1: accepted, but the binary is missing): %s", code, errb.String())
 	}
 }

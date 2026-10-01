@@ -23,26 +23,27 @@ import (
 // Config is the worker-level configuration plus the repositories resolved
 // from it.
 type Config struct {
-	MachineID         string        `yaml:"machine_id"` // default: the hostname
-	Workroot          string        `yaml:"workroot"`
-	CodeDirs          []string      `yaml:"code_dirs"`      // scanned for repositories with .hive-dispatch/repo.yaml
-	ScanDepth         int           `yaml:"scan_depth"`     // directory levels below each code dir; default 4
-	MaxConcurrent     int           `yaml:"max_concurrent"` // tickets worked at once, each in its own worktree; default 1
-	RepoPaths         []RepoRef     `yaml:"repos"`          // explicit repositories, in addition to code_dirs
-	PollInterval      time.Duration `yaml:"poll_interval"`
-	HeartbeatInterval time.Duration `yaml:"heartbeat_interval"`
-	ClaimTimeout      time.Duration `yaml:"claim_timeout"`
-	RunTimeout        time.Duration `yaml:"run_timeout"`
-	StepBudget        int           `yaml:"step_budget"`
-	MaxAttempts       int           `yaml:"max_attempts"`
-	MaxReviewRounds   int           `yaml:"max_review_rounds"` // review agent send-backs per ticket before a human; default 2
-	PollJitter        time.Duration `yaml:"poll_jitter"`
-	RunWindows        RunWindows    `yaml:"run_windows"`
-	StateStore        string        `yaml:"state_store"`    // "branch" (default) or "local"
-	RetentionDays     int           `yaml:"retention_days"` // prune raw logs and finished runs older than this; 0 disables
-	Claude            ClaudeConfig  `yaml:"claude"`
-	Codex             CodexConfig   `yaml:"codex"`
-	Triage            TriageConfig  `yaml:"triage"`
+	MachineID         string         `yaml:"machine_id"` // default: the hostname
+	Workroot          string         `yaml:"workroot"`
+	CodeDirs          []string       `yaml:"code_dirs"`      // scanned for repositories with .hive-dispatch/repo.yaml
+	ScanDepth         int            `yaml:"scan_depth"`     // directory levels below each code dir; default 4
+	MaxConcurrent     int            `yaml:"max_concurrent"` // tickets worked at once, each in its own worktree; default 1
+	RepoPaths         []RepoRef      `yaml:"repos"`          // explicit repositories, in addition to code_dirs
+	PollInterval      time.Duration  `yaml:"poll_interval"`
+	HeartbeatInterval time.Duration  `yaml:"heartbeat_interval"`
+	ClaimTimeout      time.Duration  `yaml:"claim_timeout"`
+	RunTimeout        time.Duration  `yaml:"run_timeout"`
+	StepBudget        int            `yaml:"step_budget"`
+	MaxAttempts       int            `yaml:"max_attempts"`
+	MaxReviewRounds   int            `yaml:"max_review_rounds"` // review agent send-backs per ticket before a human; default 2
+	PollJitter        time.Duration  `yaml:"poll_jitter"`
+	RunWindows        RunWindows     `yaml:"run_windows"`
+	StateStore        string         `yaml:"state_store"`    // "branch" (default) or "local"
+	RetentionDays     int            `yaml:"retention_days"` // prune raw logs and finished runs older than this; 0 disables
+	Claude            ClaudeConfig   `yaml:"claude"`
+	Codex             CodexConfig    `yaml:"codex"`
+	DeepCode          DeepCodeConfig `yaml:"deepcode"`
+	Triage            TriageConfig   `yaml:"triage"`
 	// Jira and GitHub hold the worker's accounts: jira.email and
 	// github.api_url in YAML, tokens from the environment. Tracker settings
 	// live in each repository's repo.yaml.
@@ -103,6 +104,12 @@ type ClaudeConfig struct {
 // settings live under executor.codex in .hivedispatch.yaml.
 type CodexConfig struct {
 	Binary string `yaml:"binary"` // default "codex"
+}
+
+// DeepCodeConfig configures the DeepCode executor at the worker level. Its
+// API key and model live in DeepCode's own ~/.deepcode/settings.json.
+type DeepCodeConfig struct {
+	Binary string `yaml:"binary"` // default "deepcode"
 }
 
 // TriageConfig selects and bounds the triage step.
@@ -237,6 +244,7 @@ func (c *Config) applyDefaults() {
 	}
 	def(&c.Claude.Binary, "claude")
 	def(&c.Codex.Binary, "codex")
+	def(&c.DeepCode.Binary, "deepcode")
 	def(&c.Triage.Kind, "claude")
 	if c.Triage.StepBudget == 0 {
 		c.Triage.StepBudget = 40

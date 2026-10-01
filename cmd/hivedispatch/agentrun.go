@@ -15,6 +15,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/claudecode"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/codex"
+	"github.com/thomasmeadows/hivedispatch/internal/executor/deepcode"
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
 )
 
@@ -79,7 +80,7 @@ func runAgentRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent-run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config (for the CLI binaries)")
-	kind := fs.String("executor", "claude", "claude, codex or fake")
+	kind := fs.String("executor", "claude", "claude, codex, deepcode or fake")
 	workspace := fs.String("workspace", "", "the worktree to run in")
 	model := fs.String("model", "", "the agent's model")
 	resume := fs.String("resume", "", "the CLI session to resume")
@@ -91,9 +92,9 @@ func runAgentRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "agent-run: -workspace is required")
 		return 2
 	}
-	var claudeBin, codexBin string
+	var claudeBin, codexBin, deepcodeBin string
 	if cfg, err := config.Load(*cfgPath); err == nil {
-		claudeBin, codexBin = cfg.Claude.Binary, cfg.Codex.Binary
+		claudeBin, codexBin, deepcodeBin = cfg.Claude.Binary, cfg.Codex.Binary, cfg.DeepCode.Binary
 	}
 	var ex executor.Executor
 	switch *kind {
@@ -101,10 +102,12 @@ func runAgentRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		ex = claudecode.New(claudecode.Config{Binary: claudeBin})
 	case "codex":
 		ex = codex.New(codex.Config{Binary: codexBin})
+	case "deepcode":
+		ex = deepcode.New(deepcode.Config{Binary: deepcodeBin})
 	case "fake":
 		ex = exfake.New()
 	default:
-		fmt.Fprintf(stderr, "agent-run: -executor: want claude, codex or fake, got %q\n", *kind)
+		fmt.Fprintf(stderr, "agent-run: -executor: want claude, codex, deepcode or fake, got %q\n", *kind)
 		return 2
 	}
 	prompt, err := io.ReadAll(stdin)

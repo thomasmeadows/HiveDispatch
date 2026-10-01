@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -44,5 +46,40 @@ func TestGraphInstallCommand(t *testing.T) {
 	}
 	if got := graphInstallCommand("dev"); got != `pipx install ./graph` {
 		t.Errorf("dev build: %s", got)
+	}
+}
+
+func TestUsesDeepCode(t *testing.T) {
+	cfg := &config.Config{Repos: []config.RepoConfig{{Agents: []config.Agent{{Name: "a", Executor: "claude"}}}}}
+	if usesDeepCode(cfg) {
+		t.Fatal("no deepcode agent")
+	}
+	cfg.Repos[0].Agents = append(cfg.Repos[0].Agents, config.Agent{Name: "g", Executor: "langgraph", CodeWith: "deepcode"})
+	if !usesDeepCode(cfg) {
+		t.Fatal("code_with deepcode missed")
+	}
+}
+
+func TestDeepCodeSettingsCheck(t *testing.T) {
+	home := t.TempDir()
+	if got := deepCodeSettings(home); !strings.Contains(got, "missing") {
+		t.Fatalf("no settings: %q", got)
+	}
+	dir := filepath.Join(home, ".deepcode")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(`{"env":{"MODEL":"deepseek-flash","API_KEY":"sk-secret"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := deepCodeSettings(home)
+	if !strings.Contains(got, "deepseek-flash") || strings.Contains(got, "sk-secret") {
+		t.Fatalf("settings: %q", got)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(`{"env":{"MODEL":"m"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := deepCodeSettings(home); !strings.Contains(got, "API_KEY") {
+		t.Fatalf("no key: %q", got)
 	}
 }

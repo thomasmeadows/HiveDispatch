@@ -14,6 +14,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/claudecode"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/codex"
+	"github.com/thomasmeadows/hivedispatch/internal/executor/deepcode"
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/langgraph"
 	"github.com/thomasmeadows/hivedispatch/internal/githost"
@@ -124,6 +125,19 @@ func usesLangGraph(cfg *config.Config) bool {
 	return false
 }
 
+// usesDeepCode reports whether any repository has an agent that runs
+// DeepCode, as its executor or as a langgraph agent's code_with.
+func usesDeepCode(cfg *config.Config) bool {
+	for _, r := range cfg.Repos {
+		for _, a := range r.Agents {
+			if a.Executor == "deepcode" || (a.Executor == "langgraph" && a.CodeWith == "deepcode") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // newLangGraph builds the langgraph executor over the CLI executors it
 // codes with. Bad graph: settings only matter to langgraph agents, so they
 // are a warning, and only when such an agent exists.
@@ -194,15 +208,16 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 	fake := exfake.New()
 	fake.Placeholder = opts.placeholder
 	executors := map[string]executor.Executor{
-		"claude": claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary}),
-		"codex":  codex.New(codex.Config{Binary: cfg.Codex.Binary}),
-		"fake":   fake,
+		"claude":   claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary}),
+		"codex":    codex.New(codex.Config{Binary: cfg.Codex.Binary}),
+		"deepcode": deepcode.New(deepcode.Config{Binary: cfg.DeepCode.Binary}),
+		"fake":     fake,
 	}
 	executors["langgraph"] = newLangGraph(cfg, opts.configPath, executors, logger)
 	if opts.executor != "" {
 		ex, ok := executors[opts.executor]
 		if !ok {
-			return nil, fmt.Errorf("unknown executor %q (want claude, codex, langgraph or fake)", opts.executor)
+			return nil, fmt.Errorf("unknown executor %q (want claude, codex, deepcode, langgraph or fake)", opts.executor)
 		}
 		for kind := range executors {
 			executors[kind] = ex
