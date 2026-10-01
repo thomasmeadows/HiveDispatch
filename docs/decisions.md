@@ -452,3 +452,20 @@ Rejected:
 - **Automatically bypassing all permissions:** the operator should configure Grok's allowed operations, as with the other executors.
 - **Planning and review via a prompt that says read-only:** a prompt does not enforce isolation. Add those roles when the adapter can guarantee it.
 - **Putting prompts in argv:** a private temporary file avoids command-line length limits and exposing ticket content in process listings.
+
+
+## 2026-10-01 — Antigravity CLI runs through its native JSON event stream
+
+Decided: `executor: antigravity` runs Google's `agy` CLI in the prepared worktree; `code_with: antigravity` uses the same executor via `agent-run`. The worker's `antigravity.binary` selects the executable (default `agy`), and the agent's model passes `--model`. Authentication and permissions stay in Antigravity's own configuration.
+
+Send one `user` message on stdin with `--input-format stream-json --output-format stream-json`, then close stdin. Antigravity completes that turn before exiting. Parse its native `init`, `step_update` and `result` envelopes in `internal/antigravitycli`; its wire format differs from Claude's Messages stream. Resume with the saved conversation ID via `--conversation`. Count distinct tool steps by conversation ID and step index, and record their progress for tracing. Sum per-step usage because result totals can cover the entire resumed conversation. When a resumed run has no per-step usage, report unknown usage rather than counting historical totals again.
+
+Timeout and step-budget cancellation kill the CLI's process group. The CLI's print timeout follows the caller's deadline, or defaults to 45 minutes when called without one. Logs and trace output are capped, and malformed or oversized output stops the process with a visible error. The adapter does not infer changed paths from undocumented tool argument schemas; the worker's normal git commit flow still captures changes.
+
+Only coding roles are accepted. Read-only isolation is not implemented. Do not pass `--dangerously-skip-permissions`; the operator grants the commands needed through Antigravity's own permission rules. Headless soft denials can still produce SUCCESS, so retain diagnostic output in the run log and document this behavior.
+
+Rejected:
+- **Reusing the Claude/Grok parser:** Antigravity has different envelopes, statuses and step identities.
+- **Passing ticket text through `-p`:** JSON stdin avoids argv exposure and command-line length limits.
+- **Using the result's cumulative usage on resume:** this would charge earlier work to the new run.
+- **Bypassing permissions or treating a read-only prompt as isolation:** neither is appropriate for a worker honoring operator policy.

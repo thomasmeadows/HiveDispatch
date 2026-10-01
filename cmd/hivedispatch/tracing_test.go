@@ -110,3 +110,30 @@ func TestGrokCheck(t *testing.T) {
 		t.Fatalf("check: %s", out.String())
 	}
 }
+
+func TestAntigravityCheck(t *testing.T) {
+	cfg := &config.Config{Repos: []config.RepoConfig{{Agents: []config.Agent{{Executor: "claude"}}}}}
+	if usesAntigravity(cfg) {
+		t.Fatal("unused antigravity checked")
+	}
+	for _, a := range []config.Agent{{Executor: "antigravity"}, {Executor: "langgraph", CodeWith: "antigravity"}} {
+		cfg.Repos[0].Agents = []config.Agent{a}
+		if !usesAntigravity(cfg) {
+			t.Fatalf("missed agent %+v", a)
+		}
+	}
+	var out bytes.Buffer
+	printAntigravityCheck(&out, filepath.Join(t.TempDir(), "missing-antigravity"))
+	if !strings.Contains(out.String(), "not found") || !strings.Contains(out.String(), "https://antigravity.google") {
+		t.Fatalf("check: %s", out.String())
+	}
+	out.Reset()
+	bin := filepath.Join(t.TempDir(), "antigravity")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	printAntigravityCheck(&out, bin)
+	if !strings.Contains(out.String(), bin) || !strings.Contains(out.String(), "agy") {
+		t.Fatalf("check: %s", out.String())
+	}
+}

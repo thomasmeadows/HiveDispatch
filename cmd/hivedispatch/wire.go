@@ -12,6 +12,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
+	"github.com/thomasmeadows/hivedispatch/internal/executor/antigravity"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/claudecode"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/codex"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/deepcode"
@@ -138,6 +139,18 @@ func usesGrok(cfg *config.Config) bool {
 	return false
 }
 
+// usesAntigravity reports whether a coding agent runs Antigravity directly or through the graph.
+func usesAntigravity(cfg *config.Config) bool {
+	for _, r := range cfg.Repos {
+		for _, a := range r.Agents {
+			if a.Executor == "antigravity" || (a.Executor == "langgraph" && a.CodeWith == "antigravity") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // usesDeepCode reports whether any repository has an agent that runs
 // DeepCode, as its executor or as a langgraph agent's code_with.
 func usesDeepCode(cfg *config.Config) bool {
@@ -221,17 +234,18 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 	fake := exfake.New()
 	fake.Placeholder = opts.placeholder
 	executors := map[string]executor.Executor{
-		"claude":   claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary}),
-		"codex":    codex.New(codex.Config{Binary: cfg.Codex.Binary}),
-		"grok":     grok.New(grok.Config{Binary: cfg.Grok.Binary}),
-		"deepcode": deepcode.New(deepcode.Config{Binary: cfg.DeepCode.Binary}),
-		"fake":     fake,
+		"claude":      claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary}),
+		"codex":       codex.New(codex.Config{Binary: cfg.Codex.Binary}),
+		"antigravity": antigravity.New(antigravity.Config{Binary: cfg.Antigravity.Binary}),
+		"grok":        grok.New(grok.Config{Binary: cfg.Grok.Binary}),
+		"deepcode":    deepcode.New(deepcode.Config{Binary: cfg.DeepCode.Binary}),
+		"fake":        fake,
 	}
 	executors["langgraph"] = newLangGraph(cfg, opts.configPath, executors, logger)
 	if opts.executor != "" {
 		ex, ok := executors[opts.executor]
 		if !ok {
-			return nil, fmt.Errorf("unknown executor %q (want claude, codex, grok, deepcode, langgraph or fake)", opts.executor)
+			return nil, fmt.Errorf("unknown executor %q (want claude, codex, grok, antigravity, deepcode, langgraph or fake)", opts.executor)
 		}
 		for kind := range executors {
 			executors[kind] = ex

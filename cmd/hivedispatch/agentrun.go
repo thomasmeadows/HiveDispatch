@@ -13,6 +13,7 @@ import (
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
+	"github.com/thomasmeadows/hivedispatch/internal/executor/antigravity"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/claudecode"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/codex"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/deepcode"
@@ -81,7 +82,7 @@ func runAgentRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent-run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config (for the CLI binaries)")
-	kind := fs.String("executor", "claude", "claude, codex, grok, deepcode or fake")
+	kind := fs.String("executor", "claude", "claude, codex, grok, antigravity, deepcode or fake")
 	workspace := fs.String("workspace", "", "the worktree to run in")
 	model := fs.String("model", "", "the agent's model")
 	resume := fs.String("resume", "", "the CLI session to resume")
@@ -93,9 +94,10 @@ func runAgentRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "agent-run: -workspace is required")
 		return 2
 	}
-	var claudeBin, codexBin, deepcodeBin, grokBin string
+	var claudeBin, codexBin, deepcodeBin, grokBin, antigravityBin string
 	if cfg, err := config.Load(*cfgPath); err == nil {
 		grokBin = cfg.Grok.Binary
+		antigravityBin = cfg.Antigravity.Binary
 		claudeBin, codexBin, deepcodeBin = cfg.Claude.Binary, cfg.Codex.Binary, cfg.DeepCode.Binary
 	}
 	var ex executor.Executor
@@ -104,6 +106,8 @@ func runAgentRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		ex = claudecode.New(claudecode.Config{Binary: claudeBin})
 	case "codex":
 		ex = codex.New(codex.Config{Binary: codexBin})
+	case "antigravity":
+		ex = antigravity.New(antigravity.Config{Binary: antigravityBin})
 	case "grok":
 		ex = grok.New(grok.Config{Binary: grokBin})
 	case "deepcode":
@@ -111,7 +115,7 @@ func runAgentRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "fake":
 		ex = exfake.New()
 	default:
-		fmt.Fprintf(stderr, "agent-run: -executor: want claude, codex, grok, deepcode or fake, got %q\n", *kind)
+		fmt.Fprintf(stderr, "agent-run: -executor: want claude, codex, grok, antigravity, deepcode or fake, got %q\n", *kind)
 		return 2
 	}
 	prompt, err := io.ReadAll(stdin)

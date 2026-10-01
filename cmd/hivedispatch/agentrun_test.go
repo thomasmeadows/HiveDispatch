@@ -67,3 +67,25 @@ func TestAgentRunGrok(t *testing.T) {
 		t.Fatalf("result: %+v", r)
 	}
 }
+
+func TestAgentRunAntigravity(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "fake-antigravity")
+	script := "#!/bin/sh\ncat >/dev/null\ncat <<'JSON'\n{\"event\":\"result\",\"result\":{\"status\":\"SUCCESS\",\"response\":\"Antigravity completed\",\"conversation_id\":\"s1\"}}\nJSON\n"
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeValidConfigWith(t, "antigravity:\n  binary: "+bin+"\n")
+	var out, errb bytes.Buffer
+	code := runAgentRun([]string{"-executor", "antigravity", "-config", cfg, "-workspace", dir}, strings.NewReader("task"), &out, &errb)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var r agentRunResult
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != "completed" || r.Summary != "Antigravity completed" {
+		t.Fatalf("result: %+v", r)
+	}
+}

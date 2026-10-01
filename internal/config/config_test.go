@@ -794,3 +794,20 @@ func TestGrokBinary(t *testing.T) {
 		}
 	}
 }
+
+func TestAntigravityBinary(t *testing.T) {
+	for _, bin := range []string{"agy", "/opt/agy"} {
+		extra := ""
+		if bin != "agy" {
+			extra = "antigravity:\n  binary: " + bin + "\n"
+		}
+		p, _ := setup(t, extra)
+		cfg, err := Load(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Antigravity.Binary != bin {
+			t.Fatalf("binary %q, want %q", cfg.Antigravity.Binary, bin)
+		}
+	}
+}

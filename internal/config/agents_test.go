@@ -63,3 +63,16 @@ func TestGrokAgents(t *testing.T) {
 		}
 	}
 }
+
+func TestAntigravityAgents(t *testing.T) {
+	for _, fields := range []string{"executor: antigravity", "executor: langgraph\n    code_with: antigravity"} {
+		if _, err := ParseAgents([]byte("agents:\n  - name: g\n    " + fields + "\n    model: antigravity-test\n")); err != nil {
+			t.Fatal(err)
+		}
+		for _, role := range []string{"planning", "review"} {
+			if _, err := ParseAgents([]byte("agents:\n  - name: g\n    " + fields + "\n    role: " + role + "\n")); err == nil {
+				t.Fatalf("accepted %s: %s", role, fields)
+			}
+		}
+	}
+}

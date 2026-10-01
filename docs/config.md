@@ -34,6 +34,7 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 | `retention_days` | `30` | Raw run logs and finished run records older than this are pruned at startup; `-1` never prunes |
 | `claude.binary` | `claude` | The Claude Code CLI to run |
 | `codex.binary` | `codex` | The Codex CLI to run (for agents with `executor: codex`) |
+| `antigravity.binary` | `agy` | Antigravity CLI executable for `executor: antigravity` or `code_with: antigravity` |
 | `grok.binary` | `grok` | Grok Build executable for `executor: grok` or `code_with: grok` |
 | `deepcode.binary` | `deepcode` | The DeepCode CLI to run (for agents with `executor: deepcode` or `code_with: deepcode`) |
 | `triage.kind` | `claude` | `claude` (read-only model triage) or `passthrough` (dispatch everything) |
@@ -96,8 +97,8 @@ agents:
 |---|---|---|
 | `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<machine_id>/<name>` |
 | `agents[].role` | `coding` | Which board column the agent works: `planning`, `coding` or `review` (below) |
-| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `grok` (Grok Build, below), `deepcode` (DeepCode, below), `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
-| `agents[].code_with` | `claude` | `langgraph` agents only: what the workflow's code and fix steps run — `claude`, `codex`, `grok`, `deepcode`, `fake`, or `langgraph` for HiveDispatch's own coding agent (coding agents only; see below). Rejected on any other executor |
+| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `grok` (Grok Build, below), `antigravity` (Antigravity CLI, below), `deepcode` (DeepCode, below), `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
+| `agents[].code_with` | `claude` | `langgraph` agents only: what the workflow's code and fix steps run — `claude`, `codex`, `grok`, `antigravity`, `deepcode`, `fake`, or `langgraph` for HiveDispatch's own coding agent (coding agents only; see below). Rejected on any other executor |
 | `agents[].model` | *(policy's model, then the CLI's)* | Model for this agent's runs; wins over the policy's `executor.model` / `executor.codex.model` |
 
 Each agent works one column of the board:
@@ -112,7 +113,27 @@ Columns without an agent of that role are not polled: a repository with only the
 
 Agents of a role are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets of a column at once as it has agents for it. A ticket labelled `hive:agent:<name>` waits for that agent in that agent's column; the other columns still use their whole pool, so one ticket can name both its coder and its reviewer. A label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are made under the worker's `machine_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
 
-`run -executor fake` (or `claude`, `codex`, `grok`, `deepcode`, `langgraph`) makes every agent use that executor for one run.
+`run -executor fake` (or `claude`, `codex`, `grok`, `antigravity`, `deepcode`, `langgraph`) makes every agent use that executor for one run.
+
+### Antigravity CLI — `executor: antigravity`
+
+Install [Google Antigravity CLI](https://antigravity.google/product/antigravity-cli) on the worker. Its executable is `agy`, normally installed under `~/.local/bin`; set `antigravity.binary` to an absolute path if it is not on the worker's PATH. Run `agy` interactively once to authenticate. For API-key authentication, set `modelProvider` to `gemini` in `~/.gemini/antigravity-cli/settings.json` and export `GEMINI_API_KEY`; the environment variable alone does not enable API-key mode. See Google's [installation and authentication guide](https://antigravity.google/docs/cli/install/).
+
+```yaml
+agents:
+  - name: antigravity-coder
+    executor: antigravity
+    role: coding
+    # model: <slug from agy models>   # optional; otherwise the CLI's default
+```
+
+Use `executor: langgraph` with `code_with: antigravity` to run it inside the graph workflow. The configuration UI offers both choices, and `hivedispatch check` checks for the binary without accessing credentials.
+
+The adapter sends one JSON prompt on stdin, runs `agy --input-format stream-json --output-format stream-json` in the ticket's worktree, and resumes by passing `--conversation` with the saved ID. Tool steps feed tracing and enforce the step budget; process-group cancellation enforces the worker's timeout. `--print-timeout` follows the context deadline, or 45 minutes when no deadline is supplied, instead of the CLI's five-minute default. Per-step usage counts the current invocation; cumulative session totals are not counted again on resume. If a resumed run supplies no per-step usage, usage is reported as unknown (zero). The adapter does not infer changed file names from undocumented tool parameter schemas; the worker still commits the worktree's changes.
+
+- **Coding agents only.** Planning and review are rejected until this adapter can enforce read-only access.
+- **Configure command permissions in Antigravity.** It preserves `~/.gemini/antigravity-cli/settings.json` and never passes `--dangerously-skip-permissions`. Tools that need approval are soft-denied in headless mode, which can still exit successfully. Grant necessary commands through `permissions.allow` (for example `command(git)`); notices are retained in the run log. See [headless permissions](https://antigravity.google/docs/cli/headless/#permissions-in-headless-mode).
+- **Shared policy still applies.** Repository `guidance` and `executor.path` are passed through; Claude and Codex policy keys do not configure Antigravity.
 
 ### Grok Build — `executor: grok`
 
