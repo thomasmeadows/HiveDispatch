@@ -12,7 +12,7 @@ HiveDispatch is a code orchestration agent that lets your tickets command coding
 
 Under the hood it polls each repository's issue tracker (Jira Cloud or GitHub Issues, and one worker can serve both), triages each ticket, claims it, branches, runs a coding-agent CLI in an isolated git worktree, commits, opens a PR, and reports back on the ticket.
 
-**v0.1.0 — alpha.** The single-worker MVP is complete and has run end to end on a real Jira project, GitHub repository, and Claude Code — including this repository's own tickets: a Jira ticket is triaged by Claude Code (dispatch / ask / reject), claimed, implemented by Claude Code in an isolated worktree, pushed, and opened as a GitHub PR — with questions posted back to the ticket and the run resumed when a human answers.
+**v0.5.0 — alpha.** The single-worker MVP (v0.1.0) has run end to end on a real Jira project, GitHub repository, and Claude Code — including this repository's own tickets: a Jira ticket is triaged by Claude Code (dispatch / ask / reject), claimed, implemented by Claude Code in an isolated worktree, pushed, and opened as a GitHub PR — with questions posted back to the ticket and the run resumed when a human answers.
 
 ## How a ticket flows
 
@@ -118,7 +118,7 @@ An agent with `executor: langgraph` works a ticket through a [LangGraph](https:/
 The workflow is optional and needs Python only on workers that use it. Install the `hivegraph` that matches your `hivedispatch version`:
 
 ```sh
-pipx install "git+https://github.com/thomasmeadows/HiveDispatch@v0.3.0#subdirectory=graph"
+pipx install "git+https://github.com/thomasmeadows/HiveDispatch@v0.5.0#subdirectory=graph"
 ```
 
 `hivedispatch check` prints this command for your version. With `code_with: langgraph`, the code step runs HiveDispatch's own coding agent on that model instead of Claude Code or Codex, with its shell limited to the commands the repository's policy allows. See [`docs/config.md`](docs/config.md) for `code_with`, `checks` and `graph:`.
