@@ -23,8 +23,10 @@ const AgentsFileName = "agents.yaml"
 type Agent struct {
 	Name     string `yaml:"name" json:"name"`
 	Role     string `yaml:"role,omitempty" json:"role"`   // planning, coding (default) or review
-	Executor string `yaml:"executor" json:"executor"`     // claude (default), codex or fake
+	Executor string `yaml:"executor" json:"executor"`     // claude (default), codex, langgraph or fake
 	Model    string `yaml:"model,omitempty" json:"model"` // default: the policy's model, then the CLI's
+	// CodeWith is langgraph only: the CLI its code node runs (claude, codex or fake).
+	CodeWith string `yaml:"code_with,omitempty" json:"code_with,omitempty"`
 }
 
 // Agent roles: which board column an agent works.
@@ -79,8 +81,20 @@ func ParseAgents(raw []byte) ([]Agent, error) {
 			problems = append(problems, fmt.Sprintf("agents[%d].name %q is used twice", i, a.Name))
 		}
 		seen[strings.ToLower(a.Name)] = true
-		if a.Executor != "claude" && a.Executor != "codex" && a.Executor != "fake" {
-			problems = append(problems, fmt.Sprintf("agents[%d].executor: want claude, codex or fake, got %q", i, a.Executor))
+		switch a.Executor {
+		case "claude", "codex", "fake":
+			if a.CodeWith != "" {
+				problems = append(problems, fmt.Sprintf("agents[%d].code_with: only an executor: langgraph agent has one", i))
+			}
+		case "langgraph":
+			if a.CodeWith == "" {
+				a.CodeWith = "claude"
+			}
+			if a.CodeWith != "claude" && a.CodeWith != "codex" && a.CodeWith != "fake" {
+				problems = append(problems, fmt.Sprintf("agents[%d].code_with: want claude, codex or fake, got %q", i, a.CodeWith))
+			}
+		default:
+			problems = append(problems, fmt.Sprintf("agents[%d].executor: want claude, codex, langgraph or fake, got %q", i, a.Executor))
 		}
 	}
 	if len(problems) > 0 {

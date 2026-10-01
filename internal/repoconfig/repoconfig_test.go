@@ -109,3 +109,23 @@ func TestParseValidatesContent(t *testing.T) {
 		t.Errorf("bad sandbox: %v, want an error naming %s", err, FileName)
 	}
 }
+
+func TestParseChecksAndGraph(t *testing.T) {
+	c, err := Parse([]byte("checks:\n  - go vet ./...\n  - go test ./...\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Checks) != 2 || c.Graph.MaxFixRounds != 3 || c.Graph.MaxReviewRounds != 1 {
+		t.Fatalf("got %+v", c)
+	}
+	c, err = Parse([]byte("graph:\n  max_fix_rounds: 0\n  max_review_rounds: 0\n"))
+	if err != nil || c.Graph.MaxFixRounds != 0 || c.Graph.MaxReviewRounds != 0 {
+		t.Fatalf("explicit zeros: %+v %v", c.Graph, err)
+	}
+	if _, err := Parse([]byte("graph:\n  max_fix_rounds: -1\n")); err == nil {
+		t.Fatal("negative rounds accepted")
+	}
+	if _, err := Parse([]byte("checks:\n  - \"  \"\n")); err == nil {
+		t.Fatal("blank check accepted")
+	}
+}

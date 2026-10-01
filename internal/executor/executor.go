@@ -63,6 +63,7 @@ type Task struct {
 	ResumeToken string // opaque; stored, never interpreted
 	StepBudget  int
 	Model       string // the agent's model; wins over the repository policy's
+	CodeWith    string // langgraph: the CLI its code node runs
 }
 
 // Footprint is the set of files a planned run expects to touch.
@@ -85,6 +86,8 @@ type Result struct {
 	Steps []Step
 	// Usage is the run's model and token totals, when the CLI reports them.
 	Usage Usage
+	// StepsTraced: the executor traced its own steps, so tracing skips Steps.
+	StepsTraced bool
 }
 
 // StepKind is what a Step was.
@@ -150,6 +153,7 @@ type Advice struct {
 	Workspace string
 	Schema    string // JSON Schema of the answer
 	Model     string // the agent's model; wins over the repository policy's
+	CodeWith  string // langgraph: the CLI that answers
 }
 
 // Executor wraps one coding-agent CLI. Timeouts ride on the context.
