@@ -1,6 +1,6 @@
 # LangGraph coding agent (`code_with: langgraph`) — design
 
-Date: 2026-10-01. Status: approved in conversation; written spec pending review.
+Date: 2026-10-01. Status: approved; implemented (see docs/superpowers/plans/2026-10-01-langgraph-coder.md).
 
 ## Why
 

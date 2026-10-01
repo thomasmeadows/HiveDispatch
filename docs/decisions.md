@@ -400,3 +400,22 @@ Rejected:
 - **Go orchestrating with Python only for model calls:** no graph state, no checkpoints, nothing to see in Studio. That would be LangGraph in name only.
 - **A Go port of LangGraph:** it would be an unofficial third-party dependency, which AGENTS.md rules out, and it lags the real thing.
 - **Anthropic as the graph's chat model, for now:** `langchain-openai` covers every provider the supervisor has except Anthropic, and the cheap model's job doesn't need it.
+
+## 2026-10-01 — HiveDispatch's own coding agent is a code_with choice
+
+Decided: `code_with: langgraph` makes the graph workflow's code step run a coding agent inside `hivegraph` instead of Claude Code or Codex. It is a LangGraph `StateGraph` of a model node and LangGraph's `ToolNode`, running on the graph's OpenAI-compatible provider with the agent's `model:` (default `graph.model`).
+
+Its file tools are confined to the worktree: they refuse paths outside it, through symlinks, or under `.git`.
+
+`run_command` splits a command into words and runs it without a shell. It runs a command only if it starts with an entry of the policy's `executor.langgraph.allowed_commands`, or exactly equals one of its `checks`, which run through `sh -c` as the checks step runs them.
+
+Every tool call counts toward the run's step budget. The conversation is kept in the workflow's checkpointed state, so fix rounds and resumes continue it. Older tool outputs are trimmed to bound the context. Rate limits map to `budget`, so the worker backs off as it does for the CLIs.
+
+It may only be a coding agent, because planning and review are read-only runs through a CLI. Like the rest of LangChain here, it is optional.
+
+Rejected:
+- **A separate executor:** the workflow's plan, checks and review are what make a cheap model's code worth opening a pull request for. A bare agent would have none of that.
+- **An unrestricted shell:** the CLIs come with their own permission systems, and this agent has only what HiveDispatch gives it. Allowlisted prefixes without a shell are the smallest grant that lets it run the tests.
+- **LangGraph's `create_react_agent`:** deprecated in LangGraph 1.0, and removed in 2.0.
+- **LangChain's `create_agent`:** it adds the `langchain` package, and budgets and stopping would go through middleware rather than a loop of our own.
+- **A separate `graph.coder` model block:** the agent's own `model:` on the graph provider covers the case of a stronger model for coding without a new block.

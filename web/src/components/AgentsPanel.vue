@@ -12,7 +12,7 @@ const busy = ref(false)
 const modal = ref(null) // { index: -1 for new, form: { name, executor, model, code_with }, error }
 
 const executors = ['claude', 'codex', 'langgraph', 'fake']
-const coders = ['claude', 'codex', 'fake'] // what a langgraph agent's code steps run
+const coders = ['claude', 'codex', 'langgraph', 'fake'] // what a langgraph agent's code steps run
 const roles = [
   { value: 'planning', label: 'Planning', column: 'Planning', does: 'reads the repository, posts a plan and moves the ticket to Ready' },
   { value: 'coding', label: 'Coding', column: 'Ready', does: 'implements the ticket and opens a pull request' },
@@ -169,8 +169,9 @@ watch(() => props.path, load, { immediate: true })
             <option v-for="x in coders" :key="x" :value="x">{{ x }}</option>
           </select>
           <span class="help muted">
-            The CLI the workflow's code and fix steps run. Planning and self-review use the chat model under
-            Configuration → Graph workflows; checks come from the Agent Policies tab.
+            What the workflow's code and fix steps run: a CLI, or langgraph for HiveDispatch's own coding agent
+            (coding agents only; its shell is limited to the policy's allowed commands). Planning and self-review use
+            the chat model under Configuration → Graph workflows; checks come from the Agent Policies tab.
           </span>
         </label>
         <label class="field">

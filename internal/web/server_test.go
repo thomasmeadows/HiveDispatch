@@ -668,6 +668,14 @@ func TestAgentsSaveLangGraph(t *testing.T) {
 	if !strings.Contains(string(raw), "executor: langgraph\n    code_with: codex") {
 		t.Errorf("agents.yaml = %q", raw)
 	}
+	own := map[string]any{"agents": []config.Agent{{Name: "d", Executor: "langgraph", CodeWith: "langgraph"}}}
+	if code := e.post(t, q, own, &got); code != 200 || got.Agents[0].CodeWith != "langgraph" {
+		t.Fatalf("code_with langgraph = %d %+v", code, got)
+	}
+	planner := map[string]any{"agents": []config.Agent{{Name: "p", Role: config.RolePlanning, Executor: "langgraph", CodeWith: "langgraph"}}}
+	if code := e.post(t, q, planner, &got); code != http.StatusBadRequest || !strings.Contains(got.Error, "coding") {
+		t.Errorf("planning with code_with langgraph = %d %+v", code, got)
+	}
 	bad := map[string]any{"agents": []config.Agent{{Name: "c", Executor: "claude", CodeWith: "codex"}}}
 	if code := e.post(t, q, bad, &got); code != http.StatusBadRequest || !strings.Contains(got.Error, "code_with") {
 		t.Errorf("code_with on claude = %d %+v", code, got)
