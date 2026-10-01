@@ -26,6 +26,7 @@ class Task:
     hivedispatch: str = "hivedispatch"
     worker_config: str = ""
     checks: list[str] = field(default_factory=list)
+    allowed_commands: list[str] = field(default_factory=list)
     check_timeout_seconds: int = 600
     max_fix_rounds: int = 3
     max_review_rounds: int = 1
