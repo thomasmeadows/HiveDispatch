@@ -6,6 +6,7 @@ const chatOpen = ref(window.innerWidth > 1100)
 const nav = [
   { to: '/', label: 'Dashboard', icon: 'M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z' },
   { to: '/repos', label: 'Repos', icon: 'M4 4h6l2 2h8v12H4z' },
+  { to: '/agents', label: 'Agent Configuration', icon: 'M20 7h-3V5a2 2 0 00-2-2H9a2 2 0 00-2 2v2H4a1 1 0 00-1 1v11a1 1 0 001 1h16a1 1 0 001-1V8a1 1 0 00-1-1zM9 5h6v2H9zm-1 8l2-2-2-2 1.4-1.4L12.8 11l-3.4 3.4zm8 1h-4v-2h4z' },
   { to: '/config', label: 'Configuration', icon: 'M12 8a4 4 0 100 8 4 4 0 000-8zm8.9 5a7 7 0 000-2l2-1.6-2-3.4-2.4 1a7 7 0 00-1.7-1L16.5 3h-4l-.4 2.6a7 7 0 00-1.7 1l-2.4-1-2 3.4 2 1.6a7 7 0 000 2l-2 1.6 2 3.4 2.4-1a7 7 0 001.7 1l.4 2.4h4l.4-2.6a7 7 0 001.7-1l2.4 1 2-3.4z' },
 ]
 </script>
