@@ -81,6 +81,55 @@ type Result struct {
 	Log          string
 	// RetryAfter is when a Budget stop is expected to clear; zero if unknown.
 	RetryAfter time.Time
+	// Steps is what the CLI did, in order, for tracing; may be empty.
+	Steps []Step
+	// Usage is the run's model and token totals, when the CLI reports them.
+	Usage Usage
+}
+
+// StepKind is what a Step was.
+type StepKind string
+
+// Step kinds.
+const (
+	StepTool    StepKind = "tool"    // the agent acted: a tool call, command or file change
+	StepMessage StepKind = "message" // the agent said or reasoned something
+)
+
+// Step is one thing a coding-agent CLI did during a run, timed by when its
+// events arrived on the stream (the streams carry no timestamps of their
+// own). A step whose result never arrived has a zero End.
+type Step struct {
+	Kind    StepKind
+	Name    string // the tool, or "assistant" / "reasoning" for a message
+	Input   string // the tool's input: JSON or a command line
+	Output  string // the tool's result or the message text, capped at MaxStepOutput
+	IsError bool
+	Start   time.Time
+	End     time.Time
+}
+
+// MaxStepOutput caps a Step's Output, so a run that reads large files does
+// not hold them all in memory for its trace.
+const MaxStepOutput = 16 << 10
+
+// MaxSteps caps how many Steps a run records; later steps are not kept.
+const MaxSteps = 2000
+
+// CapOutput truncates s to MaxStepOutput.
+func CapOutput(s string) string {
+	if len(s) <= MaxStepOutput {
+		return s
+	}
+	return s[:MaxStepOutput] + "…[truncated]"
+}
+
+// Usage is a run's model and token totals as the CLI reported them.
+type Usage struct {
+	Model        string
+	InputTokens  int
+	OutputTokens int
+	CostUSD      float64 // 0 when the CLI does not say
 }
 
 // AdviceKind is what a read-only run is for.

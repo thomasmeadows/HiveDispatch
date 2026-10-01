@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"testing"
+	"time"
 )
 
 func parseFixture(t *testing.T, name, cwd string, onToolUse func(int)) Transcript {
@@ -80,5 +81,55 @@ func TestParseCountsCompletedItemsNeverStarted(t *testing.T) {
 	tr := p.Transcript()
 	if tr.ToolUses != 2 || tr.LastMessage != "last" {
 		t.Errorf("Transcript = %+v", tr)
+	}
+}
+
+func stepClock() func() time.Time {
+	t := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	return func() time.Time {
+		t = t.Add(time.Second)
+		return t
+	}
+}
+
+func TestParseRecordsSteps(t *testing.T) {
+	p := NewParser("/w", nil)
+	p.Now = stepClock()
+	for _, l := range []string{
+		`{"type":"thread.started","thread_id":"th"}`,
+		`{"type":"item.started","item":{"id":"i0","type":"command_execution","command":"bash -lc 'cat a'","aggregated_output":"","exit_code":null,"status":"in_progress"}}`,
+		`{"type":"item.completed","item":{"id":"i0","type":"command_execution","command":"bash -lc 'cat a'","aggregated_output":"hello\n","exit_code":0,"status":"completed"}}`,
+		`{"type":"item.completed","item":{"id":"i1","type":"reasoning","text":"Think."}}`,
+		`{"type":"item.started","item":{"id":"i2","type":"command_execution","command":"false","status":"in_progress"}}`,
+		`{"type":"item.completed","item":{"id":"i2","type":"command_execution","command":"false","aggregated_output":"","exit_code":1,"status":"failed"}}`,
+		`{"type":"item.completed","item":{"id":"i3","type":"file_change","changes":[{"path":"/w/b.go","kind":"update"}],"status":"completed"}}`,
+		`{"type":"item.completed","item":{"id":"i4","type":"agent_message","text":"done"}}`,
+		`{"type":"turn.completed","usage":{"input_tokens":1200,"cached_input_tokens":800,"output_tokens":90}}`,
+		`{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5}}`,
+	} {
+		p.Line([]byte(l))
+	}
+	tr := p.Transcript()
+	if tr.InputTokens != 1210 || tr.OutputTokens != 95 {
+		t.Errorf("tokens = %d in, %d out", tr.InputTokens, tr.OutputTokens)
+	}
+	s := tr.Steps
+	if len(s) != 5 {
+		t.Fatalf("steps = %+v", s)
+	}
+	if s[0].Kind != "tool" || s[0].Name != "command_execution" || s[0].Input != "bash -lc 'cat a'" || s[0].Output != "hello\n" || s[0].IsError || s[0].End.Sub(s[0].Start) != time.Second {
+		t.Errorf("command step = %+v", s[0])
+	}
+	if s[1].Kind != "message" || s[1].Name != "reasoning" || s[1].Output != "Think." {
+		t.Errorf("reasoning step = %+v", s[1])
+	}
+	if !s[2].IsError || s[2].Output != "exit code 1" {
+		t.Errorf("failed command step = %+v", s[2])
+	}
+	if s[3].Name != "file_change" || s[3].Output != "update b.go" || !s[3].Start.Equal(s[3].End) {
+		t.Errorf("file change step = %+v", s[3])
+	}
+	if s[4].Kind != "message" || s[4].Name != "assistant" || s[4].Output != "done" {
+		t.Errorf("message step = %+v", s[4])
 	}
 }
