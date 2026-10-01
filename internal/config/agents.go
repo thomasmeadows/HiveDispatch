@@ -23,10 +23,10 @@ const AgentsFileName = "agents.yaml"
 type Agent struct {
 	Name     string `yaml:"name" json:"name"`
 	Role     string `yaml:"role,omitempty" json:"role"`   // planning, coding (default) or review
-	Executor string `yaml:"executor" json:"executor"`     // claude (default), codex, langgraph or fake
+	Executor string `yaml:"executor" json:"executor"`     // claude (default), codex, grok, antigravity, deepcode, langgraph or fake
 	Model    string `yaml:"model,omitempty" json:"model"` // default: the policy's model, then the CLI's
-	// CodeWith is langgraph only: what its code node runs — claude, codex or
-	// fake, or langgraph for HiveDispatch's own coding agent (coding role only).
+	// CodeWith is langgraph only: what its code node runs — claude, codex,
+	// deepcode or fake, or langgraph for HiveDispatch's own coding agent.
 	CodeWith string `yaml:"code_with,omitempty" json:"code_with,omitempty"`
 }
 
@@ -87,24 +87,59 @@ func ParseAgents(raw []byte) ([]Agent, error) {
 			if a.CodeWith != "" {
 				problems = append(problems, fmt.Sprintf("agents[%d].code_with: only an executor: langgraph agent has one", i))
 			}
+		case "grok", "antigravity":
+			if a.Role != RoleCoding {
+				problems = append(problems, fmt.Sprintf("agents[%d]: %s is for coding agents only", i, a.Executor))
+			}
+			if a.CodeWith != "" {
+				problems = append(problems, fmt.Sprintf("agents[%d].code_with: only an executor: langgraph agent has one", i))
+			}
+		case "deepcode":
+			if a.CodeWith != "" {
+				problems = append(problems, fmt.Sprintf("agents[%d].code_with: only an executor: langgraph agent has one", i))
+			}
+			problems = append(problems, deepcodeProblems(i, "executor", *a)...)
 		case "langgraph":
 			if a.CodeWith == "" {
 				a.CodeWith = "claude"
 			}
-			if a.CodeWith != "claude" && a.CodeWith != "codex" && a.CodeWith != "fake" && a.CodeWith != "langgraph" {
-				problems = append(problems, fmt.Sprintf("agents[%d].code_with: want claude, codex, langgraph or fake, got %q", i, a.CodeWith))
-			}
-			if a.CodeWith == "langgraph" && a.Role != RoleCoding {
-				problems = append(problems, fmt.Sprintf("agents[%d].code_with: langgraph is for coding agents only; a %s agent runs read-only through claude or codex", i, a.Role))
+			switch a.CodeWith {
+			case "claude", "codex", "fake":
+			case "langgraph":
+				if a.Role != RoleCoding {
+					problems = append(problems, fmt.Sprintf("agents[%d].code_with: langgraph is for coding agents only; a %s agent runs read-only through claude or codex", i, a.Role))
+				}
+			case "grok", "antigravity":
+				if a.Role != RoleCoding {
+					problems = append(problems, fmt.Sprintf("agents[%d]: %s is for coding agents only", i, a.CodeWith))
+				}
+			case "deepcode":
+				problems = append(problems, deepcodeProblems(i, "code_with", *a)...)
+			default:
+				problems = append(problems, fmt.Sprintf("agents[%d].code_with: want claude, codex, grok, antigravity, deepcode, langgraph or fake, got %q", i, a.CodeWith))
 			}
 		default:
-			problems = append(problems, fmt.Sprintf("agents[%d].executor: want claude, codex, langgraph or fake, got %q", i, a.Executor))
+			problems = append(problems, fmt.Sprintf("agents[%d].executor: want claude, codex, grok, antigravity, deepcode, langgraph or fake, got %q", i, a.Executor))
 		}
 	}
 	if len(problems) > 0 {
 		return nil, errors.New(strings.Join(problems, "; "))
 	}
 	return f.Agents, nil
+}
+
+// deepcodeProblems checks an agent that runs DeepCode, as its executor or
+// its code_with. DeepCode cannot be held to read-only, so it only codes,
+// and it has no model flag: its model is in ~/.deepcode/settings.json.
+func deepcodeProblems(i int, field string, a Agent) []string {
+	var problems []string
+	if a.Role != RoleCoding {
+		problems = append(problems, fmt.Sprintf("agents[%d].%s: deepcode is for coding agents only; a %s agent runs read-only through claude or codex", i, field, a.Role))
+	}
+	if a.Model != "" {
+		problems = append(problems, fmt.Sprintf("agents[%d].model: deepcode takes its model from ~/.deepcode/settings.json; remove model here", i))
+	}
+	return problems
 }
 
 // agentsFilePath is dir/.hive-dispatch/agents.yaml.

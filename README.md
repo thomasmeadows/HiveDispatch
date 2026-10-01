@@ -6,7 +6,7 @@ HiveDispatch is a code orchestration agent that lets your tickets command coding
 
 **The human in the loop sits at the end, at pull request review.** Nothing merges without you. If you want an agent to change something in the PR, say so in a comment and move the ticket back to Ready. The agent picks it up again, reads your feedback, and pushes a new round to the same branch. You stay in control of what ships. The agents do the typing.
 
-**Several agents, several steps.** A repository can have planning agents that turn a rough ticket into a plan, coding agents that implement it, and review agents that check the PR before it reaches you. Each agent can use a different executor (Claude Code or Codex) and a different model. For example, one model writes the code and another reviews it, so one model's blind spots are caught by another before a human looks. Several agents can work on different tickets at the same time, each in its own worktree.
+**Several agents, several steps.** A repository can have planning agents that turn a rough ticket into a plan, coding agents that implement it, and review agents that check the PR before it reaches you. Each agent can use a different executor (Claude Code, Codex, Grok Build, Antigravity CLI, or DeepSeek's DeepCode) and a different model. For example, one model writes the code and another reviews it, so one model's blind spots are caught by another before a human looks. Several agents can work on different tickets at the same time, each in its own worktree.
 
 **Local or remote.** The worker is a single binary. Run it on your laptop next to your checkouts, or on a server or VM that stays up while you're away. Because all coordination goes through the tracker, where you run it doesn't change how you use it: you work with tickets either way. Several workers on different machines can share one board. Each one claims a ticket before touching it, so no ticket is worked twice, and each ticket shows which machine has it.
 
@@ -63,6 +63,10 @@ hivedispatch run                                     # the real thing
 hivedispatch once jira-scrum-42                       # drive one ticket by hand (key or name)
 hivedispatch status                                  # what has run, from the state branch
 ```
+
+To use [Grok Build](https://github.com/xai-org/grok-build) for coding, install and authenticate its `grok` CLI, then set `executor: grok` on a coding agent in `.hive-dispatch/agents.yaml`. It also works as `code_with: grok` in a LangGraph workflow. See the [setup and permission settings](docs/config.md#grok-build--executor-grok).
+
+[Antigravity CLI](https://antigravity.google/product/antigravity-cli) is also supported: install and authenticate `agy`, then set `executor: antigravity` on a coding agent (or `code_with: antigravity` in LangGraph). See [Antigravity setup and permissions](docs/config.md#antigravity-cli--executor-antigravity).
 
 ## The configuration website
 

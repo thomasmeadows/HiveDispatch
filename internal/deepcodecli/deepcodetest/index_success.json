@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "d2aca809-b451-42a3-8db5-2adbfa384eef",
+      "summary": "Add a Go function Add(a, b int) int to main.go, then run: go build ./... and report the result in on",
+      "assistantReply": "Added `func Add(a, b int) int { return a + b }` to main.go, and `go build ./...` completed successfully with exit code 0 and no errors.",
+      "assistantThinking": null,
+      "assistantRefusal": null,
+      "toolCalls": null,
+      "status": "completed",
+      "failReason": null,
+      "usage": {
+        "prompt_tokens": 32023,
+        "completion_tokens": 539,
+        "total_tokens": 32562,
+        "prompt_tokens_details": {
+          "cached_tokens": 24960
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 43
+        },
+        "prompt_cache_hit_tokens": 24960,
+        "prompt_cache_miss_tokens": 7063
+      },
+      "usagePerModel": {
+        "deepseek-flash": {
+          "prompt_tokens": 32023,
+          "completion_tokens": 539,
+          "total_tokens": 32562,
+          "prompt_tokens_details": {
+            "cached_tokens": 24960
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 43
+          },
+          "prompt_cache_hit_tokens": 24960,
+          "prompt_cache_miss_tokens": 7063,
+          "total_reqs": 5
+        }
+      },
+      "activeTokens": 7293,
+      "createTime": "2026-10-01T07:31:07.161Z",
+      "updateTime": "2026-10-01T07:31:16.746Z",
+      "processes": null,
+      "planMode": false,
+      "usingPlus": false
+    }
+  ]
+}

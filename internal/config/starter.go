@@ -77,6 +77,10 @@ const Starter = `# HiveDispatch worker configuration: settings for this machine.
 #   binary: claude         # the Claude Code CLI; which agents use it is in each
 # codex:                   # repository's .hive-dispatch/agents.yaml
 #   binary: codex
+# antigravity:
+#   binary: agy            # Antigravity CLI; run agy once to authenticate
+# grok:
+#   binary: grok           # Grok Build; authenticate with grok login or XAI_API_KEY
 # state_store: branch      # or local
 # triage:
 #   kind: claude           # or passthrough
@@ -228,7 +232,7 @@ const AgentsStarter = `# The agents that work this repository's tickets, read by
 agents:
   - name: default
     role: coding
-    executor: claude       # claude, codex, or fake (no agent; for trying the pipeline)
+    executor: claude       # claude, codex, grok/antigravity (coding only), deepcode, langgraph, or fake (no agent; for trying the pipeline)
     # model: sonnet
   # - name: planner
   #   role: planning

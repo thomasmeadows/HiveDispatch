@@ -33,3 +33,46 @@ func TestParseAgentsCodeWithLangGraph(t *testing.T) {
 		t.Fatalf("planning with code_with langgraph: err %v", err)
 	}
 }
+
+func TestParseAgentsDeepCode(t *testing.T) {
+	got, err := ParseAgents([]byte("agents:\n  - name: dc\n    executor: deepcode\n  - name: g\n    executor: langgraph\n    code_with: deepcode\n"))
+	if err != nil || got[0].Executor != "deepcode" || got[1].CodeWith != "deepcode" {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+	for bad, want := range map[string]string{
+		"agents:\n  - name: r\n    role: review\n    executor: deepcode\n":                             "coding",
+		"agents:\n  - name: m\n    executor: deepcode\n    model: deepseek-pro\n":                      "settings.json",
+		"agents:\n  - name: p\n    role: planning\n    executor: langgraph\n    code_with: deepcode\n": "coding",
+		"agents:\n  - name: m\n    executor: langgraph\n    code_with: deepcode\n    model: x\n":       "settings.json",
+	} {
+		if _, err := ParseAgents([]byte(bad)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: err %v, want %q", bad, err, want)
+		}
+	}
+}
+
+func TestGrokAgents(t *testing.T) {
+	for _, fields := range []string{"executor: grok", "executor: langgraph\n    code_with: grok"} {
+		if _, err := ParseAgents([]byte("agents:\n  - name: g\n    " + fields + "\n    model: grok-test\n")); err != nil {
+			t.Fatal(err)
+		}
+		for _, role := range []string{"planning", "review"} {
+			if _, err := ParseAgents([]byte("agents:\n  - name: g\n    " + fields + "\n    role: " + role + "\n")); err == nil {
+				t.Fatalf("accepted %s: %s", role, fields)
+			}
+		}
+	}
+}
+
+func TestAntigravityAgents(t *testing.T) {
+	for _, fields := range []string{"executor: antigravity", "executor: langgraph\n    code_with: antigravity"} {
+		if _, err := ParseAgents([]byte("agents:\n  - name: g\n    " + fields + "\n    model: antigravity-test\n")); err != nil {
+			t.Fatal(err)
+		}
+		for _, role := range []string{"planning", "review"} {
+			if _, err := ParseAgents([]byte("agents:\n  - name: g\n    " + fields + "\n    role: " + role + "\n")); err == nil {
+				t.Fatalf("accepted %s: %s", role, fields)
+			}
+		}
+	}
+}

@@ -1,5 +1,6 @@
 // Package claudecli runs the Claude Code CLI headless and parses its
-// stream-json output. Both the executor and the triager build on it, so
+// Messages stream-json output (also emitted by Grok Build). Executors and
+// the triager build on it, so
 // process supervision (process-group kill, step budget, timeout, bounded
 // logs) lives in one place.
 package claudecli
@@ -58,6 +59,7 @@ type RateLimit struct {
 
 // ResultMsg is the final "result" message of a headless run.
 type ResultMsg struct {
+	Errors           []string        `json:"errors"`
 	Subtype          string          `json:"subtype"`
 	IsError          bool            `json:"is_error"`
 	Result           string          `json:"result"`
@@ -112,7 +114,8 @@ func NewParser(cwd string, onToolUse func(int)) *Parser {
 
 // editingTools are the built-in tools whose input names a file they change.
 var editingTools = map[string]string{
-	"Edit": "file_path", "Write": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path",
+	"search_replace": "file_path", // Grok Build
+	"Edit":           "file_path", "Write": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path",
 }
 
 type envelope struct {

@@ -419,3 +419,53 @@ Rejected:
 - **LangGraph's `create_react_agent`:** deprecated in LangGraph 1.0, and removed in 2.0.
 - **LangChain's `create_agent`:** it adds the `langchain` package, and budgets and stopping would go through middleware rather than a loop of our own.
 - **A separate `graph.coder` model block:** the agent's own `model:` on the graph provider covers the case of a stronger model for coding without a new block.
+
+## 2026-10-01 — DeepCode is the third coding CLI
+
+Decided: `executor: deepcode` runs [DeepCode](https://api-docs.deepseek.com/quick_start/agent_integrations/deepcode), DeepSeek's open-source terminal coding agent (`@vegamo/deepcode-cli`), headless as `deepcode -x --prompt=…`. A resume after a human reply passes `-r <sessionId>`, and the session id is the resume token. It is also a `code_with` choice for the graph workflow, through `agent-run`.
+
+DeepCode prints only its final reply. The steps, edited files, token usage and outcome (completed, failed, `ask_permission`, `waiting_for_user`) come from the session it saves under `~/.deepcode/projects`. A run's session is the new file whose recorded root path is the worktree, so parallel tickets stay apart without depending on how DeepCode names its project folders. The step budget is enforced by polling that file during the run.
+
+The operator owns DeepCode's configuration, as with Claude Code and Codex. Its API key and model are in `~/.deepcode/settings.json`, and DeepCode reads no environment variables for them.
+
+- An agent running DeepCode may not set `model:`, because DeepCode has no model flag.
+- It must be a coding agent, because DeepCode cannot be held to read-only from its command line.
+- Its shell is limited by DeepCode's own `permissions`. In `-x` mode an `ask` fails the run with DeepCode's message rather than hanging, and the summary says to fix the settings.
+
+Rejected:
+- **HiveDispatch writing DeepCode's settings** (a project-level `.deepcode/settings.json` in the worktree, or a private HOME): the first would put the API key in the worktree, where the safety commit could pick it up. A private HOME would hide the user's git and tool credentials from DeepCode's shell.
+- **Passing the key through the environment:** DeepCode ignores it.
+- **Planning and review on DeepCode:** without a read-only mode, a "read-only" run could still change the tree.
+- **HiveDispatch's own command allowlist around DeepCode:** DeepCode runs its own tools, so the only lever is its settings. That is documented rather than half-enforced.
+
+
+## 2026-10-01 — Grok Build is a coding executor
+
+Decided: `executor: grok` runs xAI's [Grok Build](https://github.com/xai-org/grok-build) CLI headlessly in the prepared worktree. It also works through the graph's `code_with: grok` via `agent-run`. The worker's `grok.binary` selects the executable, and the agent's `model` passes `--model`; credentials and permissions remain in the operator's Grok setup.
+
+Use `--prompt-file` with a private temporary file, deleted after the run, and `--output-format streaming-messages-json`. Grok documents this as the Messages wire format, so reuse the existing `claudecli` parser and process supervision. Grok's `search_replace` file paths and terminal `errors` array are recognized by that parser. Grok-specific outcome mapping handles native turn exhaustion, quota errors, incomplete responses and nonzero exit status. The returned session ID is the resume token. Tool calls enforce the step budget, with `--max-turns` additionally bounding model turns; cancellation kills the process group.
+
+Only coding roles are accepted for now. The adapter does not establish a read-only sandbox for planning or review. It leaves Grok's permission policy in place and never supplies `--yolo`; headless permission requests are cancelled by Grok. The shared PATH policy and repository guidance still apply.
+
+Rejected:
+- **A separate parser for Grok's native `streaming-json`:** its supported Messages format already carries sessions, tool calls, results and usage that HiveDispatch consumes. Sharing that parser avoids duplicating process supervision and tracing.
+- **Automatically bypassing all permissions:** the operator should configure Grok's allowed operations, as with the other executors.
+- **Planning and review via a prompt that says read-only:** a prompt does not enforce isolation. Add those roles when the adapter can guarantee it.
+- **Putting prompts in argv:** a private temporary file avoids command-line length limits and exposing ticket content in process listings.
+
+
+## 2026-10-01 — Antigravity CLI runs through its native JSON event stream
+
+Decided: `executor: antigravity` runs Google's `agy` CLI in the prepared worktree; `code_with: antigravity` uses the same executor via `agent-run`. The worker's `antigravity.binary` selects the executable (default `agy`), and the agent's model passes `--model`. Authentication and permissions stay in Antigravity's own configuration.
+
+Send one `user` message on stdin with `--input-format stream-json --output-format stream-json`, then close stdin. Antigravity completes that turn before exiting. Parse its native `init`, `step_update` and `result` envelopes in `internal/antigravitycli`; its wire format differs from Claude's Messages stream. Resume with the saved conversation ID via `--conversation`. Count distinct tool steps by conversation ID and step index, and record their progress for tracing. Sum per-step usage because result totals can cover the entire resumed conversation. When a resumed run has no per-step usage, report unknown usage rather than counting historical totals again.
+
+Timeout and step-budget cancellation kill the CLI's process group. The CLI's print timeout follows the caller's deadline, or defaults to 45 minutes when called without one. Logs and trace output are capped, and malformed or oversized output stops the process with a visible error. The adapter does not infer changed paths from undocumented tool argument schemas; the worker's normal git commit flow still captures changes.
+
+Only coding roles are accepted. Read-only isolation is not implemented. Do not pass `--dangerously-skip-permissions`; the operator grants the commands needed through Antigravity's own permission rules. Headless soft denials can still produce SUCCESS, so retain diagnostic output in the run log and document this behavior.
+
+Rejected:
+- **Reusing the Claude/Grok parser:** Antigravity has different envelopes, statuses and step identities.
+- **Passing ticket text through `-p`:** JSON stdin avoids argv exposure and command-line length limits.
+- **Using the result's cumulative usage on resume:** this would charge earlier work to the new run.
+- **Bypassing permissions or treating a read-only prompt as isolation:** neither is appropriate for a worker honoring operator policy.
