@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     emitter = Emitter()
     try:
         task = Task.from_json(sys.stdin.read())
-    except Exception as exc:  # noqa: BLE001 - any bad input is a failed run
+    except Exception as exc:  # any bad input is a failed run
         emitter.result("failed", "error", f"hivegraph: bad task: {exc}", "", "", [], False)
         return 0
     from .graph import run_task  # imported late: langgraph is slow to import

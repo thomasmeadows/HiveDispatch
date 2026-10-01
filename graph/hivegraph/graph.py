@@ -6,7 +6,9 @@ stop a run on its own: when it fails, the graph codes without a plan or
 finishes without a review, and says so.
 """
 
+import contextlib
 import json
+import os
 import subprocess
 import uuid
 from datetime import UTC, datetime
@@ -205,31 +207,76 @@ def build(task, emitter, model, agent=run_agent, checks=run_checks) -> StateGrap
     return g
 
 
-def run_task(task, emitter, model=None, agent=run_agent, checks=run_checks, checkpointer=None) -> int:
-    """Runs the workflow and always emits exactly one result event."""
-    thread = task.resume_token or str(uuid.uuid4())
+def _tracing_enabled() -> bool:
     try:
-        if model is None:
-            from .model import chat_model
+        from langsmith.utils import tracing_is_enabled
 
-            model = chat_model(task)
-        graph = build(task, emitter, model, agent, checks).compile(checkpointer=checkpointer)
-        config = {"configurable": {"thread_id": thread}, "recursion_limit": 100}
-        # A new turn on the thread: the prompt is the new message, and the
-        # loop counters start again.
-        inputs: State = {
-            "prompt": task.prompt,
-            "fix_round": 0,
-            "review_round": 0,
-            "feedback": "",
-            "status": "",
-            "review_findings": "",
-            "review_skipped": "",
-        }
-        final = graph.invoke(inputs, config)
+        return bool(tracing_is_enabled())
+    except Exception:
+        return False
+
+
+def _tracing_context(**kw):
+    from langsmith.run_helpers import tracing_context
+
+    return tracing_context(**kw)
+
+
+def _flush_traces() -> None:
+    from langchain_core.tracers.langchain import wait_for_all_tracers
+
+    wait_for_all_tracers()
+
+
+def run_task(task, emitter, model=None, agent=run_agent, checks=run_checks, checkpointer=None) -> int:
+    """Runs the workflow and always emits exactly one result event.
+
+    Checkpoints go to <git dir>/hivegraph/checkpoints.sqlite, so a ticket
+    resumed after a human reply continues its thread. With LangSmith tracing
+    on, the run is attached under the worker's span (LANGSMITH_PARENT).
+    """
+    thread = task.resume_token or str(uuid.uuid4())
+    traced = _tracing_enabled()
+    try:
+        with contextlib.ExitStack() as stack:
+            if checkpointer is None and task.git_dir:
+                from langgraph.checkpoint.sqlite import SqliteSaver
+
+                path = os.path.join(task.git_dir, "hivegraph", "checkpoints.sqlite")
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                checkpointer = stack.enter_context(SqliteSaver.from_conn_string(path))
+            parent = os.environ.get("LANGSMITH_PARENT")
+            if traced and parent:
+                stack.enter_context(_tracing_context(parent=parent))
+            if model is None:
+                from .model import chat_model
+
+                model = chat_model(task)
+            graph = build(task, emitter, model, agent, checks).compile(checkpointer=checkpointer)
+            config = {
+                "configurable": {"thread_id": thread},
+                "recursion_limit": 100,
+                "run_name": f"hivegraph {task.ticket}".strip(),
+                "metadata": {"ticket": task.ticket},
+            }
+            # A new turn on the thread: the prompt is the new message, and the
+            # loop counters start again.
+            inputs: State = {
+                "prompt": task.prompt,
+                "fix_round": 0,
+                "review_round": 0,
+                "feedback": "",
+                "status": "",
+                "review_findings": "",
+                "review_skipped": "",
+            }
+            final = graph.invoke(inputs, config)
     except Exception as exc:  # every failure is reported as a result
         emitter.result("failed", "error", f"hivegraph: {type(exc).__name__}: {exc}", "", thread, [], False)
         return 0
+    finally:
+        if traced:
+            _flush_traces()
     status = final.get("status") or "failed"
     emitter.result(
         status,
@@ -238,6 +285,6 @@ def run_task(task, emitter, model=None, agent=run_agent, checks=run_checks, chec
         final.get("question", ""),
         thread,
         final.get("changed_files", []),
-        False,
+        traced,
     )
     return 0
