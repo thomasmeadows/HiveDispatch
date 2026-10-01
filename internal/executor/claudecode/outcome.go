@@ -38,10 +38,17 @@ func truncate(s string, n int) string {
 
 // mapOutcome turns what was parsed plus how the process ended into a Result.
 func mapOutcome(tr claudecli.Transcript, exit claudecli.Exit) executor.Result {
-	res := executor.Result{ResumeToken: tr.SessionID, ChangedFiles: tr.EditedFiles}
+	res := executor.Result{ResumeToken: tr.SessionID, ChangedFiles: tr.EditedFiles, Steps: tr.Steps}
+	res.Usage.Model = tr.Model
 	text := ""
 	if tr.Result != nil {
 		text = strings.TrimSpace(tr.Result.Result)
+		res.Usage.CostUSD = tr.Result.TotalCostUSD
+		if u := tr.Result.Usage; u != nil {
+			// Anthropic counts cached input apart from input_tokens.
+			res.Usage.InputTokens = u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+			res.Usage.OutputTokens = u.OutputTokens
+		}
 	}
 	fail := func(c executor.Cause, summary string) executor.Result {
 		res.Status = executor.StatusFailed

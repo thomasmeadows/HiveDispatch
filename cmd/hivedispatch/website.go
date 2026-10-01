@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -95,6 +96,8 @@ func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdou
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	tracer, closeTracer := newTracer(os.Getenv, slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelWarn})), stderr)
+	defer closeTracer()
 	var allow []string
 	if host, _, err := net.SplitHostPort(ln.Addr().String()); err == nil {
 		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
@@ -137,7 +140,7 @@ func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdou
 		Check: func(ctx context.Context) string { return supervisor.CheckOutput(ctx, exe, cfgPath) },
 		NewChat: func(ctx context.Context, confirm func(string) bool, events func(supervisor.Event)) (*supervisor.Session, error) {
 			return supervisor.NewSession(ctx, supervisor.SessionOptions{
-				WorkerConfigPath: cfgPath, Exe: exe, Confirm: confirm, Events: events,
+				WorkerConfigPath: cfgPath, Exe: exe, Confirm: confirm, Events: events, Tracer: tracer,
 			})
 		},
 	})

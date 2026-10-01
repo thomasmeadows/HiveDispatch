@@ -57,6 +57,9 @@ func (e *Executor) Run(ctx context.Context, t executor.Task) (executor.Result, e
 	}
 	res := mapOutcome(tr, exit)
 	res.Log = log
+	if res.Usage.Model == "" {
+		res.Usage.Model = t.Model
+	}
 	return res, nil
 }
 

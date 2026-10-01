@@ -81,3 +81,16 @@ func TestMapOutcomeDetails(t *testing.T) {
 		t.Errorf("empty = %+v", empty)
 	}
 }
+
+func TestMapOutcomeCarriesStepsAndUsage(t *testing.T) {
+	steps := []executor.Step{{Kind: executor.StepTool, Name: "command_execution"}}
+	tr := codexcli.Transcript{LastMessage: "done", TurnCompleted: true, Steps: steps, InputTokens: 100, OutputTokens: 9}
+	res := mapOutcome(tr, codexcli.Exit{})
+	if len(res.Steps) != 1 || res.Usage.InputTokens != 100 || res.Usage.OutputTokens != 9 {
+		t.Errorf("res = %+v", res)
+	}
+	failed := mapOutcome(codexcli.Transcript{Steps: steps}, codexcli.Exit{ExitErr: errors.New("exit 1")})
+	if len(failed.Steps) != 1 {
+		t.Errorf("a failed run lost its steps: %+v", failed)
+	}
+}

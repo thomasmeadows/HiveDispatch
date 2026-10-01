@@ -38,7 +38,8 @@ func truncate(s string, n int) string {
 
 // mapOutcome turns what was parsed plus how the process ended into a Result.
 func mapOutcome(tr codexcli.Transcript, exit codexcli.Exit) executor.Result {
-	res := executor.Result{ResumeToken: tr.ThreadID, ChangedFiles: tr.EditedFiles}
+	res := executor.Result{ResumeToken: tr.ThreadID, ChangedFiles: tr.EditedFiles, Steps: tr.Steps,
+		Usage: executor.Usage{InputTokens: tr.InputTokens, OutputTokens: tr.OutputTokens}}
 	text := strings.TrimSpace(tr.LastMessage)
 	fail := func(c executor.Cause, summary string) executor.Result {
 		res.Status = executor.StatusFailed

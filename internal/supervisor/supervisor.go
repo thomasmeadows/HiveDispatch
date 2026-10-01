@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"time"
+
+	"github.com/thomasmeadows/hivedispatch/internal/trace"
 )
 
 // Options wires a terminal supervisor session.
@@ -18,6 +20,7 @@ type Options struct {
 	Interactive      bool // stdin is a terminal: prompts, confirmations, spinner
 	Getenv           func(string) string
 	Now              func() time.Time
+	Tracer           *trace.Tracer // nil = no tracing
 }
 
 // New builds a Session with the terminal as its front end.
@@ -26,7 +29,7 @@ func New(ctx context.Context, o Options) (*REPL, error) {
 	r.lines = newLineReader(o.Stdin)
 	s, err := NewSession(ctx, SessionOptions{
 		WorkerConfigPath: o.WorkerConfigPath, Provider: o.Provider, Model: o.Model,
-		Resume: o.Resume, Session: o.Session, Exe: o.Exe, Getenv: o.Getenv, Now: o.Now,
+		Resume: o.Resume, Session: o.Session, Exe: o.Exe, Getenv: o.Getenv, Now: o.Now, Tracer: o.Tracer,
 		Confirm: r.Confirm, Events: r.onEvent,
 	})
 	if err != nil {

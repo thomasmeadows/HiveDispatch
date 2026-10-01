@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/thomasmeadows/hivedispatch/internal/supervisor/model"
+	"github.com/thomasmeadows/hivedispatch/internal/trace"
 )
 
 // Session is one conversation with the supervisor, independent of its
@@ -40,6 +41,8 @@ type SessionOptions struct {
 	Events func(Event)
 	// ChatModel, when set, answers instead of the configured provider.
 	ChatModel model.Model
+	// Tracer records each turn's model and tool calls; nil = off.
+	Tracer *trace.Tracer
 }
 
 // NewSession loads the supervisor config, builds the model, tools and
@@ -82,7 +85,7 @@ func NewSession(ctx context.Context, o SessionOptions) (*Session, error) {
 		NewRunHivedispatch(o.Exe, o.WorkerConfigPath, o.Confirm),
 		NewRemember(mem, o.Now),
 	}
-	s.agent = &Agent{Model: m, Tools: tools, System: s.system, StepBudget: stepBudget, MaxTokens: maxTokens, Events: o.Events}
+	s.agent = &Agent{Model: m, Tools: tools, System: s.system, StepBudget: stepBudget, MaxTokens: maxTokens, Events: o.Events, Tracer: o.Tracer}
 	switch {
 	case o.Session != "":
 		h, err := mem.LoadSession(o.Session)

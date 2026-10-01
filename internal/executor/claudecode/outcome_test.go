@@ -81,3 +81,23 @@ func TestMapOutcomeDetails(t *testing.T) {
 }
 
 func intp(i int) *int { return &i }
+
+func TestMapOutcomeCarriesStepsAndUsage(t *testing.T) {
+	steps := []executor.Step{{Kind: executor.StepTool, Name: "Read"}}
+	tr := claudecli.Transcript{Model: "claude-opus-5-5", Steps: steps, Result: &claudecli.ResultMsg{
+		Result: "done", TotalCostUSD: 0.5,
+		Usage: &claudecli.ResultUsage{InputTokens: 10, CacheReadInputTokens: 30, CacheCreationInputTokens: 5, OutputTokens: 7},
+	}}
+	res := mapOutcome(tr, claudecli.Exit{})
+	if len(res.Steps) != 1 || res.Steps[0].Name != "Read" {
+		t.Errorf("steps = %+v", res.Steps)
+	}
+	want := executor.Usage{Model: "claude-opus-5-5", InputTokens: 45, OutputTokens: 7, CostUSD: 0.5}
+	if res.Usage != want {
+		t.Errorf("usage = %+v, want %+v", res.Usage, want)
+	}
+	failed := mapOutcome(claudecli.Transcript{Steps: steps}, claudecli.Exit{CtxErr: context.DeadlineExceeded})
+	if len(failed.Steps) != 1 {
+		t.Errorf("a failed run lost its steps: %+v", failed)
+	}
+}

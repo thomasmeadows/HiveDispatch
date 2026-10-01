@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 
 	"github.com/thomasmeadows/hivedispatch/internal/config"
@@ -34,10 +35,13 @@ func runSupervisor(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		interactive = isTerminal(f)
 	}
 	ctx := context.Background()
+	tracer, closeTracer := newTracer(os.Getenv, slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelWarn})), stderr)
+	defer closeTracer()
 	r, err := supervisor.New(ctx, supervisor.Options{
 		WorkerConfigPath: *cfgPath, Provider: *provider, Model: *modelName,
 		Resume: *resume, Session: *session, Exe: exe,
 		Stdin: stdin, Stdout: stdout, Stderr: stderr, Interactive: interactive,
+		Tracer: tracer,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)

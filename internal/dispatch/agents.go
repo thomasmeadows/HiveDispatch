@@ -140,8 +140,12 @@ func (d *Dispatcher) releaseAgent(repo config.RepoConfig, a config.Agent) {
 // executorFor is the executor for an agent's kind; Executor is the fallback
 // (and, in tests, the only one).
 func (d *Dispatcher) executorFor(a config.Agent) executor.Executor {
-	if e, ok := d.Executors[a.Executor]; ok {
-		return e
+	e, ok := d.Executors[a.Executor]
+	if !ok {
+		e = d.Executor
 	}
-	return d.Executor
+	if d.Tracer.Enabled() {
+		return tracedExecutor{inner: e, tracer: d.Tracer, agent: a}
+	}
+	return e
 }

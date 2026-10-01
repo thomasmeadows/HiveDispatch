@@ -21,6 +21,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/gitops"
 	"github.com/thomasmeadows/hivedispatch/internal/schedule"
 	"github.com/thomasmeadows/hivedispatch/internal/state"
+	"github.com/thomasmeadows/hivedispatch/internal/trace"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker"
 	"github.com/thomasmeadows/hivedispatch/internal/triage"
 )
@@ -72,6 +73,7 @@ type Dispatcher struct {
 	Schedule   *schedule.Schedule // nil = always open
 	Now        func() time.Time   // nil = time.Now
 	Log        *slog.Logger       // nil = slog.Default()
+	Tracer     *trace.Tracer      // nil = no tracing
 
 	pauseMu     sync.Mutex
 	pausedUntil time.Time // no new work is started before this

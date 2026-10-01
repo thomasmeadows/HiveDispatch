@@ -13,6 +13,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/gitops"
 	"github.com/thomasmeadows/hivedispatch/internal/prompt"
 	"github.com/thomasmeadows/hivedispatch/internal/state"
+	"github.com/thomasmeadows/hivedispatch/internal/trace"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker"
 	"github.com/thomasmeadows/hivedispatch/internal/triage"
 )
@@ -52,8 +53,14 @@ func (d *Dispatcher) Handle(ctx context.Context, t tracker.Ticket) (Outcome, err
 
 // handle works t with agent, which the caller has reserved, in the way the
 // agent's role works its column.
-func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, agent config.Agent) (Outcome, error) {
-	switch roleOf(agent) {
+func (d *Dispatcher) handle(ctx context.Context, t tracker.Ticket, repo config.RepoConfig, agent config.Agent) (out Outcome, err error) {
+	role := roleOf(agent)
+	ctx, span := d.Tracer.Start(ctx, role+" "+t.Key, trace.KindChain, map[string]any{"ticket": t.Key, "summary": t.Summary})
+	for k, v := range map[string]string{"ticket": t.Key, "repo": repo.Name, "agent": agent.Name, "role": role, "machine_id": d.Cfg.MachineID, "executor": agent.Executor} {
+		span.SetMetadata(k, v)
+	}
+	defer func() { span.End(map[string]any{"outcome": string(out)}, err) }()
+	switch role {
 	case config.RolePlanning:
 		return d.handlePlanning(ctx, t, repo, agent)
 	case config.RoleReview:
@@ -120,7 +127,7 @@ func (d *Dispatcher) handleCoding(ctx context.Context, t tracker.Ticket, repo co
 		taskPrompt = prompt.RenderResume(t, run.QuestionAt, isOurs)
 		d.event(ctx, run, "resume", "")
 	default:
-		dec, err := d.Triager.Decide(ctx, triage.Input{
+		dec, err := d.triage(ctx, triage.Input{
 			Ticket: t, Repo: repo, Branch: run.Branch, RepoPath: ws.Path,
 			Attempts: run.Attempts, LastStopCause: run.StopCause,
 		})
@@ -157,6 +164,16 @@ func (d *Dispatcher) handleCoding(ctx context.Context, t tracker.Ticket, repo co
 
 	d.transition(ctx, t.Key, tracker.StateInProgress)
 	return d.execute(runCtx, t, repo, agent, run, ws, taskPrompt)
+}
+
+// triage asks the Triager for a decision, traced as its own run.
+func (d *Dispatcher) triage(ctx context.Context, in triage.Input) (triage.Decision, error) {
+	ctx, span := d.Tracer.Start(ctx, "triage", trace.KindChain, map[string]any{
+		"ticket": in.Ticket.Key, "attempts": in.Attempts, "last_stop_cause": in.LastStopCause,
+	})
+	dec, err := d.Triager.Decide(ctx, in)
+	span.End(map[string]any{"kind": string(dec.Kind), "reason": dec.Reason, "question": dec.Question, "prompt": dec.Prompt}, err)
+	return dec, err
 }
 
 // loadRun loads t's run record, fresh when the key now names a different

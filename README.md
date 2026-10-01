@@ -100,6 +100,27 @@ This is **one shared password for one person, and it is not suitable for multipl
 - **Put TLS in front.** Basic auth sends the password with every request, so over plain HTTP anyone on the path can read it. Run a reverse proxy such as Caddy or nginx with HTTPS, or keep using the SSH tunnel.
 - **Use a long random password.** Failed attempts are not rate-limited or locked out.
 
+## Tracing with LangSmith
+
+HiveDispatch can send a trace of everything its agents do to [LangSmith](https://smith.langchain.com):
+
+- **Supervisor turns:** every model call with its messages and token counts, and every tool call.
+- **Tickets:** triage, each planning, coding or review run, and the coding CLI's own steps inside each run. Steps are the tool calls and commands Claude Code or Codex made, timed, with failures marked.
+
+It is off by default. Turn it on with LangSmith's usual variables:
+
+```sh
+export LANGSMITH_TRACING=true
+export LANGSMITH_API_KEY=lsv2_...
+export LANGSMITH_PROJECT=hivedispatch     # optional; this is the default
+```
+
+`hivedispatch check` says where traces are going.
+
+Traces carry prompts, ticket text, tool output and pieces of your code to LangSmith's servers, with each string cut to 64 KiB. To send only names, timings, statuses and token counts, set `LANGSMITH_HIDE_INPUTS=true` and `LANGSMITH_HIDE_OUTPUTS=true`.
+
+Tracing never slows down or fails a run. If LangSmith is unreachable, traces are dropped and a warning is logged.
+
 ## Downloads and docs
 
 Prebuilt binaries for Linux and macOS are on the [releases page](https://github.com/thomasmeadows/HiveDispatch/releases). Every step's prerequisites are in [`docs/setup.md`](docs/setup.md); every key in [`docs/config.md`](docs/config.md).
