@@ -367,3 +367,19 @@ Rejected:
 - **A login page with session cookies:** it needs front-end work, cookie and CSRF handling, and a session store, all to serve one person. The browser's Basic prompt works with `fetch`, `EventSource` and the HMR websocket unchanged.
 - **A key in `config.yaml`:** the website and the supervisor rewrite that file and show its diffs, so a secret there would leak into both. Every other secret is already an environment variable.
 - **User accounts:** out of scope. Someone who needs several users should put an authenticating reverse proxy in front.
+
+## 2026-10-01 — Tracing goes to LangSmith over its runs API, from Go
+
+Decided: HiveDispatch traces supervisor turns and ticket runs to LangSmith. It posts to the `/runs/batch` endpoint that LangSmith's own SDKs use, from a stdlib-only `internal/trace` package. The settings are LangChain's own environment variables (`LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `LANGSMITH_ENDPOINT`, `LANGSMITH_HIDE_INPUTS`/`_OUTPUTS`).
+
+Inputs and outputs are sent in full, cut to 64 KiB a string, unless the hide variables are set. Tracing never blocks or fails a run: runs are queued, flushed in the background, and dropped with a log line when LangSmith cannot keep up.
+
+The coding CLIs' steps (tool calls and assistant messages) become child runs. Their parsers record them live, because Claude Code's `stream-json` carries no timestamps.
+
+This is the first step toward LangGraph. Later steps run LangGraph as a Python service behind a Go interface with a fake, and they trace to the same project.
+
+Rejected:
+- **OTLP export:** portable to other backends, but LangSmith renders its native run types, token usage and costs better than mapped `gen_ai` attributes.
+- **A Python LangChain sidecar just to trace:** it adds a runtime and a process for something a few hundred lines of Go do.
+- **A third-party Go LangSmith SDK:** AGENTS.md allows no new dependencies.
+- **Parsing the saved run log after the fact:** the log has no per-event times, so every step would get a made-up duration.
