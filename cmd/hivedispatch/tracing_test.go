@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/thomasmeadows/hivedispatch/internal/config"
 )
 
 func TestNewTracerOffAndMisconfigured(t *testing.T) {
@@ -22,5 +24,16 @@ func TestNewTracerOffAndMisconfigured(t *testing.T) {
 	defer closeTracer()
 	if tr.Enabled() || !strings.Contains(stderr.String(), "LANGSMITH_API_KEY") {
 		t.Fatalf("no key: enabled %v, stderr %q", tr.Enabled(), stderr.String())
+	}
+}
+
+func TestUsesLangGraph(t *testing.T) {
+	cfg := &config.Config{Repos: []config.RepoConfig{{Agents: []config.Agent{{Name: "a", Executor: "claude"}}}}}
+	if usesLangGraph(cfg) {
+		t.Fatal("no langgraph agent, but usesLangGraph")
+	}
+	cfg.Repos = append(cfg.Repos, config.RepoConfig{Agents: []config.Agent{{Name: "g", Executor: "langgraph"}}})
+	if !usesLangGraph(cfg) {
+		t.Fatal("a langgraph agent was missed")
 	}
 }

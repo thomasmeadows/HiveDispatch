@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/trace"
 	tracefake "github.com/thomasmeadows/hivedispatch/internal/trace/fake"
@@ -118,5 +119,37 @@ func TestNoTracerChangesNothing(t *testing.T) {
 	}
 	if out := h.handle(t); out != OutcomeCompleted {
 		t.Fatalf("outcome %s", out)
+	}
+}
+
+func TestStepsTracedByTheExecutorAreNotDuplicated(t *testing.T) {
+	h := newHarness(t)
+	rec := h.traced()
+	h.ex.Default = executor.Result{Status: executor.StatusCompleted, Summary: "ok", StepsTraced: true,
+		Steps: []executor.Step{{Kind: executor.StepTool, Name: "Bash", Start: time.Now(), End: time.Now()}}}
+	h.handle(t)
+	run := rec.Named("run fake")
+	if len(run) != 1 || len(rec.Children(run[0].ID)) != 0 {
+		t.Fatalf("steps were traced twice: %+v", rec.Ended())
+	}
+}
+
+func TestCodeWithReachesTheExecutor(t *testing.T) {
+	h := newHarness(t)
+	h.setAgents(config.Agent{Name: "g", Role: config.RoleCoding, Executor: "langgraph", CodeWith: "codex"})
+	h.d.Executors = map[string]executor.Executor{"langgraph": h.ex}
+	h.handle(t)
+	if calls := h.ex.Calls(); len(calls) != 1 || calls[0].CodeWith != "codex" {
+		t.Fatalf("calls %+v", calls)
+	}
+}
+
+func TestCodeWithReachesAdvice(t *testing.T) {
+	h := newHarness(t)
+	h.setAgents(config.Agent{Name: "p", Role: config.RolePlanning, Executor: "langgraph", CodeWith: "codex"}, coder)
+	h.tr.Add(tracker.Ticket{Key: "HIVE-1", Summary: "one", Status: string(tracker.StatePlanning)})
+	h.once(t)
+	if adv := h.ex.AdviceCalls(); len(adv) != 1 || adv[0].CodeWith != "codex" {
+		t.Fatalf("advice %+v", adv)
 	}
 }

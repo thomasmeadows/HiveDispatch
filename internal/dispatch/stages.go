@@ -155,6 +155,7 @@ func (d *Dispatcher) handleReview(ctx context.Context, t tracker.Ticket, repo co
 func (d *Dispatcher) advise(ctx context.Context, agent config.Agent, a executor.Advice, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, d.Cfg.RunTimeout)
 	defer cancel()
+	a.CodeWith = agent.CodeWith
 	raw, err := d.executorFor(agent).Advise(ctx, a)
 	if err != nil {
 		var budget *claudecli.BudgetError

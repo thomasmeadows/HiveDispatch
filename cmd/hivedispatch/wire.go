@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/executor/claudecode"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/codex"
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
+	"github.com/thomasmeadows/hivedispatch/internal/executor/langgraph"
 	"github.com/thomasmeadows/hivedispatch/internal/githost"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/none"
@@ -23,6 +25,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/state/gitbranch"
 	"github.com/thomasmeadows/hivedispatch/internal/state/localdir"
 	"github.com/thomasmeadows/hivedispatch/internal/state/router"
+	"github.com/thomasmeadows/hivedispatch/internal/supervisor"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/ghissues"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/jira"
@@ -39,6 +42,7 @@ type wireOptions struct {
 	triage      string // "" = config
 	placeholder bool
 	preflight   bool
+	configPath  string // the worker config, for the graph's settings and agent-run
 }
 
 // worker is everything a command needs to act on tickets.
@@ -107,6 +111,38 @@ func openStores(ctx context.Context, cfg *config.Config) (*gitws.Workspaces, sta
 	return ws, &router.Store{Stores: stores}, nil
 }
 
+// usesLangGraph reports whether any repository has a langgraph agent. The
+// graph is optional: without one, nothing about it is checked or printed.
+func usesLangGraph(cfg *config.Config) bool {
+	for _, r := range cfg.Repos {
+		for _, a := range r.Agents {
+			if a.Executor == "langgraph" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// newLangGraph builds the langgraph executor over the CLI executors it
+// codes with. Bad graph: settings only matter to langgraph agents, so they
+// are a warning, and only when such an agent exists.
+func newLangGraph(cfg *config.Config, configPath string, inner map[string]executor.Executor, logger *slog.Logger) executor.Executor {
+	gc, err := supervisor.LoadGraphConfig(configPath, os.Getenv)
+	if err != nil && usesLangGraph(cfg) {
+		logger.Warn("langgraph agents will fail until graph: in the worker config is fixed", "err", err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		exe = "hivedispatch"
+	}
+	return langgraph.New(langgraph.Config{
+		Binary: gc.Binary, Hivedispatch: exe, WorkerConfig: configPath,
+		Model: langgraph.ModelConfig{Provider: gc.Model.Provider, Model: gc.Model.Model, BaseURL: gc.Model.BaseURL, APIKeyEnv: gc.Model.APIKeyEnv},
+		Inner: map[string]executor.Executor{"claude": inner["claude"], "codex": inner["codex"], "fake": inner["fake"]},
+	})
+}
+
 // newWorker discovers a GitHub token, builds one tracker per repository
 // (verifying each when opts.preflight), opens stores, and builds the
 // dispatcher.
@@ -162,10 +198,11 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 		"codex":  codex.New(codex.Config{Binary: cfg.Codex.Binary}),
 		"fake":   fake,
 	}
+	executors["langgraph"] = newLangGraph(cfg, opts.configPath, executors, logger)
 	if opts.executor != "" {
 		ex, ok := executors[opts.executor]
 		if !ok {
-			return nil, fmt.Errorf("unknown executor %q (want claude, codex or fake)", opts.executor)
+			return nil, fmt.Errorf("unknown executor %q (want claude, codex, langgraph or fake)", opts.executor)
 		}
 		for kind := range executors {
 			executors[kind] = ex
