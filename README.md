@@ -84,9 +84,11 @@ Each repository has tabs for its ticket settings, its **Agents**, and its agent 
 
 ![A repository's Agents tab with its default coding agent](docs/setting-images/hivedispatch_website_repo_agents_screenshot.jpg)
 
+**Agent Configuration** checks each coding-agent CLI (Claude Code, Codex, Grok Build, Antigravity, DeepCode and the optional `hivegraph`) with `--version` and shows the version, its path, and which agents use it. A missing CLI has an **Install** button that runs its official installer on the worker after you confirm the command. Logging in to each CLI is still up to you.
+
 The **Configuration** page edits the worker config, supervisor settings included.
 
-By default the site listens only on loopback. On a remote worker, reach it through an SSH tunnel (`ssh -L 7878:localhost:7878 worker-host`) rather than binding `-addr` to a public interface: anyone who can reach the site can edit your config.
+By default the site listens only on loopback. On a remote worker, reach it through an SSH tunnel (`ssh -L 7878:localhost:7878 worker-host`) rather than binding `-addr` to a public interface: anyone who can reach the site can edit your config and install the agent CLIs.
 
 ### Running the website on hosted hardware
 

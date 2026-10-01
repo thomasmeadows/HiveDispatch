@@ -469,3 +469,15 @@ Rejected:
 - **Passing ticket text through `-p`:** JSON stdin avoids argv exposure and command-line length limits.
 - **Using the result's cumulative usage on resume:** this would charge earlier work to the new run.
 - **Bypassing permissions or treating a read-only prompt as isolation:** neither is appropriate for a worker honoring operator policy.
+
+
+## 2026-10-01 — The website checks and installs the executor CLIs
+
+Decided: the website has an **Agent Configuration** page backed by `GET /api/executors` and `POST /api/executors/install`. Each executor except `fake` is checked by running `<binary> --version`, where the binary comes from the worker config's `<executor>.binary` key (`graph.binary` for langgraph). The page also lists which agents in the scanned repositories use each executor, counting a langgraph agent's `code_with`. If a bare binary is missing from PATH but present in `~/.local/bin`, where the curl installers put it, the page says to fix PATH or the config instead of offering a reinstall.
+
+The install request names an executor. The command it runs comes from a fixed table in `internal/web/executors.go`, using each vendor's documented installer: the Claude Code, Grok Build and Antigravity curl scripts, and npm for Codex and DeepCode. For hivegraph it is the same pipx command `check` prints for this version. It runs as `sh -c` with a ten-minute timeout, one install at a time, and the page asks for confirmation and shows the exact command first. Authentication stays with each CLI.
+
+Rejected:
+- **A command field in the request:** that would make the website a remote shell. The executor's name selects from the table instead.
+- **Logging in to the CLIs from the page:** their logins are interactive and keep credentials in each tool's own files, which HiveDispatch never handles.
+- **Installing automatically when an agent needs a missing CLI:** running an installer is a choice for the operator, so it waits for a click and a confirmation.

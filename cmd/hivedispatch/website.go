@@ -126,6 +126,7 @@ func serveWebsite(ctx context.Context, ln net.Listener, wo websiteOptions, stdou
 	}
 	srv, err := web.New(web.Options{
 		ConfigPath: cfgPath, Exe: exe, AllowHosts: allow, Frontend: frontend, Password: wo.password,
+		GraphInstall: graphInstallCommand(version),
 		ListRuns: func(ctx context.Context) ([]state.Run, error) {
 			cfg, err := config.Load(cfgPath)
 			if err != nil {

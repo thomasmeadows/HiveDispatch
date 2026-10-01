@@ -225,25 +225,4 @@ watch(() => [props.kind, props.path], load, { immediate: true })
 .check input { width: auto; }
 .actions { margin: 20px 0 8px; justify-content: flex-end; }
 .yaml { min-height: 360px; line-height: 1.5; }
-.modal-back {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, .45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  z-index: 30;
-}
-.modal {
-  background: var(--panel);
-  border-radius: 10px;
-  width: min(760px, 100%);
-  max-height: 90vh;
-  overflow-y: auto;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 </style>
