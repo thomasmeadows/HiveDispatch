@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/thomasmeadows/hivedispatch/internal/state"
 	"github.com/thomasmeadows/hivedispatch/internal/supervisor"
@@ -51,6 +52,12 @@ type Options struct {
 	// Password, when set, is required on every request (HTTP Basic auth, any
 	// user name) and lifts the loopback-host restriction. Empty: no auth.
 	Password string
+	// Run runs the executor CLIs' --version and install commands; nil runs
+	// them for real.
+	Run Runner
+	// GraphInstall is the shell command that installs the hivegraph matching
+	// this binary; empty offers no automatic install.
+	GraphInstall string
 }
 
 // Server is the HTTP handler. Close ends a supervisor turn in flight.
@@ -59,6 +66,8 @@ type Server struct {
 	mux  *http.ServeMux
 	chat *chat
 	pass *[sha256.Size]byte // hash of o.Password; nil when there is none
+	// installing is held while an executor install runs: one at a time.
+	installing sync.Mutex
 }
 
 // New builds the server.
@@ -92,6 +101,8 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/repos/setup", s.setupRepo)
 	m.HandleFunc("GET /api/repos/agents", s.getAgents)
 	m.HandleFunc("POST /api/repos/agents", s.postAgents)
+	m.HandleFunc("GET /api/executors", s.executors)
+	m.HandleFunc("POST /api/executors/install", s.installExecutor)
 	m.HandleFunc("GET /api/files/{kind}", s.getFile)
 	m.HandleFunc("POST /api/files/{kind}", s.postFile)
 	m.HandleFunc("GET /api/chat", s.chatState)
