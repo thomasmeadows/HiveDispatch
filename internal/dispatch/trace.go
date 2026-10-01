@@ -56,8 +56,10 @@ func (e tracedExecutor) Run(ctx context.Context, t executor.Task) (executor.Resu
 		"prompt": t.Prompt, "resume": t.ResumeToken != "", "step_budget": t.StepBudget,
 	})
 	res, err := e.inner.Run(ctx, t)
-	for _, st := range res.Steps {
-		e.step(ctx, st, res.Usage.Model)
+	if !res.StepsTraced { // a graph that traced itself has its own, finer tree
+		for _, st := range res.Steps {
+			e.step(ctx, st, res.Usage.Model)
+		}
 	}
 	if u := res.Usage; u.InputTokens > 0 || u.OutputTokens > 0 {
 		span.SetUsage(u.Model, u.InputTokens, u.OutputTokens)

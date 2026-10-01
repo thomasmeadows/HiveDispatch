@@ -65,6 +65,17 @@ export const workerSchema = [
     ],
   },
   {
+    title: 'Graph workflows',
+    note: 'Only for agents with executor langgraph. Needs hivegraph installed (pipx install ./graph); everything here is optional.',
+    fields: [
+      { key: 'graph.binary', label: 'hivegraph binary', type: 'text', placeholder: 'hivegraph' },
+      { key: 'graph.provider', label: 'Chat model provider', type: 'select', options: ['', 'openai', 'deepseek', 'huggingface', 'ollama'], help: 'For the plan and self-review steps. Empty uses the supervisor’s model. Anthropic is not supported here.' },
+      { key: 'graph.model', label: 'Chat model', type: 'text', help: 'Empty uses the provider’s default.' },
+      { key: 'graph.base_url', label: 'Base URL', type: 'text', help: 'Empty uses the provider’s.' },
+      { key: 'graph.api_key_env', label: 'API key variable', type: 'text', help: 'The environment variable holding the key — never the key itself.' },
+    ],
+  },
+  {
     title: 'Supervisor',
     note: 'The assistant in the chat on the right. After saving, press New in the chat to use new settings.',
     fields: [
@@ -142,6 +153,14 @@ export const policySchema = [
       { key: 'executor.codex.model', label: 'Model', type: 'text' },
       { key: 'executor.codex.sandbox', label: 'Sandbox', type: 'select', options: ['', 'read-only', 'workspace-write', 'danger-full-access'], placeholder: 'workspace-write' },
       { key: 'executor.codex.network', label: 'Network inside the sandbox', type: 'bool' },
+    ],
+  },
+  {
+    title: 'Graph workflows (langgraph agents)',
+    fields: [
+      { key: 'checks', label: 'Checks', type: 'list', help: 'Commands that must pass after each code step, one per line, e.g. go test ./... The workflow fixes until they pass.' },
+      { key: 'graph.max_fix_rounds', label: 'Fix rounds', type: 'number', placeholder: '3', help: 'Code → checks → fix loops before giving up on green.' },
+      { key: 'graph.max_review_rounds', label: 'Review rounds', type: 'number', placeholder: '1', help: 'Self-review → fix loops.' },
     ],
   },
   {

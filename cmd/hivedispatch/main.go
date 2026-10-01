@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/dispatch"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
 	"github.com/thomasmeadows/hivedispatch/internal/statusline"
+	"github.com/thomasmeadows/hivedispatch/internal/supervisor"
 	"github.com/thomasmeadows/hivedispatch/internal/trace/langsmith"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker/ghissues"
@@ -46,7 +48,7 @@ commands:
                               filled in, create its hive:* labels (GitHub) or claim fields (Jira)
   scan  [-config P] [DIR...]  list git repositories under DIR (default: code_dirs, else ~) and
                               which are enrolled
-  run   [-config P] [-once] [-executor claude|codex|fake] [-triage claude|passthrough]
+  run   [-config P] [-once] [-executor claude|codex|langgraph|fake] [-triage claude|passthrough]
         [-placeholder] [-skip-preflight]
                               verify each repository's tracker, then poll and dispatch; -executor makes every agent
                               use that executor, -triage overrides the config
@@ -94,6 +96,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runSupervisor(args[1:], os.Stdin, stdout, stderr)
 	case "website":
 		return runWebsite(args[1:], stdout, stderr)
+	case "agent-run":
+		return runAgentRun(args[1:], os.Stdin, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -129,6 +133,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "github: no token found (HIVE_GITHUB_TOKEN, gh auth token, or git credential helper) — branches will be pushed but PRs will not be opened")
 	}
 	fmt.Fprintln(stdout, langsmith.Describe(os.Getenv))
+	if usesLangGraph(cfg) {
+		printGraphCheck(stdout, *cfgPath)
+	}
 	if !*live && !*liveJira {
 		return 0
 	}
@@ -148,6 +155,22 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// printGraphCheck reports whether hivegraph is installed and which chat
+// model it would use. Only called when a langgraph agent exists.
+func printGraphCheck(w io.Writer, cfgPath string) {
+	gc, err := supervisor.LoadGraphConfig(cfgPath, os.Getenv)
+	if err != nil {
+		fmt.Fprintln(w, "graph:", err)
+		return
+	}
+	p, err := exec.LookPath(gc.Binary)
+	if err != nil {
+		fmt.Fprintf(w, "graph: %s not found — langgraph agents need it (pipx install ./graph)\n", gc.Binary)
+		return
+	}
+	fmt.Fprintf(w, "graph: %s, chat model %s/%s\n", p, gc.Model.Provider, gc.Model.Model)
 }
 
 // printRepos lists the enrolled repositories and any second checkout that
@@ -481,7 +504,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	once := fs.Bool("once", false, "poll once and exit")
-	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex or fake")
+	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex, langgraph or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
@@ -503,7 +526,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	logger := slog.New(slog.NewTextHandler(logOut, nil))
 	ctx := context.Background()
-	w, err := newWorker(ctx, cfg, wireOptions{executor: *executorFlag, triage: *triageFlag, placeholder: *placeholder, preflight: !*skipPreflight}, logger, stdout, stderr)
+	w, err := newWorker(ctx, cfg, wireOptions{executor: *executorFlag, triage: *triageFlag, placeholder: *placeholder, preflight: !*skipPreflight, configPath: *cfgPath}, logger, stdout, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -633,7 +656,7 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("once", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
-	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex or fake")
+	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex, langgraph or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
@@ -653,7 +676,7 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 	}
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
 	ctx := context.Background()
-	w, err := newWorker(ctx, cfg, wireOptions{executor: *executorFlag, triage: *triageFlag, placeholder: *placeholder, preflight: !*skipPreflight}, logger, stdout, stderr)
+	w, err := newWorker(ctx, cfg, wireOptions{executor: *executorFlag, triage: *triageFlag, placeholder: *placeholder, preflight: !*skipPreflight, configPath: *cfgPath}, logger, stdout, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

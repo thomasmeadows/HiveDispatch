@@ -31,6 +31,14 @@ const LegacyFileName = ".hivedispatch.yaml"
 type Config struct {
 	Executor ExecutorConfig `yaml:"executor"`
 	Guidance string         `yaml:"guidance"`
+	Checks   []string       `yaml:"checks"` // langgraph runs: commands that must exit 0 after each code step
+	Graph    GraphPolicy    `yaml:"-"`      // decoded in Parse, where explicit zeros are kept
+}
+
+// GraphPolicy bounds a langgraph run's loops.
+type GraphPolicy struct {
+	MaxFixRounds    int // code → checks → fix loops; default 3
+	MaxReviewRounds int // self-review → fix loops; default 1
 }
 
 // ExecutorConfig controls how the coding agent is invoked. Model,
@@ -113,6 +121,30 @@ func Parse(raw []byte) (Config, error) {
 	}
 	if !codexSandboxes[c.Executor.Codex.Sandbox] {
 		return c, fmt.Errorf("%s: executor.codex.sandbox %q is not a Codex sandbox mode (read-only, workspace-write, danger-full-access)", FileName, c.Executor.Codex.Sandbox)
+	}
+	var g struct {
+		Graph struct {
+			MaxFixRounds    *int `yaml:"max_fix_rounds"`
+			MaxReviewRounds *int `yaml:"max_review_rounds"`
+		} `yaml:"graph"`
+	}
+	if err := yaml.Unmarshal(raw, &g); err != nil {
+		return c, fmt.Errorf("%s: %w", FileName, err)
+	}
+	c.Graph = GraphPolicy{MaxFixRounds: 3, MaxReviewRounds: 1}
+	if p := g.Graph.MaxFixRounds; p != nil {
+		c.Graph.MaxFixRounds = *p
+	}
+	if p := g.Graph.MaxReviewRounds; p != nil {
+		c.Graph.MaxReviewRounds = *p
+	}
+	if c.Graph.MaxFixRounds < 0 || c.Graph.MaxReviewRounds < 0 {
+		return c, fmt.Errorf("%s: graph.max_fix_rounds and graph.max_review_rounds must not be negative", FileName)
+	}
+	for i, chk := range c.Checks {
+		if strings.TrimSpace(chk) == "" {
+			return c, fmt.Errorf("%s: checks[%d] is empty", FileName, i)
+		}
 	}
 	return c, nil
 }

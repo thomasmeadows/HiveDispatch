@@ -243,7 +243,7 @@ func (d *Dispatcher) execute(ctx context.Context, t tracker.Ticket, repo config.
 	execCtx, cancelExec := context.WithTimeout(ctx, d.Cfg.RunTimeout)
 	res, err := d.executorFor(agent).Run(execCtx, executor.Task{
 		TicketKey: t.Key, Prompt: taskPrompt, Workspace: ws.Path,
-		ResumeToken: run.ResumeToken, StepBudget: d.Cfg.StepBudget, Model: agent.Model,
+		ResumeToken: run.ResumeToken, StepBudget: d.Cfg.StepBudget, Model: agent.Model, CodeWith: agent.CodeWith,
 	})
 	cancelExec()
 	if err != nil {

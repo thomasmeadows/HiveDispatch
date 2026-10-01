@@ -5,3 +5,10 @@
 coverage.html
 .hivedispatch.local.yaml
 /web/node_modules/
+
+# Python (graph/)
+graph/.venv/
+graph/**/__pycache__/
+graph/*.egg-info/
+graph/.pytest_cache/
+graph/.ruff_cache/

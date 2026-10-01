@@ -9,9 +9,10 @@ const props = defineProps({ path: { type: String, required: true } })
 const data = ref(null) // { path, exists, agents, problem }
 const error = ref('')
 const busy = ref(false)
-const modal = ref(null) // { index: -1 for new, form: { name, executor, model }, error }
+const modal = ref(null) // { index: -1 for new, form: { name, executor, model, code_with }, error }
 
-const executors = ['claude', 'codex', 'fake']
+const executors = ['claude', 'codex', 'langgraph', 'fake']
+const coders = ['claude', 'codex', 'fake'] // what a langgraph agent's code steps run
 const roles = [
   { value: 'planning', label: 'Planning', column: 'Planning', does: 'reads the repository, posts a plan and moves the ticket to Ready' },
   { value: 'coding', label: 'Coding', column: 'Ready', does: 'implements the ticket and opens a pull request' },
@@ -42,11 +43,11 @@ async function save(list) {
 }
 
 function openNew() {
-  modal.value = { index: -1, form: { name: uniqueName('agent'), role: 'coding', executor: 'claude', model: '' }, error: '' }
+  modal.value = { index: -1, form: { name: uniqueName('agent'), role: 'coding', executor: 'claude', model: '', code_with: 'claude' }, error: '' }
 }
 
 function openEdit(i) {
-  modal.value = { index: i, form: { role: 'coding', ...agents.value[i] }, error: '' }
+  modal.value = { index: i, form: { role: 'coding', code_with: 'claude', ...agents.value[i] }, error: '' }
 }
 
 // uniqueName adds (or bumps) a -N suffix until no agent has the name:
@@ -71,6 +72,8 @@ async function duplicate(i) {
 async function submit() {
   const f = modal.value.form
   const agent = { name: f.name.trim(), role: f.role, executor: f.executor, model: (f.model || '').trim() }
+  // code_with belongs to langgraph agents only; the server rejects it elsewhere.
+  if (f.executor === 'langgraph') agent.code_with = f.code_with || 'claude'
   const list = [...agents.value]
   if (modal.value.index < 0) list.push(agent)
   else list[modal.value.index] = agent
@@ -119,7 +122,7 @@ watch(() => props.path, load, { immediate: true })
             <tr v-for="(a, i) in agents" :key="a.name">
               <td><button class="link name" @click="openEdit(i)">{{ a.name }}</button></td>
               <td><span class="badge" :class="`role-${roleOf(a.role).value}`" :title="`Works the ${roleOf(a.role).column} column`">{{ roleOf(a.role).label }}</span></td>
-              <td><span class="badge">{{ a.executor }}</span></td>
+              <td><span class="badge">{{ a.executor }}<template v-if="a.executor === 'langgraph'"> ({{ a.code_with || 'claude' }})</template></span></td>
               <td>
                 <span v-if="a.model">{{ a.model }}</span>
                 <span v-else class="muted">policy default</span>
@@ -156,7 +159,18 @@ watch(() => props.path, load, { immediate: true })
             <option v-for="x in executors" :key="x" :value="x">{{ x }}</option>
           </select>
           <span class="help muted">
-            claude runs Claude Code, codex runs Codex; fake does nothing (for trying the pipeline).
+            claude runs Claude Code, codex runs Codex; langgraph runs the plan → code → checks → review workflow
+            (needs <code>hivegraph</code> installed); fake does nothing (for trying the pipeline).
+          </span>
+        </label>
+        <label v-if="modal.form.executor === 'langgraph'" class="field">
+          <span class="label">Code with</span>
+          <select v-model="modal.form.code_with">
+            <option v-for="x in coders" :key="x" :value="x">{{ x }}</option>
+          </select>
+          <span class="help muted">
+            The CLI the workflow's code and fix steps run. Planning and self-review use the chat model under
+            Configuration → Graph workflows; checks come from the Agent Policies tab.
           </span>
         </label>
         <label class="field">

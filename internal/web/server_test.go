@@ -652,3 +652,24 @@ func TestWorkerFileChecksSupervisorBlock(t *testing.T) {
 		t.Errorf("the separate supervisor file is gone: %d", code)
 	}
 }
+
+func TestAgentsSaveLangGraph(t *testing.T) {
+	e := newEnv(t, Options{})
+	q := "/api/repos/agents?path=" + e.repo
+	var got agentsBody
+	body := map[string]any{"agents": []config.Agent{{Name: "g", Executor: "langgraph", CodeWith: "codex"}}}
+	if code := e.post(t, q, body, &got); code != 200 || got.Agents[0].CodeWith != "codex" {
+		t.Fatalf("POST = %d %+v", code, got)
+	}
+	raw, err := os.ReadFile(filepath.Join(e.repo, ".hive-dispatch", "agents.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "executor: langgraph\n    code_with: codex") {
+		t.Errorf("agents.yaml = %q", raw)
+	}
+	bad := map[string]any{"agents": []config.Agent{{Name: "c", Executor: "claude", CodeWith: "codex"}}}
+	if code := e.post(t, q, bad, &got); code != http.StatusBadRequest || !strings.Contains(got.Error, "code_with") {
+		t.Errorf("code_with on claude = %d %+v", code, got)
+	}
+}

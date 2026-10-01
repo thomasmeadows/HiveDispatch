@@ -383,3 +383,20 @@ Rejected:
 - **A Python LangChain sidecar just to trace:** it adds a runtime and a process for something a few hundred lines of Go do.
 - **A third-party Go LangSmith SDK:** AGENTS.md allows no new dependencies.
 - **Parsing the saved run log after the fact:** the log has no per-event times, so every step would get a made-up duration.
+
+## 2026-10-01 — Graph workflows run as a Python subprocess
+
+Decided: an `executor: langgraph` agent runs `hivegraph`, a LangGraph workflow in the Python package `graph/`. The workflow is plan → code → checks ⇄ fix → self-review ⇄ fix → finish.
+
+The worker runs it once per ticket run, as it runs `claude` or `codex`: the task goes in as JSON on stdin, and events come back as JSON lines on stdout. The code step calls back into `hivedispatch agent-run`, which uses the existing Claude Code or Codex executor. Plan and self-review use a cheap OpenAI-compatible chat model through LangChain. Checkpoints go to SQLite in the worktree's git directory, so a ticket resumed after a reply continues the same thread.
+
+Stopping a run sends SIGTERM to the group and waits 15 s before SIGKILL. `agent-run` turns the SIGTERM into killing the CLI's own process group, which a plain SIGKILL would orphan.
+
+Go keeps its rule of stdlib plus yaml.v3. The Python dependencies live only in `graph/pyproject.toml`, and CI checks them in their own job. LangChain stays optional: a worker with no `langgraph` agent needs no Python, and prints nothing about the graph.
+
+Rejected:
+- **A long-lived LangGraph Server:** one more service to deploy, secure and keep alive on every worker, for persistence that SQLite in the worktree already gives.
+- **Python reimplementing the CLI runners:** the argument building, stream parsing, budget detection and process supervision would be written twice and drift apart.
+- **Go orchestrating with Python only for model calls:** no graph state, no checkpoints, nothing to see in Studio. That would be LangGraph in name only.
+- **A Go port of LangGraph:** it would be an unofficial third-party dependency, which AGENTS.md rules out, and it lags the real thing.
+- **Anthropic as the graph's chat model, for now:** `langchain-openai` covers every provider the supervisor has except Anthropic, and the cheap model's job doesn't need it.

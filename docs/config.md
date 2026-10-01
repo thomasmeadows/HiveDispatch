@@ -94,7 +94,8 @@ agents:
 |---|---|---|
 | `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<machine_id>/<name>` |
 | `agents[].role` | `coding` | Which board column the agent works: `planning`, `coding` or `review` (below) |
-| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, or `fake` (no agent; useful for trying the pipeline) |
+| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
+| `agents[].code_with` | `claude` | `langgraph` agents only: the CLI the workflow's code and fix steps run — `claude`, `codex` or `fake`. Rejected on any other executor |
 | `agents[].model` | *(policy's model, then the CLI's)* | Model for this agent's runs; wins over the policy's `executor.model` / `executor.codex.model` |
 
 Each agent works one column of the board:
@@ -109,7 +110,13 @@ Columns without an agent of that role are not polled: a repository with only the
 
 Agents of a role are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets of a column at once as it has agents for it. A ticket labelled `hive:agent:<name>` waits for that agent in that agent's column; the other columns still use their whole pool, so one ticket can name both its coder and its reviewer. A label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are made under the worker's `machine_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
 
-`run -executor fake` (or `claude`, `codex`) makes every agent use that executor for one run.
+`run -executor fake` (or `claude`, `codex`, `langgraph`) makes every agent use that executor for one run.
+
+### Graph workflows — `executor: langgraph`
+
+A `langgraph` agent runs `hivegraph`, a LangGraph workflow, instead of one CLI call: **plan** (chat model) → **code** (the `code_with` CLI) → **checks** (the policy's `checks`) → fix until green, up to `graph.max_fix_rounds` → **self-review** of the diff (chat model) → fix what it finds, up to `graph.max_review_rounds` → finish. Checks still red after the fix rounds do not stop the PR: the summary on the ticket says which ones fail. A question from the CLI ends the run as Needs Info, as for any agent, and the reply resumes the same workflow thread.
+
+It is optional. Install it once per worker with `pipx install ./graph` (or `pip install ./graph`) from a HiveDispatch checkout; workers without a `langgraph` agent need no Python. Planning and review roles on a `langgraph` agent run its `code_with` CLI as usual. The chat model is set under `graph:` in the worker config (below); `hivedispatch check` reports it when a `langgraph` agent exists.
 
 ## Agent policy — `.hive-dispatch/policy.yaml`
 
@@ -127,6 +134,9 @@ Every agent of the repository follows it. Read from the ticket's worktree, so it
 | `executor.codex.sandbox` | `workspace-write` | Codex sandbox for runs: `read-only`, `workspace-write`, `danger-full-access`. Approvals are always off (`approval_policy=never`); a command the sandbox refuses fails |
 | `executor.codex.network` | `false` | Allow outbound network inside `workspace-write` (e.g. for `go mod download`) |
 | `guidance` | *(none)* | Text appended to every prompt for this repo: conventions, required checks, where decisions are recorded. Applies to every executor |
+| `checks` | *(none)* | `langgraph` agents: commands run with `sh -c` in the worktree after every code step, each with a 10-minute limit; all must exit 0. `executor.path` applies. Other executors ignore it |
+| `graph.max_fix_rounds` | `3` | `langgraph` agents: code → checks → fix loops before finishing with checks still red |
+| `graph.max_review_rounds` | `1` | `langgraph` agents: self-review → fix loops |
 
 The `executor.model` / `permission_mode` / `tools` / `allowed_tools` / `max_budget_usd` keys are Claude Code vocabulary and are ignored by the codex executor; `executor.codex.*` is ignored by the claude executor. A repo can carry both so any worker can run it.
 
@@ -174,3 +184,17 @@ Settings for the built-in assistant (`hivedispatch supervisor` and the chat in `
 | `supervisor.step_budget` | `20` | Tool calls the assistant may make per message before it stops and asks to continue |
 
 `-provider` and `-model` on the command line override these for one session.
+
+## Graph workflows — `graph:` in the worker config
+
+Only read when a repository has an `executor: langgraph` agent.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `graph.binary` | `hivegraph` | The workflow's executable (installed by `pipx install ./graph`) |
+| `graph.provider` | *(the supervisor's)* | Chat model for the plan and self-review steps: `openai`, `deepseek`, `huggingface` or `ollama` — the same presets as `supervisor.provider`. `anthropic` is not supported here: set an OpenAI-compatible provider |
+| `graph.model` | *(per provider)* | As `supervisor.model` |
+| `graph.base_url` | *(per provider)* | As `supervisor.base_url` |
+| `graph.api_key_env` | *(per provider)* | As `supervisor.api_key_env` |
+
+`hivedispatch agent-run` is the internal command the workflow's code step calls; it is not meant to be run by hand.

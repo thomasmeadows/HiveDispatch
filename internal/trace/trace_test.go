@@ -197,3 +197,18 @@ func TestCloseClosesExporter(t *testing.T) {
 		t.Fatal("exporter not closed")
 	}
 }
+
+func TestSpanDottedOrder(t *testing.T) {
+	var nilSpan *trace.Span
+	if nilSpan.DottedOrder() != "" {
+		t.Fatal("nil span has a dotted order")
+	}
+	rec := &fake.Exporter{}
+	tr := trace.New(rec, trace.Options{})
+	_, sp := tr.Start(context.Background(), "x", trace.KindChain, nil)
+	got := sp.DottedOrder()
+	sp.End(nil, nil)
+	if got == "" || got != rec.Ended()[0].DottedOrder {
+		t.Fatalf("DottedOrder %q, run %q", got, rec.Ended()[0].DottedOrder)
+	}
+}

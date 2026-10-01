@@ -98,6 +98,14 @@ const Starter = `# HiveDispatch worker configuration: settings for this machine.
 #   api_key_env: ANTHROPIC_API_KEY   # the variable holding the key, never the key
 #   max_tokens: 4096
 #   step_budget: 20        # tool calls per reply
+
+# Graph workflows (agents with executor: langgraph). Optional, and only read when such
+# an agent exists; needs hivegraph installed (pipx install ./graph from a HiveDispatch
+# checkout). The chat model plans and reviews; empty uses the supervisor's model.
+# graph:
+#   binary: hivegraph
+#   provider: deepseek     # openai, deepseek, huggingface or ollama (not anthropic)
+#   model: deepseek-flash
 `
 
 const repoStarterHead = `# HiveDispatch settings for this repository, read by the worker from this checkout.

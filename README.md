@@ -100,6 +100,17 @@ This is **one shared password for one person, and it is not suitable for multipl
 - **Put TLS in front.** Basic auth sends the password with every request, so over plain HTTP anyone on the path can read it. Run a reverse proxy such as Caddy or nginx with HTTPS, or keep using the SSH tunnel.
 - **Use a long random password.** Failed attempts are not rate-limited or locked out.
 
+## Graph workflows (optional)
+
+An agent with `executor: langgraph` works a ticket through a [LangGraph](https://www.langchain.com/langgraph) workflow instead of a single CLI call:
+
+1. A cheap chat model, such as DeepSeek, plans the change.
+2. Claude Code or Codex codes it.
+3. The repository's `checks` run, for example `go test ./...`, and the agent fixes until they pass.
+4. The chat model reviews the diff against the plan, and the agent fixes what it finds.
+
+The workflow is optional and needs Python only on workers that use it: `pipx install ./graph`. See [`docs/config.md`](docs/config.md) for `code_with`, `checks` and `graph:`.
+
 ## Tracing with LangSmith
 
 HiveDispatch can send a trace of everything its agents do to [LangSmith](https://smith.langchain.com):
