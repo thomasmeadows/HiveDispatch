@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/graphcli"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
-	"github.com/thomasmeadows/hivedispatch/internal/graphcli"
 	"github.com/thomasmeadows/hivedispatch/internal/repoconfig"
 	"github.com/thomasmeadows/hivedispatch/internal/trace"
 )

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thomasmeadows/hivedispatch/internal/claudecli"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/claudecli"
 	"github.com/thomasmeadows/hivedispatch/internal/config"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/githost"

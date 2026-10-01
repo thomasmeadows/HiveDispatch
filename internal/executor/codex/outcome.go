@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/thomasmeadows/hivedispatch/internal/codexcli"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/codexcli"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/prompt"
 )

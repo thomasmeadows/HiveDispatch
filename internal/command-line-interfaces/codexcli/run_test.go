@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thomasmeadows/hivedispatch/internal/codexcli/codextest"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/codexcli/codextest"
 )
 
 func TestRunSuccessCapturesTranscriptAndLog(t *testing.T) {

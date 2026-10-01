@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thomasmeadows/hivedispatch/internal/antigravitycli"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/antigravitycli"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/prompt"
 	"github.com/thomasmeadows/hivedispatch/internal/repoconfig"

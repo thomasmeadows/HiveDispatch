@@ -10,7 +10,7 @@ import (
 
 	"github.com/thomasmeadows/hivedispatch/internal/repoconfig"
 
-	"github.com/thomasmeadows/hivedispatch/internal/claudecli/clitest"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/claudecli/clitest"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 )
 
