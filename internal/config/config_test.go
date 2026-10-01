@@ -779,6 +779,7 @@ func TestJiraJQLIsScopeOnly(t *testing.T) {
 }
 
 func TestGrokBinary(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
 	for _, bin := range []string{"grok", "/opt/grok"} {
 		extra := ""
 		if bin != "grok" {
@@ -796,6 +797,7 @@ func TestGrokBinary(t *testing.T) {
 }
 
 func TestAntigravityBinary(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
 	for _, bin := range []string{"agy", "/opt/agy"} {
 		extra := ""
 		if bin != "agy" {

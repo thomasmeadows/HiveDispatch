@@ -95,7 +95,10 @@ func runAgentRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	var claudeBin, codexBin, deepcodeBin, grokBin, antigravityBin string
-	if cfg, err := config.Load(*cfgPath); err == nil {
+	// Only the worker config is needed for the CLI binaries: LoadWorker reads
+	// no repositories and needs none of their secrets, so a code step neither
+	// rescans code_dirs nor silently falls back to the default binaries.
+	if cfg, err := config.LoadWorker(*cfgPath); err == nil {
 		grokBin = cfg.Grok.Binary
 		antigravityBin = cfg.Antigravity.Binary
 		claudeBin, codexBin, deepcodeBin = cfg.Claude.Binary, cfg.Codex.Binary, cfg.DeepCode.Binary

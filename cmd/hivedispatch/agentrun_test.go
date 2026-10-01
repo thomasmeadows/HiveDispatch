@@ -35,6 +35,7 @@ func TestAgentRunBadExecutor(t *testing.T) {
 }
 
 func TestAgentRunAcceptsDeepCode(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "") // agent-run must not need repository secrets to find its CLI
 	cfg := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(cfg, []byte("deepcode:\n  binary: "+filepath.Join(t.TempDir(), "no-deepcode")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -47,6 +48,7 @@ func TestAgentRunAcceptsDeepCode(t *testing.T) {
 }
 
 func TestAgentRunGrok(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "") // agent-run must not need repository secrets to find its CLI
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "fake-grok")
 	script := "#!/bin/sh\ncat <<'JSON'\n{\"type\":\"result\",\"subtype\":\"success\",\"stop_reason\":\"end_turn\",\"result\":\"Grok completed\",\"session_id\":\"s1\"}\nJSON\n"
@@ -69,6 +71,7 @@ func TestAgentRunGrok(t *testing.T) {
 }
 
 func TestAgentRunAntigravity(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "") // agent-run must not need repository secrets to find its CLI
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "fake-antigravity")
 	script := "#!/bin/sh\ncat >/dev/null\ncat <<'JSON'\n{\"event\":\"result\",\"result\":{\"status\":\"SUCCESS\",\"response\":\"Antigravity completed\",\"conversation_id\":\"s1\"}}\nJSON\n"
