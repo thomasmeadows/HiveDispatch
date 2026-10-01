@@ -34,6 +34,7 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 | `retention_days` | `30` | Raw run logs and finished run records older than this are pruned at startup; `-1` never prunes |
 | `claude.binary` | `claude` | The Claude Code CLI to run |
 | `codex.binary` | `codex` | The Codex CLI to run (for agents with `executor: codex`) |
+| `grok.binary` | `grok` | Grok Build executable for `executor: grok` or `code_with: grok` |
 | `deepcode.binary` | `deepcode` | The DeepCode CLI to run (for agents with `executor: deepcode` or `code_with: deepcode`) |
 | `triage.kind` | `claude` | `claude` (read-only model triage) or `passthrough` (dispatch everything) |
 | `triage.step_budget` | `40` | Tool calls the triager may make |
@@ -95,8 +96,8 @@ agents:
 |---|---|---|
 | `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<machine_id>/<name>` |
 | `agents[].role` | `coding` | Which board column the agent works: `planning`, `coding` or `review` (below) |
-| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `deepcode` (DeepCode, below), `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
-| `agents[].code_with` | `claude` | `langgraph` agents only: what the workflow's code and fix steps run — `claude`, `codex`, `deepcode`, `fake`, or `langgraph` for HiveDispatch's own coding agent (coding agents only; see below). Rejected on any other executor |
+| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `grok` (Grok Build, below), `deepcode` (DeepCode, below), `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
+| `agents[].code_with` | `claude` | `langgraph` agents only: what the workflow's code and fix steps run — `claude`, `codex`, `grok`, `deepcode`, `fake`, or `langgraph` for HiveDispatch's own coding agent (coding agents only; see below). Rejected on any other executor |
 | `agents[].model` | *(policy's model, then the CLI's)* | Model for this agent's runs; wins over the policy's `executor.model` / `executor.codex.model` |
 
 Each agent works one column of the board:
@@ -111,7 +112,29 @@ Columns without an agent of that role are not polled: a repository with only the
 
 Agents of a role are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets of a column at once as it has agents for it. A ticket labelled `hive:agent:<name>` waits for that agent in that agent's column; the other columns still use their whole pool, so one ticket can name both its coder and its reviewer. A label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are made under the worker's `machine_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
 
-`run -executor fake` (or `claude`, `codex`, `langgraph`) makes every agent use that executor for one run.
+`run -executor fake` (or `claude`, `codex`, `grok`, `deepcode`, `langgraph`) makes every agent use that executor for one run.
+
+### Grok Build — `executor: grok`
+
+Install [Grok Build](https://github.com/xai-org/grok-build) on the worker, then authenticate with `grok login` (or `grok login --device-code` on a headless machine), or set `XAI_API_KEY` in the worker's environment. Set `grok.binary` in the worker config if the executable is not named `grok` on PATH. `hivedispatch check` checks for the binary when an agent uses it; it does not validate credentials.
+
+Add a coding agent to `.hive-dispatch/agents.yaml`:
+
+```yaml
+agents:
+  - name: grok-coder
+    executor: grok
+    role: coding
+    # model: grok-4.6       # optional; otherwise Grok's configured default
+```
+
+For a graph workflow, use `executor: langgraph` with `code_with: grok`. The workflow invokes the same adapter through `hivedispatch agent-run`.
+
+HiveDispatch sends the prompt through a private temporary file, runs Grok in the prepared worktree with `--output-format streaming-messages-json`, and resumes the returned session with `--resume` after a human reply. Tool calls and messages feed tracing, and the final result supplies token usage and cost when available. The worker enforces the tool-call budget and wall-clock timeout; `--max-turns` also bounds Grok's model turns to the step budget. Both kinds of budget exhaustion report a step-budget stop.
+
+- **Coding agents only.** This adapter does not yet implement enforced read-only planning or review; those roles reject `grok`, including through `code_with`.
+- **Permissions remain Grok's.** HiveDispatch does not pass `--yolo` or bypass approvals. Configure the tools and commands it needs in Grok's own permission settings. Headless Grok cancels permission prompts instead of waiting for an operator. Claude and Codex policy keys do not configure Grok; the shared `executor.path` and repository `guidance` still apply.
+- **Model selection is per agent.** `model:` passes `--model`; otherwise the CLI selects its default. Authentication and secrets stay outside HiveDispatch's files.
 
 ### DeepCode — `executor: deepcode`
 

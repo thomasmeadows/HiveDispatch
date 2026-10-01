@@ -23,7 +23,7 @@ const AgentsFileName = "agents.yaml"
 type Agent struct {
 	Name     string `yaml:"name" json:"name"`
 	Role     string `yaml:"role,omitempty" json:"role"`   // planning, coding (default) or review
-	Executor string `yaml:"executor" json:"executor"`     // claude (default), codex, deepcode, langgraph or fake
+	Executor string `yaml:"executor" json:"executor"`     // claude (default), codex, grok, deepcode, langgraph or fake
 	Model    string `yaml:"model,omitempty" json:"model"` // default: the policy's model, then the CLI's
 	// CodeWith is langgraph only: what its code node runs — claude, codex,
 	// deepcode or fake, or langgraph for HiveDispatch's own coding agent.
@@ -87,6 +87,13 @@ func ParseAgents(raw []byte) ([]Agent, error) {
 			if a.CodeWith != "" {
 				problems = append(problems, fmt.Sprintf("agents[%d].code_with: only an executor: langgraph agent has one", i))
 			}
+		case "grok":
+			if a.Role != RoleCoding {
+				problems = append(problems, fmt.Sprintf("agents[%d]: grok is for coding agents only", i))
+			}
+			if a.CodeWith != "" {
+				problems = append(problems, fmt.Sprintf("agents[%d].code_with: only an executor: langgraph agent has one", i))
+			}
 		case "deepcode":
 			if a.CodeWith != "" {
 				problems = append(problems, fmt.Sprintf("agents[%d].code_with: only an executor: langgraph agent has one", i))
@@ -102,13 +109,17 @@ func ParseAgents(raw []byte) ([]Agent, error) {
 				if a.Role != RoleCoding {
 					problems = append(problems, fmt.Sprintf("agents[%d].code_with: langgraph is for coding agents only; a %s agent runs read-only through claude or codex", i, a.Role))
 				}
+			case "grok":
+				if a.Role != RoleCoding {
+					problems = append(problems, fmt.Sprintf("agents[%d]: grok is for coding agents only", i))
+				}
 			case "deepcode":
 				problems = append(problems, deepcodeProblems(i, "code_with", *a)...)
 			default:
-				problems = append(problems, fmt.Sprintf("agents[%d].code_with: want claude, codex, deepcode, langgraph or fake, got %q", i, a.CodeWith))
+				problems = append(problems, fmt.Sprintf("agents[%d].code_with: want claude, codex, grok, deepcode, langgraph or fake, got %q", i, a.CodeWith))
 			}
 		default:
-			problems = append(problems, fmt.Sprintf("agents[%d].executor: want claude, codex, deepcode, langgraph or fake, got %q", i, a.Executor))
+			problems = append(problems, fmt.Sprintf("agents[%d].executor: want claude, codex, grok, deepcode, langgraph or fake, got %q", i, a.Executor))
 		}
 	}
 	if len(problems) > 0 {

@@ -49,7 +49,7 @@ commands:
                               filled in, create its hive:* labels (GitHub) or claim fields (Jira)
   scan  [-config P] [DIR...]  list git repositories under DIR (default: code_dirs, else ~) and
                               which are enrolled
-  run   [-config P] [-once] [-executor claude|codex|deepcode|langgraph|fake] [-triage claude|passthrough]
+  run   [-config P] [-once] [-executor claude|codex|grok|deepcode|langgraph|fake] [-triage claude|passthrough]
         [-placeholder] [-skip-preflight]
                               verify each repository's tracker, then poll and dispatch; -executor makes every agent
                               use that executor, -triage overrides the config
@@ -137,6 +137,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	if usesLangGraph(cfg) {
 		printGraphCheck(stdout, *cfgPath)
 	}
+	if usesGrok(cfg) {
+		printGrokCheck(stdout, cfg.Grok.Binary)
+	}
 	if usesDeepCode(cfg) {
 		printDeepCodeCheck(stdout, cfg.DeepCode.Binary)
 	}
@@ -175,6 +178,16 @@ func printGraphCheck(w io.Writer, cfgPath string) {
 		return
 	}
 	fmt.Fprintf(w, "graph: %s, chat model %s/%s\n", p, gc.Model.Provider, gc.Model.Model)
+}
+
+// printGrokCheck checks the binary without reading or exposing Grok credentials.
+func printGrokCheck(w io.Writer, binary string) {
+	p, err := exec.LookPath(binary)
+	if err != nil {
+		fmt.Fprintf(w, "grok: %s not found — install Grok Build: https://github.com/xai-org/grok-build\n", binary)
+		return
+	}
+	fmt.Fprintf(w, "grok: %s; authenticate with grok login or XAI_API_KEY (credentials not checked)\n", p)
 }
 
 // printDeepCodeCheck reports whether DeepCode is installed and has an API
@@ -558,7 +571,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
 	once := fs.Bool("once", false, "poll once and exit")
-	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex, deepcode, langgraph or fake")
+	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex, grok, deepcode, langgraph or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")
@@ -710,7 +723,7 @@ func runOnce(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("once", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "path to worker config")
-	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex, deepcode, langgraph or fake")
+	executorFlag := fs.String("executor", "", "make every agent use this executor: claude, codex, grok, deepcode, langgraph or fake")
 	triageFlag := fs.String("triage", "", "override config triage: claude or passthrough")
 	skipPreflight := fs.Bool("skip-preflight", false, "start without verifying each repository's tracker setup")
 	placeholder := fs.Bool("placeholder", false, "fake executor writes a placeholder file so the branch/PR path is exercised")

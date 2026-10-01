@@ -16,6 +16,7 @@ import (
 	"github.com/thomasmeadows/hivedispatch/internal/executor/codex"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/deepcode"
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
+	"github.com/thomasmeadows/hivedispatch/internal/executor/grok"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/langgraph"
 	"github.com/thomasmeadows/hivedispatch/internal/githost"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
@@ -125,6 +126,18 @@ func usesLangGraph(cfg *config.Config) bool {
 	return false
 }
 
+// usesGrok reports whether a coding agent runs Grok directly or through the graph.
+func usesGrok(cfg *config.Config) bool {
+	for _, r := range cfg.Repos {
+		for _, a := range r.Agents {
+			if a.Executor == "grok" || (a.Executor == "langgraph" && a.CodeWith == "grok") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // usesDeepCode reports whether any repository has an agent that runs
 // DeepCode, as its executor or as a langgraph agent's code_with.
 func usesDeepCode(cfg *config.Config) bool {
@@ -210,6 +223,7 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 	executors := map[string]executor.Executor{
 		"claude":   claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary}),
 		"codex":    codex.New(codex.Config{Binary: cfg.Codex.Binary}),
+		"grok":     grok.New(grok.Config{Binary: cfg.Grok.Binary}),
 		"deepcode": deepcode.New(deepcode.Config{Binary: cfg.DeepCode.Binary}),
 		"fake":     fake,
 	}
@@ -217,7 +231,7 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 	if opts.executor != "" {
 		ex, ok := executors[opts.executor]
 		if !ok {
-			return nil, fmt.Errorf("unknown executor %q (want claude, codex, deepcode, langgraph or fake)", opts.executor)
+			return nil, fmt.Errorf("unknown executor %q (want claude, codex, grok, deepcode, langgraph or fake)", opts.executor)
 		}
 		for kind := range executors {
 			executors[kind] = ex

@@ -777,3 +777,20 @@ func TestJiraJQLIsScopeOnly(t *testing.T) {
 		t.Errorf("err = %v, want jql without a status clause", err)
 	}
 }
+
+func TestGrokBinary(t *testing.T) {
+	for _, bin := range []string{"grok", "/opt/grok"} {
+		extra := ""
+		if bin != "grok" {
+			extra = "grok:\n  binary: " + bin + "\n"
+		}
+		p, _ := setup(t, extra)
+		cfg, err := Load(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Grok.Binary != bin {
+			t.Fatalf("binary %q, want %q", cfg.Grok.Binary, bin)
+		}
+	}
+}

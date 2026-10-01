@@ -42,6 +42,7 @@ type Config struct {
 	RetentionDays     int            `yaml:"retention_days"` // prune raw logs and finished runs older than this; 0 disables
 	Claude            ClaudeConfig   `yaml:"claude"`
 	Codex             CodexConfig    `yaml:"codex"`
+	Grok              GrokConfig     `yaml:"grok"`
 	DeepCode          DeepCodeConfig `yaml:"deepcode"`
 	Triage            TriageConfig   `yaml:"triage"`
 	// Jira and GitHub hold the worker's accounts: jira.email and
@@ -104,6 +105,11 @@ type ClaudeConfig struct {
 // settings live under executor.codex in .hivedispatch.yaml.
 type CodexConfig struct {
 	Binary string `yaml:"binary"` // default "codex"
+}
+
+// GrokConfig selects the Grok Build CLI. Authentication stays with Grok.
+type GrokConfig struct {
+	Binary string `yaml:"binary"` // default "grok"
 }
 
 // DeepCodeConfig configures the DeepCode executor at the worker level. Its
@@ -244,6 +250,7 @@ func (c *Config) applyDefaults() {
 	}
 	def(&c.Claude.Binary, "claude")
 	def(&c.Codex.Binary, "codex")
+	def(&c.Grok.Binary, "grok")
 	def(&c.DeepCode.Binary, "deepcode")
 	def(&c.Triage.Kind, "claude")
 	if c.Triage.StepBudget == 0 {

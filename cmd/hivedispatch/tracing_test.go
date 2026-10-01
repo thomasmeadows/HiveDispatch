@@ -83,3 +83,30 @@ func TestDeepCodeSettingsCheck(t *testing.T) {
 		t.Fatalf("no key: %q", got)
 	}
 }
+
+func TestGrokCheck(t *testing.T) {
+	cfg := &config.Config{Repos: []config.RepoConfig{{Agents: []config.Agent{{Executor: "claude"}}}}}
+	if usesGrok(cfg) {
+		t.Fatal("unused grok checked")
+	}
+	for _, a := range []config.Agent{{Executor: "grok"}, {Executor: "langgraph", CodeWith: "grok"}} {
+		cfg.Repos[0].Agents = []config.Agent{a}
+		if !usesGrok(cfg) {
+			t.Fatalf("missed agent %+v", a)
+		}
+	}
+	var out bytes.Buffer
+	printGrokCheck(&out, filepath.Join(t.TempDir(), "missing-grok"))
+	if !strings.Contains(out.String(), "not found") || !strings.Contains(out.String(), "https://github.com/xai-org/grok-build") {
+		t.Fatalf("check: %s", out.String())
+	}
+	out.Reset()
+	bin := filepath.Join(t.TempDir(), "grok")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	printGrokCheck(&out, bin)
+	if !strings.Contains(out.String(), bin) || !strings.Contains(out.String(), "XAI_API_KEY") {
+		t.Fatalf("check: %s", out.String())
+	}
+}

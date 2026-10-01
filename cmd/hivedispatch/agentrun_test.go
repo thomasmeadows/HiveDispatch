@@ -45,3 +45,25 @@ func TestAgentRunAcceptsDeepCode(t *testing.T) {
 		t.Fatalf("exit %d (want 1: accepted, but the binary is missing): %s", code, errb.String())
 	}
 }
+
+func TestAgentRunGrok(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "fake-grok")
+	script := "#!/bin/sh\ncat <<'JSON'\n{\"type\":\"result\",\"subtype\":\"success\",\"stop_reason\":\"end_turn\",\"result\":\"Grok completed\",\"session_id\":\"s1\"}\nJSON\n"
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeValidConfigWith(t, "grok:\n  binary: "+bin+"\n")
+	var out, errb bytes.Buffer
+	code := runAgentRun([]string{"-executor", "grok", "-config", cfg, "-workspace", dir}, strings.NewReader("task"), &out, &errb)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var r agentRunResult
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != "completed" || r.Summary != "Grok completed" {
+		t.Fatalf("result: %+v", r)
+	}
+}

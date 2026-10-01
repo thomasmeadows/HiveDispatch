@@ -437,3 +437,18 @@ Rejected:
 - **Passing the key through the environment:** DeepCode ignores it.
 - **Planning and review on DeepCode:** without a read-only mode, a "read-only" run could still change the tree.
 - **HiveDispatch's own command allowlist around DeepCode:** DeepCode runs its own tools, so the only lever is its settings. That is documented rather than half-enforced.
+
+
+## 2026-10-01 — Grok Build is a coding executor
+
+Decided: `executor: grok` runs xAI's [Grok Build](https://github.com/xai-org/grok-build) CLI headlessly in the prepared worktree. It also works through the graph's `code_with: grok` via `agent-run`. The worker's `grok.binary` selects the executable, and the agent's `model` passes `--model`; credentials and permissions remain in the operator's Grok setup.
+
+Use `--prompt-file` with a private temporary file, deleted after the run, and `--output-format streaming-messages-json`. Grok documents this as the Messages wire format, so reuse the existing `claudecli` parser and process supervision. Grok's `search_replace` file paths and terminal `errors` array are recognized by that parser. Grok-specific outcome mapping handles native turn exhaustion, quota errors, incomplete responses and nonzero exit status. The returned session ID is the resume token. Tool calls enforce the step budget, with `--max-turns` additionally bounding model turns; cancellation kills the process group.
+
+Only coding roles are accepted for now. The adapter does not establish a read-only sandbox for planning or review. It leaves Grok's permission policy in place and never supplies `--yolo`; headless permission requests are cancelled by Grok. The shared PATH policy and repository guidance still apply.
+
+Rejected:
+- **A separate parser for Grok's native `streaming-json`:** its supported Messages format already carries sessions, tool calls, results and usage that HiveDispatch consumes. Sharing that parser avoids duplicating process supervision and tracing.
+- **Automatically bypassing all permissions:** the operator should configure Grok's allowed operations, as with the other executors.
+- **Planning and review via a prompt that says read-only:** a prompt does not enforce isolation. Add those roles when the adapter can guarantee it.
+- **Putting prompts in argv:** a private temporary file avoids command-line length limits and exposing ticket content in process listings.
