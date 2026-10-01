@@ -3,9 +3,11 @@ package supervisor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/thomasmeadows/hivedispatch/internal/supervisor/model"
+	"github.com/thomasmeadows/hivedispatch/internal/trace"
 )
 
 // Tool is something the model may call.
@@ -32,6 +34,7 @@ type Agent struct {
 	StepBudget int           // tool calls per user turn
 	MaxTokens  int
 	Events     func(Event)
+	Tracer     *trace.Tracer // nil = no tracing
 
 	history []model.Message
 }
@@ -75,13 +78,15 @@ func (a *Agent) tool(name string) Tool {
 // cancelled partway through a batch of tool calls, the remaining calls in
 // that batch are recorded as cancelled without being invoked, and Turn
 // returns ctx.Err() once the batch is fully accounted for.
-func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
+func (a *Agent) Turn(ctx context.Context, user string) (reply string, err error) {
+	ctx, span := a.Tracer.Start(ctx, "supervisor turn", trace.KindChain, map[string]any{"message": user})
+	defer func() { span.End(map[string]any{"reply": reply}, err) }()
 	a.history = append(a.history, model.Message{Role: model.RoleUser, Content: user})
 	steps := 0
 	lastText := ""
 	for {
 		a.emit(Event{Kind: "model_start"})
-		resp, err := a.Model.Chat(ctx, model.Request{
+		resp, err := a.chat(ctx, model.Request{
 			System: a.System(), Messages: a.history, Tools: a.defs(), MaxTokens: a.MaxTokens,
 		})
 		a.emit(Event{Kind: "model_done"})
@@ -120,7 +125,63 @@ func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
 	}
 }
 
+// chat is one model call, traced as an llm run.
+func (a *Agent) chat(ctx context.Context, req model.Request) (model.Response, error) {
+	name := a.Model.Name()
+	ctx, span := a.Tracer.Start(ctx, name, trace.KindLLM, traceRequest(req))
+	resp, err := a.Model.Chat(ctx, req)
+	if err != nil {
+		span.End(nil, err)
+		return resp, err
+	}
+	span.SetUsage(name, resp.Usage.InputTokens, resp.Usage.OutputTokens)
+	span.End(map[string]any{
+		"choices":     []any{map[string]any{"message": traceMessage(resp.Message), "finish_reason": resp.StopReason}},
+		"stop_reason": resp.StopReason,
+	}, nil)
+	return resp, nil
+}
+
+// traceRequest is a request in the OpenAI chat shape LangSmith renders.
+func traceRequest(req model.Request) map[string]any {
+	msgs := make([]any, 0, len(req.Messages)+1)
+	if req.System != "" {
+		msgs = append(msgs, map[string]any{"role": "system", "content": req.System})
+	}
+	for _, m := range req.Messages {
+		msgs = append(msgs, traceMessage(m))
+	}
+	tools := make([]any, 0, len(req.Tools))
+	for _, t := range req.Tools {
+		tools = append(tools, map[string]any{"type": "function", "function": map[string]any{
+			"name": t.Name, "description": t.Description, "parameters": t.Schema,
+		}})
+	}
+	return map[string]any{"messages": msgs, "tools": tools, "max_tokens": req.MaxTokens}
+}
+
+func traceMessage(m model.Message) map[string]any {
+	out := map[string]any{"role": string(m.Role), "content": m.Content}
+	if m.Role == "" {
+		out["role"] = string(model.RoleAssistant)
+	}
+	if len(m.ToolCalls) > 0 {
+		calls := make([]any, 0, len(m.ToolCalls))
+		for _, tc := range m.ToolCalls {
+			calls = append(calls, map[string]any{"id": tc.ID, "type": "function", "function": map[string]any{
+				"name": tc.Name, "arguments": string(tc.Args),
+			}})
+		}
+		out["tool_calls"] = calls
+	}
+	if m.ToolCallID != "" {
+		out["tool_call_id"] = m.ToolCallID
+	}
+	return out
+}
+
 func (a *Agent) call(ctx context.Context, tc model.ToolCall) model.Message {
+	ctx, span := a.Tracer.Start(ctx, tc.Name, trace.KindTool, map[string]any{"args": tc.Args})
 	a.emit(Event{Kind: "tool_start", Tool: tc.Name, Args: tc.Args})
 	res := model.Message{Role: model.RoleTool, ToolCallID: tc.ID}
 	t := a.tool(tc.Name)
@@ -138,6 +199,7 @@ func (a *Agent) call(ctx context.Context, tc model.ToolCall) model.Message {
 		res.Content = out
 	}
 	a.emit(Event{Kind: "tool_done", Tool: tc.Name, Args: tc.Args, Result: res.Content, Err: err})
+	span.End(map[string]any{"output": out}, err)
 	return res
 }
 
@@ -146,6 +208,8 @@ func (a *Agent) call(ctx context.Context, tc model.ToolCall) model.Message {
 // consistent (every tool_use gets a matching result).
 func (a *Agent) cancelled(ctx context.Context, tc model.ToolCall) model.Message {
 	res := model.Message{Role: model.RoleTool, ToolCallID: tc.ID, IsError: true, Content: "cancelled"}
+	_, span := a.Tracer.Start(ctx, tc.Name, trace.KindTool, map[string]any{"args": tc.Args})
+	span.End(nil, errors.New("cancelled"))
 	a.emit(Event{Kind: "tool_done", Tool: tc.Name, Args: tc.Args, Result: res.Content, Err: ctx.Err()})
 	return res
 }
