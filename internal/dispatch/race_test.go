@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thomasmeadows/hivedispatch/internal/claudecli"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/claudecli"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/state"
 	"github.com/thomasmeadows/hivedispatch/internal/tracker"

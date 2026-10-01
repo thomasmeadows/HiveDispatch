@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/thomasmeadows/hivedispatch/internal/deepcodecli"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/deepcodecli"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/prompt"
 	"github.com/thomasmeadows/hivedispatch/internal/repoconfig"

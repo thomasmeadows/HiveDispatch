@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thomasmeadows/hivedispatch/internal/claudecli/clitest"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/claudecli/clitest"
 )
 
 func TestRunSuccessCapturesTranscriptAndLog(t *testing.T) {

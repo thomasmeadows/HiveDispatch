@@ -10,7 +10,7 @@ import (
 
 	"github.com/thomasmeadows/hivedispatch/internal/repoconfig"
 
-	"github.com/thomasmeadows/hivedispatch/internal/codexcli/codextest"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/codexcli/codextest"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 )
 

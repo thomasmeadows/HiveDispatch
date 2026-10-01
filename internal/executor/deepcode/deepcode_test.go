@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thomasmeadows/hivedispatch/internal/deepcodecli"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/deepcodecli"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 )
 
@@ -58,7 +58,7 @@ func TestMapOutcomeCarriesSessionData(t *testing.T) {
 }
 
 func TestRunAddsGuidanceAndPath(t *testing.T) {
-	bin, err := filepath.Abs("../../deepcodecli/deepcodetest/fakedeepcode.sh")
+	bin, err := filepath.Abs("../../command-line-interfaces/deepcodecli/deepcodetest/fakedeepcode.sh")
 	if err != nil {
 		t.Fatal(err)
 	}

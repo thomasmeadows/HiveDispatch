@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thomasmeadows/hivedispatch/internal/claudecli"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/claudecli"
 	"github.com/thomasmeadows/hivedispatch/internal/triage"
 )
 

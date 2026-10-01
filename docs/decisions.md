@@ -481,3 +481,12 @@ Rejected:
 - **A command field in the request:** that would make the website a remote shell. The executor's name selects from the table instead.
 - **Logging in to the CLIs from the page:** their logins are interactive and keep credentials in each tool's own files, which HiveDispatch never handles.
 - **Installing automatically when an agent needs a missing CLI:** running an installer is a choice for the operator, so it waits for a click and a confirmation.
+
+
+## 2026-10-01 — The executor CLI runners live under `internal/command-line-interfaces`
+
+Decided: the five packages that supervise an external CLI process and parse its output (`claudecli`, `codexcli`, `deepcodecli`, `antigravitycli` and `graphcli`, with their fake-binary test helpers) move into `internal/command-line-interfaces/`. Package names do not change, only import paths. This supersedes the `internal/<name>cli` paths named in earlier entries. Why: they are one kind of package, the process runners the executor and triager adapters build on, and grouping them keeps `internal/` to the domain packages and makes the next runner's home obvious.
+
+Rejected:
+- **One merged `cli` package:** the runners deliberately do not share code (see the Codex entry), so merging them would only lengthen identifiers.
+- **Moving them under `internal/executor/`:** the triager uses `claudecli` too, so they are not owned by the executor.

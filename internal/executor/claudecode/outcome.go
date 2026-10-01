@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/thomasmeadows/hivedispatch/internal/claudecli"
+	"github.com/thomasmeadows/hivedispatch/internal/command-line-interfaces/claudecli"
 	"github.com/thomasmeadows/hivedispatch/internal/executor"
 	"github.com/thomasmeadows/hivedispatch/internal/prompt"
 )
