@@ -94,6 +94,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runSupervisor(args[1:], os.Stdin, stdout, stderr)
 	case "website":
 		return runWebsite(args[1:], stdout, stderr)
+	case "agent-run":
+		return runAgentRun(args[1:], os.Stdin, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
