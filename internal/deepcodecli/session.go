@@ -96,10 +96,20 @@ func parseTime(s string) time.Time {
 // ParseSession reads a session file and its sibling sessions-index.json.
 // cwd is the workspace the run used, for relative edited paths.
 func ParseSession(file, cwd string) (Transcript, error) {
+	return ParseSessionFrom(file, cwd, 0)
+}
+
+// ParseSessionFrom is ParseSession for the messages after the first from:
+// a resumed run reads only what it added to the session.
+func ParseSessionFrom(file, cwd string, from int) (Transcript, error) {
 	msgs, err := readMessages(file)
 	if err != nil {
 		return Transcript{}, err
 	}
+	if from > len(msgs) {
+		from = len(msgs)
+	}
+	msgs = msgs[from:]
 	tr := Transcript{SessionID: strings.TrimSuffix(filepath.Base(file), ".jsonl")}
 	pending := map[string]int{}    // tool call id -> index in tr.Steps
 	editing := map[string]string{} // tool call id -> file it edits
@@ -211,13 +221,19 @@ func readIndex(path string, tr *Transcript) {
 
 // CountToolCalls counts the tool calls a session has made so far, for the
 // step budget while the run is going.
-func CountToolCalls(file string) int {
+func CountToolCalls(file string) int { return CountToolCallsFrom(file, 0) }
+
+// CountToolCallsFrom counts the tool calls after the first from messages.
+func CountToolCallsFrom(file string, from int) int {
 	msgs, err := readMessages(file)
 	if err != nil {
 		return 0
 	}
+	if from > len(msgs) {
+		from = len(msgs)
+	}
 	n := 0
-	for _, m := range msgs {
+	for _, m := range msgs[from:] {
 		if m.Role == "assistant" && m.MessageParams != nil {
 			n += len(m.MessageParams.ToolCalls)
 		}
@@ -245,6 +261,16 @@ func RootPath(file string) string {
 		}
 	}
 	return ""
+}
+
+// MessageCount is how many messages a session file holds; 0 when it does
+// not exist yet.
+func MessageCount(file string) int {
+	msgs, err := readMessages(file)
+	if err != nil {
+		return 0
+	}
+	return len(msgs)
 }
 
 // Sessions lists every session file under home (~/.deepcode).

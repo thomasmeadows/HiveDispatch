@@ -95,3 +95,34 @@ func TestRunMissingBinary(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+func TestResumeCountsOnlyThisRun(t *testing.T) {
+	c, _ := fake(t, "ok")
+	first, _, _, err := Run(context.Background(), c)
+	if err != nil || len(first.Steps) != 2 {
+		t.Fatalf("first run: %+v %v", first, err)
+	}
+	c.Resume = first.SessionID
+	second, _, _, err := Run(context.Background(), c)
+	if err != nil || second.SessionID != first.SessionID {
+		t.Fatalf("second run: %+v %v", second, err)
+	}
+	if len(second.Steps) != 2 || second.ToolCalls != 2 {
+		t.Fatalf("a resumed run re-counted the earlier round: %d steps, %d tool calls", len(second.Steps), second.ToolCalls)
+	}
+}
+
+func TestResumeBudgetIgnoresEarlierRounds(t *testing.T) {
+	c, _ := fake(t, "ok")
+	first, _, _, err := Run(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Resume = first.SessionID
+	c.StepBudget = 3 // the earlier round's 2 calls plus this round's 2 would trip it
+	t.Setenv("FAKE_DEEPCODE_MODE", "slowok")
+	_, exit, _, err := Run(context.Background(), c)
+	if err != nil || exit.StepTripped {
+		t.Fatalf("budget tripped on earlier rounds' calls: %+v %v", exit, err)
+	}
+}

@@ -91,6 +91,14 @@ func Run(ctx context.Context, c Cmd) (Transcript, Exit, string, error) {
 		poll = defaultPoll
 	}
 	before := Sessions(home)
+	// A resumed session already holds earlier rounds; this run reads and
+	// budgets only the messages it adds.
+	from := 0
+	if c.Resume != "" {
+		if f := FindSession(home, c.Dir, c.Resume, nil); f != "" {
+			from = MessageCount(f)
+		}
+	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -134,7 +142,7 @@ func Run(ctx context.Context, c Cmd) (Transcript, Exit, string, error) {
 			}
 			f := session
 			mu.Unlock()
-			if f != "" && c.StepBudget > 0 && CountToolCalls(f) > c.StepBudget {
+			if f != "" && c.StepBudget > 0 && CountToolCallsFrom(f, from) > c.StepBudget {
 				mu.Lock()
 				tripped = true
 				mu.Unlock()
@@ -158,7 +166,7 @@ func Run(ctx context.Context, c Cmd) (Transcript, Exit, string, error) {
 	}
 	var tr Transcript
 	if f != "" {
-		parsed, err := ParseSession(f, c.Dir)
+		parsed, err := ParseSessionFrom(f, c.Dir, from)
 		if err == nil {
 			tr = parsed
 		}

@@ -27,6 +27,13 @@ ok)
   index completed null "Added the function."
   echo "Added the function."
   ;;
+slowok)
+  tool 1 read "{\\\"file_path\\\": \\\"$PWD/main.go\\\"}"
+  tool 2 edit "{\\\"file_path\\\": \\\"$PWD/main.go\\\"}"
+  sleep 0.5
+  index completed null "Added the function."
+  echo "Added the function."
+  ;;
 needsinput)
   index completed null "HIVE_NEEDS_INPUT: Which DB?"
   echo "HIVE_NEEDS_INPUT: Which DB?"
