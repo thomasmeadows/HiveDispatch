@@ -149,6 +149,17 @@ func (t *Tracer) StartAt(ctx context.Context, name string, kind Kind, inputs map
 	return context.WithValue(ctx, spanKey{}, sp), sp
 }
 
+// DottedOrder is the span's place in its trace, in LangSmith's format; a
+// child process can attach its own trace beneath it. "" for a nil span.
+func (s *Span) DottedOrder() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.run.DottedOrder
+}
+
 // SetMetadata attaches a key to the run; it is sent when the span ends.
 func (s *Span) SetMetadata(k string, v any) {
 	if s == nil {
