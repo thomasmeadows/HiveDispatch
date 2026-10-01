@@ -39,6 +39,8 @@ class State(TypedDict, total=False):
     stop_cause: str
     question: str
     changed_files: list[str]
+    coder_messages: list  # code_with: langgraph — the coding agent's conversation
+    coder_steps: int  # code_with: langgraph — tool calls so far in this run
 
 
 def now() -> datetime:
@@ -107,7 +109,7 @@ def git_diff(task) -> str:
     return diff
 
 
-def build(task, emitter, model, agent=run_agent, checks=run_checks) -> StateGraph:
+def build(task, emitter, model, agent=run_agent, checks=run_checks, coder_model=None) -> StateGraph:
     def timed(name, fn):
         def node(state: State) -> State:
             start = now()
@@ -138,7 +140,17 @@ def build(task, emitter, model, agent=run_agent, checks=run_checks) -> StateGrap
         prompt = state.get("feedback") or prompts.CODE_FIRST.format(
             prompt=state["prompt"], plan=state.get("plan", "")
         )
-        r = agent(task, prompt, state.get("cli_session", ""))
+        extra: State = {}
+        if task.code_with == "langgraph":
+            from .coder.agent import run as run_coder
+
+            cr = run_coder(
+                task, prompt, state.get("coder_messages", []), state.get("coder_steps", 0), coder_model
+            )
+            r = cr.result
+            extra = {"coder_messages": cr.messages, "coder_steps": cr.steps_used}
+        else:
+            r = agent(task, prompt, state.get("cli_session", ""))
         for s in r.steps:
             end = s.get("end")
             emitter.step(
@@ -167,6 +179,7 @@ def build(task, emitter, model, agent=run_agent, checks=run_checks) -> StateGrap
             "summary": r.summary,
             "changed_files": changed,
             "feedback": "",
+            **extra,
         }
 
     def run_checks_node(state: State) -> State:
@@ -254,7 +267,9 @@ def _flush_traces() -> None:
     wait_for_all_tracers()
 
 
-def run_task(task, emitter, model=None, agent=run_agent, checks=run_checks, checkpointer=None) -> int:
+def run_task(
+    task, emitter, model=None, agent=run_agent, checks=run_checks, checkpointer=None, coder_model=None
+) -> int:
     """Runs the workflow and always emits exactly one result event.
 
     Checkpoints go to <git dir>/hivegraph/checkpoints.sqlite, so a ticket
@@ -278,7 +293,11 @@ def run_task(task, emitter, model=None, agent=run_agent, checks=run_checks, chec
                 from .model import chat_model
 
                 model = chat_model(task)
-            graph = build(task, emitter, model, agent, checks).compile(checkpointer=checkpointer)
+            if task.code_with == "langgraph" and coder_model is None:
+                from .model import coder_model as make_coder
+
+                coder_model = make_coder(task)
+            graph = build(task, emitter, model, agent, checks, coder_model).compile(checkpointer=checkpointer)
             config = {
                 "configurable": {"thread_id": thread},
                 "recursion_limit": 100,
