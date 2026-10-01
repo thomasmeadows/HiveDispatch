@@ -16,7 +16,7 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from . import prompts
+from . import prompts, stop
 from .agentrun import run_agent
 from .checks import run_checks
 
@@ -84,6 +84,24 @@ def git_diff(task) -> str:
         errors="replace",
     )
     diff = p.stdout
+    # Files the CLI created are untracked until the worker commits; diff
+    # them against nothing so the review sees them, without touching the index.
+    untracked = subprocess.run(
+        ["git", "-C", task.workspace, "ls-files", "--others", "--exclude-standard", "-z"],
+        capture_output=True,
+        text=True,
+        errors="replace",
+    ).stdout
+    for path in filter(None, untracked.split("\0")):
+        if len(diff) > MAX_DIFF:
+            break
+        d = subprocess.run(
+            ["git", "-C", task.workspace, "diff", "--no-index", "--", "/dev/null", path],
+            capture_output=True,
+            text=True,
+            errors="replace",
+        )
+        diff += d.stdout
     if len(diff) > MAX_DIFF:
         diff = diff[:MAX_DIFF] + "\n…[diff truncated]"
     return diff
@@ -93,7 +111,15 @@ def build(task, emitter, model, agent=run_agent, checks=run_checks) -> StateGrap
     def timed(name, fn):
         def node(state: State) -> State:
             start = now()
-            out = fn(state)
+            if stop.requested and name != "finish":
+                out: State = {
+                    "status": "failed",
+                    "stop_cause": "killed",
+                    "feedback": "",
+                    "summary": "Stopped by the worker.",
+                }
+            else:
+                out = fn(state)
             emitter.node(name, start, now())
             return out
 
