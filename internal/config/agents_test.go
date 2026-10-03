@@ -76,3 +76,16 @@ func TestAntigravityAgents(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenClawAgents(t *testing.T) {
+	for _, fields := range []string{"executor: openclaw", "executor: langgraph\n    code_with: openclaw"} {
+		if _, err := ParseAgents([]byte("agents:\n  - name: g\n    " + fields + "\n    model: openclaw-test\n")); err != nil {
+			t.Fatal(err)
+		}
+		for _, role := range []string{"planning", "review"} {
+			if _, err := ParseAgents([]byte("agents:\n  - name: g\n    " + fields + "\n    role: " + role + "\n")); err == nil {
+				t.Fatalf("accepted %s: %s", role, fields)
+			}
+		}
+	}
+}

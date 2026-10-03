@@ -79,6 +79,8 @@ const Starter = `# HiveDispatch worker configuration: settings for this machine.
 #   binary: codex
 # antigravity:
 #   binary: agy            # Antigravity CLI; run agy once to authenticate
+# openclaw:
+#   binary: openclaw       # requires agent exec; configure with openclaw onboard
 # grok:
 #   binary: grok           # Grok Build; authenticate with grok login or XAI_API_KEY
 # state_store: branch      # or local
@@ -232,7 +234,7 @@ const AgentsStarter = `# The agents that work this repository's tickets, read by
 agents:
   - name: default
     role: coding
-    executor: claude       # claude, codex, grok/antigravity (coding only), deepcode, langgraph, or fake (no agent; for trying the pipeline)
+    executor: claude       # claude, codex, grok/antigravity/openclaw (coding only), deepcode, langgraph, or fake (no agent; for trying the pipeline)
     # model: sonnet
   # - name: planner
   #   role: planning

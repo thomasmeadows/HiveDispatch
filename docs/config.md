@@ -34,6 +34,7 @@ Written by `hivedispatch init`; every command takes `-config PATH` to use anothe
 | `retention_days` | `30` | Raw run logs and finished run records older than this are pruned at startup; `-1` never prunes |
 | `claude.binary` | `claude` | The Claude Code CLI to run |
 | `codex.binary` | `codex` | The Codex CLI to run (for agents with `executor: codex`) |
+| `openclaw.binary` | `openclaw` | OpenClaw executable with `agent exec` support |
 | `antigravity.binary` | `agy` | Antigravity CLI executable for `executor: antigravity` or `code_with: antigravity` |
 | `grok.binary` | `grok` | Grok Build executable for `executor: grok` or `code_with: grok` |
 | `deepcode.binary` | `deepcode` | The DeepCode CLI to run (for agents with `executor: deepcode` or `code_with: deepcode`) |
@@ -97,8 +98,8 @@ agents:
 |---|---|---|
 | `agents[].name` | *(required)* | Unique within the repository (case-insensitive); letters, digits, `.`, `-`, `_`. Shown on run records and pull requests as `<machine_id>/<name>` |
 | `agents[].role` | `coding` | Which board column the agent works: `planning`, `coding` or `review` (below) |
-| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `grok` (Grok Build, below), `antigravity` (Antigravity CLI, below), `deepcode` (DeepCode, below), `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
-| `agents[].code_with` | `claude` | `langgraph` agents only: what the workflow's code and fix steps run — `claude`, `codex`, `grok`, `antigravity`, `deepcode`, `fake`, or `langgraph` for HiveDispatch's own coding agent (coding agents only; see below). Rejected on any other executor |
+| `agents[].executor` | `claude` | `claude` (Claude Code), `codex`, `grok` (Grok Build, below), `antigravity` (Antigravity CLI, below), `openclaw` (OpenClaw, below), `deepcode` (DeepCode, below), `langgraph` (the graph workflow, below), or `fake` (no agent; useful for trying the pipeline) |
+| `agents[].code_with` | `claude` | `langgraph` agents only: what the workflow's code and fix steps run — `claude`, `codex`, `grok`, `antigravity`, `openclaw`, `deepcode`, `fake`, or `langgraph` for HiveDispatch's own coding agent (coding agents only; see below). Rejected on any other executor |
 | `agents[].model` | *(policy's model, then the CLI's)* | Model for this agent's runs; wins over the policy's `executor.model` / `executor.codex.model` |
 
 Each agent works one column of the board:
@@ -113,7 +114,28 @@ Columns without an agent of that role are not polled: a repository with only the
 
 Agents of a role are a pool. Each works one ticket at a time, and the worker's `max_concurrent` caps all of them together, so one repository runs at most as many tickets of a column at once as it has agents for it. A ticket labelled `hive:agent:<name>` waits for that agent in that agent's column; the other columns still use their whole pool, so one ticket can name both its coder and its reviewer. A label naming an agent the repository does not have is logged and the ticket skipped. Claims on the tracker are made under the worker's `machine_id`. A ticket paused on a question resumes its earlier session only on an agent with the same executor; any other agent starts it afresh.
 
-`run -executor fake` (or `claude`, `codex`, `grok`, `antigravity`, `deepcode`, `langgraph`) makes every agent use that executor for one run.
+`run -executor fake` (or `claude`, `codex`, `grok`, `antigravity`, `openclaw`, `deepcode`, `langgraph`) makes every agent use that executor for one run.
+
+### OpenClaw — `executor: openclaw`
+
+Install [OpenClaw](https://docs.openclaw.ai/install) on the worker and configure its providers and credentials with `openclaw onboard`. Use a version that supports [`openclaw agent exec`](https://docs.openclaw.ai/cli/agent#agent-exec); check `openclaw agent exec --help` before enabling it. Set `openclaw.binary` if the executable is not on the worker's PATH.
+
+```yaml
+agents:
+  - name: openclaw-coder
+    executor: openclaw
+    role: coding
+    # model: provider/model  # optional; defaults to OpenClaw's configuration
+```
+
+It also works as `code_with: openclaw` on a coding agent with `executor: langgraph`. The CLI, configuration website and `hivedispatch check` recognize it. The website checks its version and offers the official installer with onboarding skipped; configure providers afterwards. It does not verify credentials or command capabilities.
+
+The adapter runs `openclaw agent exec --message-file - --cwd <worktree> --json --timeout 0`, passing the prompt and repository guidance through stdin. OpenClaw uses the operator's existing providers, credentials and permissions. HiveDispatch sets the working directory and prepends the policy's `executor.path` entries to PATH. Configure tool access in OpenClaw; HiveDispatch's Claude and Codex permission settings do not apply.
+
+- **Coding only:** planning and review are rejected because this adapter cannot enforce read-only tools.
+- **Fresh session per run:** OpenClaw owns temporary state and its cleanup. The adapter does not retain a resume token; follow-up runs receive the ticket context and existing worktree again.
+- **Wall-clock timeout only:** the worker cancels the entire process group at `run_timeout`; standalone `agent-run` defaults to 45 minutes. The CLI's own ten-minute deadline is disabled. `agent exec` has no live tool-event stream or step-limit flag, so `step_budget` is not enforced and per-tool tracing is unavailable. A notice is included in the run log.
+- **Results:** the final JSON envelope supplies completion, failure, timeout, text, model and usage. Malformed or oversized output fails the run. `HIVE_NEEDS_INPUT:` in the final reply pauses the ticket for a human answer.
 
 ### Antigravity CLI — `executor: antigravity`
 

@@ -490,3 +490,16 @@ Decided: the five packages that supervise an external CLI process and parse its 
 Rejected:
 - **One merged `cli` package:** the runners deliberately do not share code (see the Codex entry), so merging them would only lengthen identifiers.
 - **Moving them under `internal/executor/`:** the triager uses `claudecli` too, so they are not owned by the executor.
+
+
+## 2026-10-02 — OpenClaw runs coding turns through agent exec
+
+Decided: add `openclaw` as a coding executor and LangGraph `code_with` choice, backed by a dedicated runner under `internal/command-line-interfaces/openclawcli`. Run `openclaw agent exec` with the prepared worktree as both process directory and `--cwd`, the prompt on stdin through `--message-file -`, and the stable `--json` result envelope. The worker config exposes `openclaw.binary`; the agent's model is passed when set. Existing OpenClaw authentication, plugins and tool policy remain operator-owned. No new Go dependencies are needed.
+
+OpenClaw owns ephemeral state for each invocation. Do not persist its temporary session ID as a resume token. Follow-up turns rely on the existing worktree and rendered ticket history. Planning and review are rejected because the adapter cannot enforce read-only tools. The CLI provides no step-limit option or live tool-event stream: document the absence of step-budget enforcement and per-tool tracing, and add a run-log notice when a budget was requested. Bound the process group with the caller's deadline (45 minutes when absent) and disable the CLI's shorter default timeout. Cap stdout at 2 MiB and stderr at 64 KiB. Invalid output, nonzero exits and failed envelopes never count as completion. Retain final text and reported usage.
+
+Rejected:
+- **Gateway dispatch or agent --local:** these depend on shared routing, session stores and configured agent workspaces; agent exec supplies a dedicated worktree and isolated temporary state for parallel tickets.
+- **Retaining state for resume:** agent exec has no documented resume selector; persisting its session ID would falsely promise continuity.
+- **Claiming step-budget enforcement from final tool counts:** the work would already have happened. Use the wall-clock bound and make this limitation visible.
+- **Bypassing operator configuration:** existing authentication and tool permissions should keep their normal meaning.
