@@ -19,6 +19,7 @@ import (
 	exfake "github.com/thomasmeadows/hivedispatch/internal/executor/fake"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/grok"
 	"github.com/thomasmeadows/hivedispatch/internal/executor/langgraph"
+	"github.com/thomasmeadows/hivedispatch/internal/executor/openclaw"
 	"github.com/thomasmeadows/hivedispatch/internal/githost"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/github"
 	"github.com/thomasmeadows/hivedispatch/internal/githost/none"
@@ -151,6 +152,18 @@ func usesAntigravity(cfg *config.Config) bool {
 	return false
 }
 
+// usesOpenClaw reports whether a coding agent runs OpenClaw directly or through the graph.
+func usesOpenClaw(cfg *config.Config) bool {
+	for _, r := range cfg.Repos {
+		for _, a := range r.Agents {
+			if a.Executor == "openclaw" || (a.Executor == "langgraph" && a.CodeWith == "openclaw") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // usesDeepCode reports whether any repository has an agent that runs
 // DeepCode, as its executor or as a langgraph agent's code_with.
 func usesDeepCode(cfg *config.Config) bool {
@@ -236,6 +249,7 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 	executors := map[string]executor.Executor{
 		"claude":      claudecode.New(claudecode.Config{Binary: cfg.Claude.Binary}),
 		"codex":       codex.New(codex.Config{Binary: cfg.Codex.Binary}),
+		"openclaw":    openclaw.New(openclaw.Config{Binary: cfg.OpenClaw.Binary}),
 		"antigravity": antigravity.New(antigravity.Config{Binary: cfg.Antigravity.Binary}),
 		"grok":        grok.New(grok.Config{Binary: cfg.Grok.Binary}),
 		"deepcode":    deepcode.New(deepcode.Config{Binary: cfg.DeepCode.Binary}),
@@ -245,7 +259,7 @@ func newWorker(ctx context.Context, cfg *config.Config, opts wireOptions, logger
 	if opts.executor != "" {
 		ex, ok := executors[opts.executor]
 		if !ok {
-			return nil, fmt.Errorf("unknown executor %q (want claude, codex, grok, antigravity, deepcode, langgraph or fake)", opts.executor)
+			return nil, fmt.Errorf("unknown executor %q (want claude, codex, grok, antigravity, openclaw, deepcode, langgraph or fake)", opts.executor)
 		}
 		for kind := range executors {
 			executors[kind] = ex

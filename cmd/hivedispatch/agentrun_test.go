@@ -92,3 +92,26 @@ func TestAgentRunAntigravity(t *testing.T) {
 		t.Fatalf("result: %+v", r)
 	}
 }
+
+func TestAgentRunOpenClaw(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "") // agent-run must not need repository secrets to find its CLI
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "fake-openclaw")
+	script := "#!/bin/sh\ncat >/dev/null\ncat <<'JSON'\n{\"ok\":true,\"status\":\"ok\",\"final\":\"OpenClaw completed\"}\nJSON\n"
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeValidConfigWith(t, "openclaw:\n  binary: "+bin+"\n")
+	var out, errb bytes.Buffer
+	code := runAgentRun([]string{"-executor", "openclaw", "-config", cfg, "-workspace", dir}, strings.NewReader("task"), &out, &errb)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var r agentRunResult
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != "completed" || r.Summary != "OpenClaw completed" {
+		t.Fatalf("result: %+v", r)
+	}
+}

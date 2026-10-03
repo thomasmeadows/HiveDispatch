@@ -813,3 +813,21 @@ func TestAntigravityBinary(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenClawBinary(t *testing.T) {
+	t.Setenv("HIVE_JIRA_TOKEN", "secret")
+	for _, bin := range []string{"openclaw", "/opt/openclaw"} {
+		extra := ""
+		if bin != "openclaw" {
+			extra = "openclaw:\n  binary: " + bin + "\n"
+		}
+		p, _ := setup(t, extra)
+		cfg, err := Load(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.OpenClaw.Binary != bin {
+			t.Fatalf("binary %q, want %q", cfg.OpenClaw.Binary, bin)
+		}
+	}
+}

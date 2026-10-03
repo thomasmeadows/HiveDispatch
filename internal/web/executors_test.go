@@ -88,7 +88,7 @@ func TestExecutorsReportVersions(t *testing.T) {
 		"agents:\n  - name: c1\n    executor: claude\n  - name: g1\n    executor: langgraph\n    code_with: deepcode\n")
 
 	m := executorsByName(t, e)
-	for _, name := range []string{"claude", "codex", "grok", "antigravity", "deepcode", "langgraph"} {
+	for _, name := range []string{"claude", "codex", "grok", "antigravity", "openclaw", "deepcode", "langgraph"} {
 		if _, ok := m[name]; !ok {
 			t.Errorf("no row for %s", name)
 		}
@@ -185,5 +185,38 @@ func TestExecutorInstallFailureReportsExit(t *testing.T) {
 	}
 	if code := e.post(t, "/api/executors/install", map[string]string{"name": "codex"}, &res); code != 200 || res.ExitCode != 127 || res.Executor.Installed {
 		t.Errorf("failed install = %d %+v", code, res)
+	}
+}
+
+func TestOpenClawConfigurationAndInstall(t *testing.T) {
+	command := "curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard"
+	f := &fakeRunner{outs: map[string]string{
+		"custom-openclaw --version": "OpenClaw test-version\n",
+		"sh -c " + command:          "installed\n",
+	}}
+	e := newEnv(t, Options{Run: f.run})
+	raw, err := os.ReadFile(e.cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, e.cfgPath, string(raw)+"openclaw:\n  binary: custom-openclaw\n")
+	mustWrite(t, filepath.Join(e.repo, ".hive-dispatch", "agents.yaml"), "agents:\n  - name: oc\n    executor: openclaw\n  - name: graph\n    executor: langgraph\n    code_with: openclaw\n")
+	r := executorsByName(t, e)["openclaw"]
+	if !r.Installed || r.Binary != "custom-openclaw" || r.Version != "OpenClaw test-version" || len(r.UsedBy) != 2 || r.Install != command {
+		t.Fatalf("OpenClaw row: %+v", r)
+	}
+}
+
+func TestOpenClawInstallCommand(t *testing.T) {
+	command := "curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard"
+	f := &fakeRunner{outs: map[string]string{"sh -c " + command: "installed\n"}}
+	e := newEnv(t, Options{Run: f.run})
+	var res struct {
+		ExitCode int    `json:"exit_code"`
+		Output   string `json:"output"`
+		Command  string `json:"command"`
+	}
+	if code := e.post(t, "/api/executors/install", map[string]string{"name": "openclaw"}, &res); code != 200 || res.ExitCode != 0 || res.Output != "installed\n" || res.Command != command {
+		t.Fatalf("install = %d %+v", code, res)
 	}
 }

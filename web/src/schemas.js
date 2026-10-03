@@ -51,6 +51,7 @@ export const workerSchema = [
       { key: 'claude.binary', label: 'Claude binary', type: 'text', placeholder: 'claude', help: 'Which agents run it, and with which model, is set per repository under Repos → Agents.' },
       { key: 'codex.binary', label: 'Codex binary', type: 'text', placeholder: 'codex' },
       { key: 'antigravity.binary', label: 'Antigravity CLI binary', type: 'text', placeholder: 'agy', help: 'Authenticate by running agy interactively on the worker.' },
+      { key: 'openclaw.binary', label: 'OpenClaw binary', type: 'text', placeholder: 'openclaw', help: 'Requires agent exec support. Configure providers with openclaw onboard.' },
       { key: 'grok.binary', label: 'Grok Build binary', type: 'text', placeholder: 'grok', help: 'Authenticate with grok login or XAI_API_KEY.' },
       { key: 'deepcode.binary', label: 'DeepCode binary', type: 'text', placeholder: 'deepcode', help: 'npm i -g @vegamo/deepcode-cli. Its API key and model are in ~/.deepcode/settings.json.' },
       { key: 'triage.kind', label: 'Triage', type: 'select', options: ['', 'claude', 'passthrough'], placeholder: 'claude' },

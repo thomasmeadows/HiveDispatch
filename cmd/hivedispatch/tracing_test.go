@@ -137,3 +137,30 @@ func TestAntigravityCheck(t *testing.T) {
 		t.Fatalf("check: %s", out.String())
 	}
 }
+
+func TestOpenClawCheck(t *testing.T) {
+	cfg := &config.Config{Repos: []config.RepoConfig{{Agents: []config.Agent{{Executor: "claude"}}}}}
+	if usesOpenClaw(cfg) {
+		t.Fatal("unused openclaw checked")
+	}
+	for _, a := range []config.Agent{{Executor: "openclaw"}, {Executor: "langgraph", CodeWith: "openclaw"}} {
+		cfg.Repos[0].Agents = []config.Agent{a}
+		if !usesOpenClaw(cfg) {
+			t.Fatalf("missed agent %+v", a)
+		}
+	}
+	var out bytes.Buffer
+	printOpenClawCheck(&out, filepath.Join(t.TempDir(), "missing-openclaw"))
+	if !strings.Contains(out.String(), "not found") || !strings.Contains(out.String(), "https://docs.openclaw.ai") {
+		t.Fatalf("check: %s", out.String())
+	}
+	out.Reset()
+	bin := filepath.Join(t.TempDir(), "openclaw")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	printOpenClawCheck(&out, bin)
+	if !strings.Contains(out.String(), bin) || !strings.Contains(out.String(), "openclaw") {
+		t.Fatalf("check: %s", out.String())
+	}
+}
