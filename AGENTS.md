@@ -57,6 +57,8 @@ If an agent cannot run these (for example, `golangci-lint` is missing and `go ru
 
 Carried over from [`CONTRIBUTING.md` — Rules](CONTRIBUTING.md#rules):
 
+- **Keep the package guides current.** Follow [Package guide maintenance](CONTRIBUTING.md#package-guide-maintenance): update [docs/packages.md](docs/packages.md) for runtime packages/files and [docs/testing.md](docs/testing.md) for fakes, test helpers and test suites in the same commit as additions, moves, removals or flow changes. Keep their contents links and source links valid.
+
 - **Fakes, not mocks of the network.** Any new external dependency gets an interface in `internal/` and a fake implementation; tests use the fake.
 - **Tests first.** Write or extend the test for the behaviour you are changing before the implementation. A task is not done until `go test -race ./...` passes.
 - **Errors are never discarded.** `errcheck` is on, including for `io.WriteString` and `Close`. If an error is truly irrelevant, write `_ = f()` so the choice is visible.

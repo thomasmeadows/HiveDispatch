@@ -32,6 +32,8 @@ Under the hood it polls each repository's issue tracker (Jira Cloud or GitHub Is
 
 ## Design
 
+Use the [package guide](docs/packages.md) for a linked tour of every runtime package, its files and operation flow. The [testing guide](docs/testing.md) covers fakes, test helpers and test suites.
+
 Read [`docs/design-spec.md`](docs/design-spec.md) for the architecture and [`docs/decisions.md`](docs/decisions.md) for every choice made along the way and the alternatives rejected. To build and test the project locally, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 The control plane is deterministic. Model discretion is confined to two places: triage (is this ticket worth attempting, and how?) and code generation inside the executor. Everything between — polling, claiming, branching, reporting — is ordinary code with ordinary failure modes.

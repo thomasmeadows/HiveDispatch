@@ -52,6 +52,29 @@ When `graph/` changed, also:
 graph/.venv/bin/ruff check graph && graph/.venv/bin/ruff format --check graph && graph/.venv/bin/pytest graph
 ```
 
+## Package guide maintenance
+
+Keep [docs/packages.md](docs/packages.md) and [docs/testing.md](docs/testing.md)
+current in the same commit as the code they describe. The package guide covers
+runtime Go/Python packages and the frontend; the testing guide covers fakes,
+test-helper packages, suites and fixtures.
+
+- When adding a package, add its linked table-of-contents entry, purpose,
+  non-test source-file table and operation flow to the appropriate guide.
+- When adding, renaming, moving or removing a source file, update its owning
+  package's file table and links. Put test support in the testing guide; summarize
+  individual tests by suite. Describe generated output as a tree with its source
+  and build process rather than listing changing asset hashes.
+- Update flow descriptions when behavior or package boundaries change, even if
+  the file list does not. Update affected callers' descriptions as well.
+- Before committing, compare both guides with the package/source inventory,
+  check table-of-contents anchors and file links, and run the normal checks above.
+  Reviewers check guide coverage alongside code; mention relevant guide updates
+  in the PR description.
+
+See the [detailed update protocol](docs/packages.md#update-protocol) for inventory
+commands and scope. These are contributor requirements, not an automated CI gate.
+
 ## Rules
 
 - Every external system (tracker, git host, executor, model) sits behind an interface in `internal/` with a fake. Unit tests never touch the network.
